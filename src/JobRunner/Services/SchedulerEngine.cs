@@ -534,7 +534,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
                 var linked = JsonSerializer.Deserialize<UnitDefinition>(JsonSerializer.Serialize(unit))!;
                 linked.Attributes["sd"] = (unit.Attributes.GetValueOrDefault("sd") ?? ["1,en"])
                     .Where(raw => ScheduleCalculator.RuleValue(unit, "ln", ScheduleCalculator.SplitRule(raw).Rule, ScheduleCalculator.SplitRule(raw).Rule.ToString(System.Globalization.CultureInfo.InvariantCulture)) == selected.Point.Rule.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
-                var candidate = ScheduleCalculator.Calculate(linked, fixedUnits, registration, selected.Point.BusinessDate, selected.Point.BusinessDate.AddDays(1), options).OrderBy(p => p.Due).ThenBy(p => p.Rule).FirstOrDefault();
+                var candidate = ScheduleCalculator.Calculate(linked, fixedUnits, registration, selected.Point.BusinessDate, selected.Point.BusinessDate.AddDays(1), options).Where(p => ScheduleCalculator.IsNestedTimeEligible(unit, fixedUnits, p.Rule)).OrderBy(p => p.Due).ThenBy(p => p.Rule).FirstOrDefault();
                 selected = candidate is null ? (selected.Point, false) : (candidate, true);
             }
 

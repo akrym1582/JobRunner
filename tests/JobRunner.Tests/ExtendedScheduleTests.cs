@@ -23,6 +23,25 @@ public sealed class ExtendedScheduleTests
         Assert.Equal(DateOnly.Parse(date), point.BusinessDate);
     }
 
+    /// <summary>参照カレンダーの基準時刻より前のネストを翌日へ読み替えません。</summary>
+    [Fact]
+    public void NestedTimeUsesReferencedCalendarBaseline()
+    {
+        var units = Jp1DefinitionParser.Parse("unit=calendar;{ty=g;stt=06:00;}unit=net;{ty=n;jc=/calendar;sd=2026/11/5;st=05:00;}", new DefinitionSource());
+        var all = units.Flatten().ToDictionary(u => u.Path);
+        Assert.False(ScheduleCalculator.IsNestedTimeEligible(all["/net"], all, 1));
+        all["/net"].Attributes["st"] = ["07:00"];
+        Assert.True(ScheduleCalculator.IsNestedTimeEligible(all["/net"], all, 1));
+    }
+
+    /// <summary>未確認の欠落月を推測して別の日へ移しません。</summary>
+    [Fact]
+    public void RejectsUnverifiedMissingBaseDay()
+    {
+        var units = Jp1DefinitionParser.Parse("unit=g;{ty=g;sdd=31;}", new DefinitionSource());
+        Assert.Throws<FormatException>(() => DefinitionValidator.Validate(units, new RunnerOptions()));
+    }
+
     /// <summary>休業日振替後の起点日へ起算を適用し、生成範囲外の起点も取りこぼしません。</summary>
     [Fact]
     public void OriginFollowsHolidayShiftAcrossMonthBoundary()

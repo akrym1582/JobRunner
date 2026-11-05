@@ -110,6 +110,17 @@ public static class ScheduleCalculator
     public static string RuleValue(UnitDefinition unit, string key, int rule, string fallback) =>
         unit.Attributes.GetValueOrDefault(key)?.Select(SplitRule).Where(v => v.Rule == rule).Select(v => v.Value).FirstOrDefault() ?? fallback;
 
+    /// <summary>ネストの絶対時刻が基準時刻前の場合は、上位とは異なる業務日として除外します。</summary>
+    /// <param name="unit">対象のネストです。</param>
+    /// <param name="all">参照カレンダーを含む定義です。</param>
+    /// <param name="rule">評価するルールです。</param>
+    /// <returns>同じ業務日の候補として扱える場合trueです。</returns>
+    public static bool IsNestedTimeEligible(UnitDefinition unit, IReadOnlyDictionary<string, UnitDefinition> all, int rule)
+    {
+        string time = RuleValue(unit, "st", rule, "+00:00");
+        return time.StartsWith('+') || ParseTime(time) >= ParseTime(Inherited(unit, all, "stt", "00:00"));
+    }
+
     /// <summary>重複の優先順位を適用する前のルール別候補を計算します。</summary>
     /// <param name="root">対象ネットです。</param>
     /// <param name="all">全定義です。</param>
@@ -190,6 +201,11 @@ public static class ScheduleCalculator
     /// <returns>直近の定義値です。</returns>
     private static string Inherited(UnitDefinition unit, IReadOnlyDictionary<string, UnitDefinition> all, string key, string fallback)
     {
+        if (unit.Get("jc") is { Length: > 0 } reference)
+        {
+            unit = all[reference];
+        }
+
         while (!unit.Attributes.ContainsKey(key))
         {
             if (!all.TryGetValue(Parent(unit.Path), out var parent))

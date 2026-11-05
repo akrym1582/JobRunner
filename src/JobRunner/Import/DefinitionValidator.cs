@@ -120,6 +120,11 @@ public static class DefinitionValidator
                 throw Error(unit, "基準日または月区分が不正です。");
             }
 
+            if ((int.TryParse(unit.Get("sdd"), out int baseDay) && baseDay > 28) || unit.Get("sdd").EndsWith(":5", StringComparison.Ordinal))
+            {
+                throw Error(unit, "29〜31日または第5曜日の基準日は、欠落月の仕様照合が未完了のため現在未対応です。");
+            }
+
             if (unit.Get("stt") is { Length: > 0 } baseline && ScheduleCalculator.ParseTime(baseline) >= 1440)
             {
                 throw Error(unit, "カレンダー基準時刻は24時未満です。");
