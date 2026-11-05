@@ -92,4 +92,16 @@ public sealed class Operation
     /// <summary>Gets or sets. 登録でルート保留を明示上書きする指定。nullは定義に従います。</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? Holding { get; set; } = null;
+
+    /// <summary>Gets or sets. 確定登録で維持する未開始ルート数。nullは期間方式です。</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? FutureGenerations { get; set; } = null;
+
+    /// <summary>Gets or sets. ネット全体を先頭から再実行する場合はTOPを明示します。</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? RerunMethod { get; set; } = null;
+
+    /// <summary>Gets or sets. 分割操作の不変変更計画。サーバーだけが設定します。</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? MutationPath { get; set; } = null;
 }

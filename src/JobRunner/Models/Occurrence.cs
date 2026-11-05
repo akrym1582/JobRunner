@@ -83,4 +83,7 @@ public sealed class Occurrence
 
     /// <summary>Gets or sets. 互換API用の不透明な実行ID。ルート世代に保存し、子はRootIdから参照します。</summary>
     public string? Jp1ExecutionId { get; set; } = null;
+
+    /// <summary>Gets or sets. 子世代の生成が完了したかを示します。旧形式のnullは従来の検査を使います。</summary>
+    public bool? Materialized { get; set; } = null;
 }

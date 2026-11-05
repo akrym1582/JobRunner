@@ -1,6 +1,6 @@
 # JP1 V12 仕様対応表
 
-一次資料: [JP1/Automatic Job Management System 3 コマンドリファレンス 3021-3-D28-20](https://itpfdoc.hitachi.co.jp/manuals/3021/30213D2820/H03D2820.PDF)。2026-11-05にPDF本文を取得して確認しました。**実JP1との比較は全項目未実施**です。
+一次資料: [JP1/Automatic Job Management System 3 コマンドリファレンス 3021-3-D28-20](https://itpfdoc.hitachi.co.jp/manuals/3021/30213D2820/H03D2820.PDF)。2026-11-05にPDF本文を取得して確認しました。**実JP1との比較は全項目未実施**です。確定登録の補充規則は[導入ガイド3021-3-D21-20](https://itpfdoc.hitachi.co.jp/manuals/3021/30213D2120/H03D2120.PDF)4.1.1(3)も参照しています。
 
 この表の「実装済み・仕様テスト済み」は記載した限定ケースを指します。同じカテゴリの全指定や実機互換を意味しません。
 
@@ -23,11 +23,13 @@
 | ローカル実行・終了判定 | 5.2.5 pp.1064–1067 `te/sc/prm/wkp/env/etm/jd/wth/tho` | シェル/実行ファイル分離、両出力収集、コード分類 | 実装済み・仕様テスト済み（Linux teとコード判定） | ExecutionTests.ClassifiesActualExitCodes、LogStorageFailureStopsProducer |
 | 自動確定登録・補充・解除維持 | 計画16章（JobRunner独自運用） | 採用IDと基準日固定、決定的な世代キー、カーソル補充、解除行保持 | 実装あり・追加検証未達 | RecoveryTestsで起動登録を検証。ExecutionControlTestsで解除・保留・予定変更の再起動復元も検証。補充中断は未検証 |
 | 即時登録・保留解除 | 独自管理API。JP1互換DTOではない | 操作IDで重複防止、親・先行成功後に開始 | 実装済み・仕様テスト済み | IntegrationTests.RunsRealProcessesThroughStandbyApiAndRecovers |
-| 計画登録 | 7.1.5および導入ガイド | 確定登録で代用しない。要求はRejected | 未実装 | 変更反映と世代再計算を追加する必要あり |
-| 一時変更・再実行・停止 | 独自管理API | Move/Restoreの原予定保持、末端再実行でFailed祖先復帰。ネット一括再実行は拒否。Cancel/Stopの全組合せは未検証 | 一部実装・仕様テスト済み | ExecutionControlTests |
+| 計画登録 | ユーザー指定による範囲変更 | 要求はRejected | 対象外 | 確定登録と既存の即時登録を提供 |
+| 一時変更・再実行・停止 | 独自管理API、TOP方式は7.4.10参照 | Move/RunNow/Restore/Cancelを子孫へ適用。ネットStopはInterruptedとUnknownで結果確認を要求。TOP再実行・末端異常再実行に対応。他の再実行方式は未対応 | 一部実装・仕様テスト済み | ExecutionControlTests、NetworkOperationTests、OperationMutationTests |
+| 確定登録の未来世代数 | 導入ガイド4.1.1(3)、コマンド-g | 1〜99の未開始枠を維持。生成済み予定と履歴を保持。期間併用・同一採用内での定義変更反映は未対応 | 一部実装・仕様テスト済み | ConfirmedGenerationTests |
+| JP1確定登録HTTP | 7.1.6 | futureGenerationとNEXTTIMEを受理。同期200空本文、初回のみholding。期間・日時指定等は拒否 | 一部実装・契約テスト済み | Jp1ContractTests.FixedRegistrationMaintainsRequestedFutureGenerations |
 | 結果不明の解決 | 計画7章（独自運用） | 試行ID・期待状態・理由必須。自動再実行せず後続待機 | 実装済み・仕様テスト済み | RecoveryTests.StartingAttemptBecomesUnknownWithoutRerun、IntegrationTests |
 | JP1即時登録・保留変更HTTP | 6.5.2、7.1.7、7.1.9、7.4.8 | URL/parameters/同期200/execID/SET・RELEASEを実装。未対応パラメーター拒否。エラーIDは一部独自、実JP1未比較 | 一部実装・契約テスト済み | Jp1ContractTests |
-| その他のJP1 HTTP操作 | 7.1.5ほか | 未対応の操作を成功扱いしない | 未実装 | 実装・契約テストが必要 |
+| その他のJP1 HTTP操作 | 計画登録を除く各節 | 未対応の操作を成功扱いしない | 未実装 | 実装・契約テストが必要 |
 | 履歴・ログ・操作保持期限 | 計画9章（独自運用） | 未指定は無効。Blob保存後に詳細削除、墓標維持。Unknown除外、ETag付き再開 | 実装済み・障害テスト済み | RetentionTests |
 | 条件分岐・異常時後続・待ち合わせ・イベント | 5.2.4ほか | 未対応の属性・種別・接続を拒否 | 未実装 | 仕様調査・実装・契約テストが必要 |
 | 別形式Schedule/Calendar | 実出力例未入手 | 独自JSONをJP1形式として受理しない | 調査中・未実装 | 匿名化したV12出力と形式根拠が必要 |

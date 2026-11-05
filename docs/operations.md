@@ -17,7 +17,8 @@
 | DefinitionSources[].Encoding | `utf-8`。コードページ名の明示指定も可能。変換不能バイトは拒否 |
 | ScheduleTimeMode | 24。48では47:59までの時刻を日付を失わず保持 |
 | TimeZone | `Asia/Tokyo`。夏時間の曖昧・欠落時刻は拒否 |
-| ConfirmedHorizonDays | 32。1〜366日 |
+| ConfirmedHorizonDays | 32。1〜366日。未来世代数を指定しない場合の先読み日数 |
+| ConfirmedFutureGenerations | 未指定。自動確定登録で維持する未来世代数を1〜99で指定 |
 | MaxConcurrency | 4。1〜128プロセス |
 | LocalAgents | 空。ex属性をローカルへ対応付ける名前の許可一覧 |
 | LocalUsers | 空。所有者実行指定を現在のOSユーザーへ対応付けるJP1ユーザー名の許可一覧 |
@@ -83,7 +84,7 @@ Blobの内容変更、配置先・入力一覧変更、時間制等の設定変�
 
 即時登録にもDueを必須とし、再処理で日時を変えません。初期化基準より前の予定はスキップします。Confirmedは固定定義から先読み補充します。Unregisterは対象登録IDを指定し、未開始ルートを止め、解除済み行を残します。
 
-世代IDをtargetとする操作はHold、Release、Move（due必須）、Restore、Cancel、Stop、Rerun、Resolveです。状態が適合しない操作はRejectedとなります。保留解除や再実行では先行・親の状態も開始条件になります。Stop後の副作用を判定できない場合はUnknownとします。RerunはFailed/TimedOutの末端ジョブに新しいattemptIdを発行し、以前の試行を保存します。失敗した祖先ネットをRunningへ戻しますが、完了した兄弟は再実行しません。ネット一括再実行は拒否します。
+世代IDをtargetとする操作はHold、Release、Move（due必須）、RunNow、Restore、Cancel、Stop、Rerun、Resolveです。状態が適合しない操作はRejectedとなります。保留解除や再実行では先行・親の状態も開始条件になります。Stop後の副作用を判定できない場合はUnknownとします。RerunはFailed/TimedOutの末端ジョブに新しいattemptIdを発行し、以前の試行を保存します。失敗した祖先ネットをRunningへ戻しますが、完了した兄弟は再実行しません。ネットの一括再実行は `rerunMethod: "TOP"` を明示すると全子孫を先頭から再実行します。成功したネットも対象ですが、結果不明・実行中の子孫がある場合は拒否します。他のネット再実行方式は未対応です。
 
 要求Idは1〜128文字。同じId・同じ内容は保存済み結果を返し、異なる内容は409です。新規受付は202と照会URLを返します。変更は稼働系で行います。受付時の採用IDをサーバーが固定し、処理前に版が変わった要求を別版へ誤適用しません。HTTPタイムアウトだけで未実行とは判断せず、同じIdで照会してください。
 
@@ -122,7 +123,7 @@ Blob/TableとOSの起動は一括トランザクションではありません�
 
 任意の `X-JobRunner-Request-Id`（最大100文字）で同じ要求の再送を識別できます。異内容は409、同内容は同じ結果です。応答の `X-JobRunner-Operation-Id` は独自管理APIの照会に使用できます。30秒以内に処理結果を確認できなければ500を返しますが、受付済み操作を取り消しません。
 
-未対応の起動条件、非空macro、未知パラメーターは400で拒否します。エラー本文はerrorSource/message/messageID/application/extensions形式です。確認済みの必須引数不足以外はJobRunner独自メッセージIDを返します。計画・確定登録など他のJP1 API操作、完全なエラーID互換、実JP1比較は未対応です。
+未対応の起動条件、非空macro、未知パラメーターは400で拒否します。エラー本文はerrorSource/message/messageID/application/extensions形式です。確認済みの必須引数不足以外はJobRunner独自メッセージIDを返します。確定登録の未来世代数指定は後述します。他のJP1 API操作、完全なエラーID互換、実JP1比較は未対応です。計画登録はユーザー指定により対象外です。
 
 ## 履歴・ログ・操作要求の保持期限
 
@@ -135,3 +136,44 @@ Unknown、実行中、保留中、未開始の子がある履歴は退避しま�
 LogRetentionDaysは既知の終了試行だけに適用し、履歴退避とは独立しています。期限削除したログは一覧から消えます。履歴Blobはログ本文を含まず、ログ削除後に復元する機能はありません。
 
 完了・拒否した操作はOperationArchiveAfterDays後に本文をBlobへ退避します。同じIDを再受理しないようハッシュ・結果をTableへ残し、照会APIは元の操作を復元して返します。履歴Blob、操作Blob、重複防止用の墓標に自動削除期限は設けていません。
+
+## 確定登録の未来世代数
+
+未来世代数は「まだ開始していないルート世代を何件確保するか」です。1〜99で指定し、開始した分を次のTickで補充します。履歴保存世代数ではありません。例えば3なら、初期に3世代を生成し、最初の1世代が開始したら4世代目を追加します。保留世代も未開始枠に含め、取消・復旧時スキップ・過去に開始した世代は枠から外します。
+
+自動登録には `JobRunner__ConfirmedFutureGenerations=3` を設定します。未指定なら従来の `ConfirmedHorizonDays=32` で動作します。個別の独自API要求例:
+
+```json
+{"id":"fixed-three","kind":"Register","target":"/業務/日次/daily","registrationKind":"Confirmed","futureGenerations":3}
+```
+
+自動登録と個別API登録は別登録です。同じネットへの追加登録で予定を重複させたくない場合は、既存の自動登録をUnregisterしてから追加してください。
+
+Endとの併用と1〜99以外は拒否します。初回の予定は受付時刻以降から選びます。生成済み予定や一時変更は保持し、同じ採用領域の固定定義で未来分を補充します。探索範囲は最大100年で、予定が不足した場合は存在する分だけ生成し、翌業務日以降に再確認します。元の入力Blob変更は新しい採用領域への切り替えとなり、既存登録への定義変更反映ではありません。予定枠の自動補充は登録解除で停止します。
+
+JP1形式では次のPOSTを提供します。
+
+`/ajs/api/v1/objects/definitions/{encodedUnit}/actions/registerFixedExec/invoke`
+
+```json
+{"parameters":{"manager":"localhost","serviceName":"default","futureGeneration":3,"passedDaemonStarts":"NEXTTIME","holding":true}}
+```
+
+成功は200・空本文です。再送には既存と同じX-JobRunner-Request-Idを使えます。holdingは初回に生成する最初の世代だけに適用し、以後は定義の保留設定に従います。現在は未来世代数方式とNEXTTIMEだけに対応し、期間・日時指定、期間との併用、IMMEDIATE、非空macroは拒否します。
+
+## ネット単位の一時変更・停止・再実行
+
+独自 `/api/jobrunner/operations` に、対象ネットの世代IDをtargetとして送信します。
+
+| kind | 動作 |
+| --- | --- |
+| Move | due必須。対象と未開始の全子孫を同じ時間差で移動。OriginalDueは維持 |
+| RunNow | 対象のDueを処理時刻に合わせ、未開始子孫も同じ時間差で移動。保留は解除しない |
+| Restore | 対象と全子孫のDueを、それぞれのOriginalDueへ戻す |
+| Cancel | 未開始・保留中の対象一式をCancelledにする |
+| Stop | 実行中のネット内のプロセスツリーへ停止要求。未開始子孫はCancelled、実行中ネットはInterrupted。試行結果を推測しない |
+| Rerun | `rerunMethod: "TOP"` で、対象ネットと全子孫を先頭から実行。過去試行を保持 |
+
+Move/RunNow/Restore/Cancelは、子孫もすべて未開始・保留中の場合だけ受理します。Restoreは子孫に個別設定した日時変更も解除します。強制終了後のUnknownは試行ごとに業務結果を確認してResolveし、その後に新しい操作IDでTOPを要求してください。Stopの操作完了は停止要求・後続抑止の保存完了であり、外部業務の取消完了を保証しません。
+
+100行を超える変更は不変Blobの変更計画とPending操作参照を先に保存し、99行ずつリーダー・Epoch・ETagを確認して適用します。途中停止後は未適用行を再開し、操作完了まで新たなジョブ開始へ進みません。別内容への変更を検出した場合は自動上書きせず停止します。変更計画Blobには自動削除期限を設けていません。

@@ -19,7 +19,7 @@ namespace JobRunner.Services;
 /// <param name="executor">同じマシン上でだけジョブを起動する実行器です。</param>
 /// <param name="options">先読み期間、同時実行数、時間制などの実効設定です。</param>
 /// <param name="clock">予定と復旧基準の取得に使う注入可能な時計です。</param>
-public sealed class SchedulerEngine(StorageRepository storage, DefinitionService definitions, ProcessJobExecutor executor, RunnerOptions options, TimeProvider clock)
+public sealed partial class SchedulerEngine(StorageRepository storage, DefinitionService definitions, ProcessJobExecutor executor, RunnerOptions options, TimeProvider clock)
 {
     /// <summary>実行結果とAPI操作を同じTable更新経路へ直列化します。</summary>
     private readonly SemaphoreSlim mutations = new(1, 1);
@@ -52,6 +52,7 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
         var loaded = await definitions.LoadSourcesAsync(cancellationToken);
         await definitions.SaveAsync(loaded, cancellationToken);
         await ActivateAsync(loaded.Hash, cancellationToken);
+        await ResumeMutationsAsync(cancellationToken);
         DateTimeOffset recoveryTime = clock.GetUtcNow();
 
         // 新版を採用しても旧版の未解決試行を消さず、同じ業務の並行起動を防ぎます。
@@ -89,6 +90,7 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
     public async Task TickAsync(CancellationToken cancellationToken)
     {
         leader!.Ensure();
+        await ResumeMutationsAsync(cancellationToken);
         await CollectAsync(cancellationToken);
         if (clock.GetUtcNow() >= nextRetentionCheck && (nextRetentionCheck == default || options.HistoryArchiveAfterDays is not null || options.LogRetentionDays is not null || options.OperationArchiveAfterDays is not null))
         {
@@ -193,7 +195,7 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
                     occurrence.FinishedAt = clock.GetUtcNow();
                     await CommitAsync([Update(item.Row, occurrence)], cancellationToken);
                 }
-                else if (children.Any(c => c.State is "Failed" or "TimedOut")
+                else if (children.Any(c => c.State is "Failed" or "TimedOut" or "Cancelled" or "Interrupted")
                     && !children.Any(c => c.State is "Running" or "Starting" or "Unknown" or "Held")
                     && !children.Any(c => c.State == "Waiting" && DependenciesReady(c, units, all.Values.Select(v => v.Value))))
                 {
@@ -308,7 +310,7 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
                 if (registrationRow is null)
                 {
                     var day = BusinessToday(active.Baseline);
-                    var registration = new Registration { Id = id, Namespace = active.Id, RootPath = unit.Path, Anchor = day, Through = day.AddDays(-1) };
+                    var registration = new Registration { Id = id, Namespace = active.Id, RootPath = unit.Path, Anchor = day, Through = day.AddDays(-1), FutureGenerations = options.ConfirmedFutureGenerations, CreatedAt = active.Baseline };
                     await CommitAsync([Add(key, registration)], cancellationToken);
                     registrationRow = await storage.GetAsync(key, cancellationToken);
                 }
@@ -373,6 +375,12 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
             return;
         }
 
+        if (registration.FutureGenerations is not null)
+        {
+            await ReplenishCountAsync(row, registration, cancellationToken);
+            return;
+        }
+
         DateOnly until = BusinessToday(clock.GetUtcNow()).AddDays(options.ConfirmedHorizonDays);
         if (registration.End is not null && until > registration.End)
         {
@@ -430,6 +438,7 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
                 Rule = point.Rule,
                 Due = point.Due,
                 OriginalDue = point.Due,
+                Materialized = unit.Path == root.Path ? false : null,
                 State = (unit.Path == root.Path && registration.Holding is bool holding ? holding : unit.Get("ha", "n") == "y") ? "Held" : "Waiting",
             };
             if (unit.Path == root.Path && point.Due < active!.Baseline)
@@ -450,6 +459,14 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
             {
                 await CommitAsync([Add(key, occurrence)], cancellationToken);
             }
+        }
+
+        var completedRow = (await storage.GetAsync("occurrence:" + rootId, cancellationToken))!;
+        var completed = StorageRepository.Read<Occurrence>(completedRow);
+        if (completed.Materialized == false)
+        {
+            completed.Materialized = true;
+            await CommitAsync([Update(completedRow, completed)], cancellationToken);
         }
     }
 
@@ -549,7 +566,7 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
 
                 if (operation.RegistrationKind is not ("Confirmed" or "Immediate"))
                 {
-                    throw new FormatException("計画登録の変更反映は未実装です。ConfirmedまたはImmediateを指定してください。");
+                    throw new FormatException("計画登録は対象外です。ConfirmedまたはImmediateを指定してください。");
                 }
 
                 if (operation.RegistrationKind == "Immediate" && operation.Due is null)
@@ -557,11 +574,26 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
                     throw new FormatException("即時登録には固定されたDueが必要です。");
                 }
 
-                string id = StorageRepository.Hash(operation.Id);
+                if (operation.FutureGenerations is < 1 or > 99 || (operation.FutureGenerations is not null && (operation.RegistrationKind != "Confirmed" || operation.End is not null)))
+                {
+                    throw new FormatException("未来世代数は確定登録で1〜99を指定してください。期間との併用は未対応です。");
+                }
+
+                // 旧形式と自動登録は64桁のハッシュです。接頭辞で新規API登録のキー領域を分離します。
+                string id = "request-" + StorageRepository.Hash(operation.Id);
                 string key = $"registration:{active!.Id}:{id}";
                 var current = await storage.GetAsync(key, cancellationToken);
+                string legacyId = StorageRepository.Hash(operation.Id);
+                var legacyRow = await storage.GetAsync($"registration:{active.Id}:{legacyId}", cancellationToken);
+                if (current is null && legacyRow is not null && !bundle.Units.Flatten().Any(u => StorageRepository.Hash(u.Path) == legacyId))
+                {
+                    current = legacyRow;
+                    id = legacyId;
+                    key = current.RowKey;
+                }
+
                 var day = BusinessToday(clock.GetUtcNow());
-                var registration = current is null ? new Registration { Id = id, Namespace = active.Id, RootPath = root.Path, Kind = operation.RegistrationKind, Anchor = day, Through = day.AddDays(-1), End = operation.End, Holding = operation.Holding } : StorageRepository.Read<Registration>(current);
+                var registration = current is null ? new Registration { Id = id, Namespace = active.Id, RootPath = root.Path, Kind = operation.RegistrationKind, Anchor = day, Through = day.AddDays(-1), End = operation.End, Holding = operation.Holding, FutureGenerations = operation.FutureGenerations, CreatedAt = operation.CreatedAt ?? clock.GetUtcNow() } : StorageRepository.Read<Registration>(current);
                 if (current is null)
                 {
                     await CommitAsync([Add(key, registration)], cancellationToken);
@@ -575,6 +607,10 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
                     }
 
                     await CreateOccurrenceAsync(registration, new SchedulePoint(1, registration.Anchor, operation.Due.Value), root, cancellationToken);
+                }
+                else
+                {
+                    await ReplenishAsync((await storage.GetAsync(key, cancellationToken))!, cancellationToken);
                 }
 
                 operation.Result = id;
@@ -602,6 +638,11 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
                     throw new FormatException("期待状態が一致しません。");
                 }
 
+                if (await ApplyTreeOperationAsync(commandRow, operation, row, occurrence, cancellationToken))
+                {
+                    return;
+                }
+
                 switch (operation.Kind)
                 {
                     case "Hold" when occurrence.State == "Waiting":
@@ -623,7 +664,7 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
                     case "Stop" when running.TryGetValue(occurrence.Id, out var task):
                         await task.Stop.CancelAsync();
                         break;
-                    case "Rerun" when occurrence.State is "Failed" or "TimedOut":
+                    case "Rerun" when occurrence.State is "Failed" or "TimedOut" && operation.RerunMethod is null:
                         if (bundle!.Units.Flatten().Single(u => u.Path == occurrence.UnitPath).Type == "n")
                         {
                             throw new FormatException("再実行する末端ジョブを指定してください。ネット一括再実行の方式は未対応です。");
@@ -635,7 +676,7 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
                         foreach (var ancestorRow in await storage.ListAsync("occurrence:", cancellationToken))
                         {
                             var ancestor = StorageRepository.Read<Occurrence>(ancestorRow);
-                            if (ancestor.RootId == occurrence.RootId && ancestor.State == "Failed" && occurrence.UnitPath.StartsWith(ancestor.UnitPath + "/", StringComparison.Ordinal))
+                            if (ancestor.RootId == occurrence.RootId && ancestor.State is "Failed" or "Interrupted" && occurrence.UnitPath.StartsWith(ancestor.UnitPath + "/", StringComparison.Ordinal))
                             {
                                 ancestor.State = "Running";
                                 ancestor.FinishedAt = null;

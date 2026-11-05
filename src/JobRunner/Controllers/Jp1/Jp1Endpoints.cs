@@ -58,22 +58,24 @@ public static class Jp1Endpoints
             string path = Uri.UnescapeDataString(raw.Split('?')[0]);
             const string prefix = "/ajs/api/v1/objects/";
             const string registerSuffix = "/actions/registerImmediateExec/invoke";
+            const string fixedSuffix = "/actions/registerFixedExec/invoke";
             const string holdSuffix = "/actions/changeHold/invoke";
             bool register = path.StartsWith(prefix + "definitions/", StringComparison.Ordinal) && path.EndsWith(registerSuffix, StringComparison.Ordinal);
+            bool fixedRegistration = path.StartsWith(prefix + "definitions/", StringComparison.Ordinal) && path.EndsWith(fixedSuffix, StringComparison.Ordinal);
             bool hold = path.StartsWith(prefix + "statuses/", StringComparison.Ordinal) && path.EndsWith(holdSuffix, StringComparison.Ordinal);
-            if (!register && !hold)
+            if (!register && !fixedRegistration && !hold)
             {
                 return Error(context, 404, "このAPIは未対応です。");
             }
 
-            string resource = register ? path[(prefix.Length + "definitions/".Length)..^registerSuffix.Length] : path[(prefix.Length + "statuses/".Length)..^holdSuffix.Length];
+            string resource = register ? path[(prefix.Length + "definitions/".Length)..^registerSuffix.Length] : fixedRegistration ? path[(prefix.Length + "definitions/".Length)..^fixedSuffix.Length] : path[(prefix.Length + "statuses/".Length)..^holdSuffix.Length];
             var body = await context.Request.ReadFromJsonAsync<JsonElement>(context.RequestAborted);
             if (body.ValueKind != JsonValueKind.Object || !body.TryGetProperty("parameters", out var parameters) || parameters.ValueKind != JsonValueKind.Object)
             {
                 return Error(context, 400, "parametersオブジェクトを指定してください。", "parameters");
             }
 
-            foreach (string required in register ? new[] { "manager", "serviceName" } : new[] { "manager", "serviceName", "holdAttr" })
+            foreach (string required in fixedRegistration ? new[] { "manager", "serviceName", "passedDaemonStarts" } : register ? new[] { "manager", "serviceName" } : new[] { "manager", "serviceName", "holdAttr" })
             {
                 if (!parameters.TryGetProperty(required, out var value) || value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(value.GetString()))
                 {
@@ -93,7 +95,7 @@ public static class Jp1Endpoints
                 return Error(context, 404, "ローカルのマネージャー名またはサービス名が一致しません。");
             }
 
-            var allowed = register ? new[] { "manager", "serviceName", "holding", "macro", "startCondition" } : new[] { "manager", "serviceName", "holdAttr" };
+            var allowed = fixedRegistration ? new[] { "manager", "serviceName", "futureGeneration", "passedDaemonStarts", "holding", "macro" } : register ? new[] { "manager", "serviceName", "holding", "macro", "startCondition" } : new[] { "manager", "serviceName", "holdAttr" };
             if (parameters.EnumerateObject().Any(p => !allowed.Contains(p.Name, StringComparer.Ordinal))
                 || (parameters.TryGetProperty("startCondition", out var condition) && condition.ValueKind != JsonValueKind.Null)
                 || (parameters.TryGetProperty("macro", out var macro) && macro.ValueKind != JsonValueKind.Null && (macro.ValueKind != JsonValueKind.Array || macro.GetArrayLength() != 0)))
@@ -101,7 +103,19 @@ public static class Jp1Endpoints
                 return Error(context, 400, "未対応の引数、起動条件またはマクロが指定されています。");
             }
 
-            bool holding = register && parameters.TryGetProperty("holding", out var holdingValue) && holdingValue.GetBoolean();
+            int? futureGenerations = null;
+            if (fixedRegistration)
+            {
+                if (!parameters.TryGetProperty("futureGeneration", out var generation) || !generation.TryGetInt32(out int count) || count is < 1 or > 99
+                    || parameters.GetProperty("passedDaemonStarts").GetString() != "NEXTTIME")
+                {
+                    return Error(context, 400, "futureGenerationは1〜99、passedDaemonStartsはNEXTTIMEを指定してください。他の確定登録方式は未対応です。");
+                }
+
+                futureGenerations = count;
+            }
+
+            bool holding = (register || fixedRegistration) && parameters.TryGetProperty("holding", out var holdingValue) && holdingValue.GetBoolean();
             string holdAttr = hold ? parameters.GetProperty("holdAttr").GetString()! : string.Empty;
             if (hold && holdAttr is not ("SET" or "RELEASE"))
             {
@@ -116,7 +130,9 @@ public static class Jp1Endpoints
 
             string id = "jp1:" + (requestId.Length == 0 ? Guid.NewGuid().ToString("N") : requestId);
             string key = "command:" + StorageRepository.Hash(id);
-            string hash = StorageRepository.Hash(JsonSerializer.Serialize(new { register, resource, manager, service, holding, holdAttr }));
+            string hash = fixedRegistration
+                ? StorageRepository.Hash(JsonSerializer.Serialize(new { fixedRegistration, resource, manager, service, holding, futureGenerations }))
+                : StorageRepository.Hash(JsonSerializer.Serialize(new { register, resource, manager, service, holding, holdAttr }));
             context.Response.Headers["X-JobRunner-Operation-Id"] = id;
             var existing = await storage.GetAsync(key, context.RequestAborted);
             if (existing is not null)
@@ -137,7 +153,7 @@ public static class Jp1Endpoints
 
             var active = StorageRepository.Read<Activation>(activeRow);
             string target;
-            if (register)
+            if (register || fixedRegistration)
             {
                 var bundle = await definitions.ReadAsync(active.DefinitionHash, context.RequestAborted);
                 var units = bundle.Units.Flatten().ToDictionary(u => u.Path, StringComparer.Ordinal);
@@ -172,11 +188,12 @@ public static class Jp1Endpoints
                 Id = id,
                 RequestHash = hash,
                 StateNamespace = active.Id,
-                Kind = register ? "Register" : holdAttr == "SET" ? "Hold" : "Release",
+                Kind = register || fixedRegistration ? "Register" : holdAttr == "SET" ? "Hold" : "Release",
                 Target = target,
-                RegistrationKind = "Immediate",
+                RegistrationKind = fixedRegistration ? "Confirmed" : "Immediate",
+                FutureGenerations = futureGenerations,
                 Due = register ? clock.GetUtcNow() : null,
-                Holding = register ? holding : null,
+                Holding = register || fixedRegistration ? holding : null,
                 CreatedAt = clock.GetUtcNow(),
             };
             try

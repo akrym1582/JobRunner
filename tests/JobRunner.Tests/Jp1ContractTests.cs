@@ -80,6 +80,64 @@ public sealed class Jp1ContractTests
         }
     }
 
+    /// <summary>未来世代数指定の確定登録を同期200・空本文で返し、再送で世代を増やしません。</summary>
+    /// <returns>実HTTPから確定した2世代と初回だけの保留を確認します。</returns>
+    [Fact]
+    public async Task FixedRegistrationMaintainsRequestedFutureGenerations()
+    {
+        await using var scope = new StorageScope();
+        scope.Options.SchedulerId = "AJSROOT1";
+        var storage = new StorageRepository(scope.Options);
+        string inputName = "fixed-input-" + Guid.NewGuid().ToString("N");
+        scope.Options.DefinitionSources = [new DefinitionSource { BlobPath = inputName + "/jobs" }];
+        await storage.InitializeAsync(CancellationToken.None);
+        var input = storage.Blobs.GetBlobContainerClient(inputName);
+        await input.CreateAsync();
+        string day = DateTimeOffset.UtcNow.AddDays(2).ToString("yyyy/M/d", System.Globalization.CultureInfo.InvariantCulture);
+        await input.GetBlobClient("jobs").UploadAsync(BinaryData.FromString($"unit=net;{{ty=n;sd={day};st=10:00;cy=(1,d);sh=no;}}"));
+        using var app = new AppProcess(scope.Options);
+        try
+        {
+            await WaitAsync(async () =>
+            {
+                try
+                {
+                    var status = await app.Client.GetFromJsonAsync<JsonElement>("/api/jobrunner/status");
+                    return status.GetProperty("isLeader").GetBoolean();
+                }
+                catch (HttpRequestException)
+                {
+                    return false;
+                }
+            });
+            string url = "/ajs/api/v1/objects/definitions/%2Fnet/actions/registerFixedExec/invoke";
+            using var bad = await app.Client.PostAsJsonAsync(url, new { parameters = new { manager = "localhost", serviceName = "AJSROOT1", futureGeneration = 100, passedDaemonStarts = "NEXTTIME" } });
+            Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+            for (int i = 0; i < 2; i++)
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Post, url)
+                {
+                    Content = JsonContent.Create(new { parameters = new { manager = "localhost", serviceName = "AJSROOT1", futureGeneration = 2, passedDaemonStarts = "NEXTTIME", holding = true } }),
+                };
+                request.Headers.Add("X-JobRunner-Request-Id", "fixed-count");
+                using var response = await app.Client.SendAsync(request);
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+                Assert.Empty(await response.Content.ReadAsByteArrayAsync());
+            }
+
+            var registration = Assert.Single((await storage.ListAsync("registration:", CancellationToken.None)).Select(StorageRepository.Read<Registration>), r => r.FutureGenerations == 2);
+            var roots = (await storage.ListAsync("occurrence:", CancellationToken.None)).Select(StorageRepository.Read<Occurrence>).Where(o => o.RegistrationId == registration.Id).OrderBy(o => o.Due).ToList();
+            Assert.Equal(2, roots.Count);
+            Assert.Equal("Held", roots[0].State);
+            Assert.Equal("Waiting", roots[1].State);
+        }
+        finally
+        {
+            app.Kill();
+            await input.DeleteIfExistsAsync();
+        }
+    }
+
     /// <summary>固定待機せず、実HTTPの起動と完了を期限付きで観測します。</summary>
     /// <param name="condition">成立が必要な観測条件です。</param>
     /// <returns>条件成立までの非同期タスクです。</returns>

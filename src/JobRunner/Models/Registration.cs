@@ -47,4 +47,13 @@ public sealed class Registration
 
     /// <summary>Gets or sets. ルートの保留を登録時に明示上書きする指定。nullは定義に従います。</summary>
     public bool? Holding { get; set; } = null;
+
+    /// <summary>Gets or sets. 維持する未開始ルート世代数。nullは従来の日数補充です。</summary>
+    public int? FutureGenerations { get; set; } = null;
+
+    /// <summary>Gets or sets. 世代数方式の初回予定を選ぶ固定UTC基準です。</summary>
+    public DateTimeOffset? CreatedAt { get; set; } = null;
+
+    /// <summary>Gets or sets. 予定が不足した探索結果を同日に繰り返さないための日付です。</summary>
+    public DateOnly? ExhaustedOn { get; set; } = null;
 }

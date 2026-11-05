@@ -53,13 +53,13 @@ public static class Program
             return Results.Ok(new { status = "ready" });
         });
         app.MapGet("/api/jobrunner/status", (SchedulerWorker worker, SchedulerEngine engine, StorageRepository storage) => new { worker.IsLeader, worker.Epoch, worker.Phase, engine.Namespace, storage.RequestCount });
-        app.MapGet("/api/jobrunner/configuration", () => new { options.SchedulerId, options.Jp1ManagerName, options.DefinitionSources, options.ScheduleTimeMode, options.TimeZone, options.ConfirmedHorizonDays, options.LocalAgents, options.LocalUsers, options.HistoryArchiveAfterDays, options.LogRetentionDays, options.OperationArchiveAfterDays });
+        app.MapGet("/api/jobrunner/configuration", () => new { options.SchedulerId, options.Jp1ManagerName, options.DefinitionSources, options.ScheduleTimeMode, options.TimeZone, options.ConfirmedHorizonDays, options.ConfirmedFutureGenerations, options.LocalAgents, options.LocalUsers, options.HistoryArchiveAfterDays, options.LogRetentionDays, options.OperationArchiveAfterDays });
         app.MapGet("/api/jobrunner/compatibility", () => new
         {
             reference = "JP1/AJS3 V12 3021-3-D28-20",
             comparedWithJp1 = false,
-            supportedJp1Actions = new[] { "registerImmediateExec", "changeHold" },
-            unsupported = new[] { "その他のJP1 HTTP操作・完全なエラーID互換", "計画登録", "別形式Schedule/Calendar", "イベント", "待ち合わせ", "条件接続", "相対日", "24時間制の24時以降", "ネストの独立スケジュール", "OSユーザー切り替え" },
+            supportedJp1Actions = new[] { "registerImmediateExec", "registerFixedExec (futureGeneration/NEXTTIME)", "changeHold" },
+            unsupported = new[] { "その他のJP1 HTTP操作・完全なエラーID互換", "別形式Schedule/Calendar", "イベント", "待ち合わせ", "条件接続", "相対日", "24時間制の24時以降", "ネストの独立スケジュール", "OSユーザー切り替え" },
         });
         app.MapPost("/api/jobrunner/definitions/validate", (List<SourceEvidence> sources, DefinitionService definitions) => definitions.Validate(sources));
         app.MapPost("/api/jobrunner/definitions/import", async (List<SourceEvidence> sources, DefinitionService definitions, CancellationToken token) =>
@@ -151,6 +151,7 @@ public static class Program
         operation.CreatedAt = null;
         operation.CompletedAt = null;
         operation.ArchivePath = null;
+        operation.MutationPath = null;
         operation.RequestHash = string.Empty;
         operation.StateNamespace = string.Empty;
         operation.RequestHash = StorageRepository.Hash(JsonSerializer.Serialize(operation));

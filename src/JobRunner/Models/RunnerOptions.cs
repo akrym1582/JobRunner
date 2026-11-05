@@ -69,4 +69,7 @@ public sealed class RunnerOptions
 
     /// <summary>Gets or sets. 互換APIで受け付けるローカルマネージャー名。別名へのリモート実行はしません。</summary>
     public string Jp1ManagerName { get; set; } = "localhost";
+
+    /// <summary>Gets or sets. 自動確定登録で維持する未来世代数。nullは日数方式を維持します。</summary>
+    public int? ConfirmedFutureGenerations { get; set; } = null;
 }

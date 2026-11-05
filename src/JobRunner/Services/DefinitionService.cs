@@ -22,6 +22,11 @@ public sealed class DefinitionService(StorageRepository storage, RunnerOptions o
             throw new FormatException("時間制、先読み日数、同時実行数、SchedulerIdを確認してください。");
         }
 
+        if (options.ConfirmedFutureGenerations is < 1 or > 99)
+        {
+            throw new FormatException("未来世代数は1〜99で指定してください。");
+        }
+
         if (new[] { options.HistoryArchiveAfterDays, options.LogRetentionDays, options.OperationArchiveAfterDays }.Any(days => days is <= 0))
         {
             throw new FormatException("保持期間は未指定または正の日数で指定してください。");
@@ -172,7 +177,8 @@ public sealed class DefinitionService(StorageRepository storage, RunnerOptions o
     public string SettingsHash()
     {
         string original = StorageRepository.Hash(JsonSerializer.Serialize(new { options.ScheduleTimeMode, options.TimeZone, options.ConfirmedHorizonDays, Agents = options.LocalAgents.Order(StringComparer.Ordinal) }));
-        return options.LocalUsers.Count == 0 ? original : StorageRepository.Hash(JsonSerializer.Serialize(new { BaseSettings = original, Users = options.LocalUsers.Order(StringComparer.Ordinal) }));
+        original = options.LocalUsers.Count == 0 ? original : StorageRepository.Hash(JsonSerializer.Serialize(new { BaseSettings = original, Users = options.LocalUsers.Order(StringComparer.Ordinal) }));
+        return options.ConfirmedFutureGenerations is null ? original : StorageRepository.Hash(JsonSerializer.Serialize(new { BaseSettings = original, options.ConfirmedFutureGenerations }));
     }
 
     /// <summary>親グループを補完し、全体を検証してからハッシュを確定します。</summary>
