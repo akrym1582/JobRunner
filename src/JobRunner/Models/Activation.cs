@@ -8,7 +8,7 @@ public sealed class Activation
     /// <summary>
     /// Gets or sets. 復旧処理が理解できる保存形式か確認する番号です。
     /// </summary>
-    public int FormatVersion { get; set; } = 1;
+    public int FormatVersion { get; set; } = 2;
 
     /// <summary>
     /// Gets or sets. 採用ごとに新規発行する状態領域。切り戻しでも過去領域を復活させません。
