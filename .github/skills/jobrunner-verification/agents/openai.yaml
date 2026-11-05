@@ -1,0 +1,4 @@
+interface:
+  display_name: "JobRunnerの試験とCI確認"
+  short_description: "Azuriteの分離・回帰テスト・失敗の切り分け・最新コミットのCIを確認する"
+  default_prompt: "$jobrunner-verification を使い、変更に必要な試験と最新コミットのCI結果を確認してください。"

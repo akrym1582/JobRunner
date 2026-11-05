@@ -1,0 +1,4 @@
+interface:
+  display_name: "JP1互換性の開発"
+  short_description: "JP1公式仕様と実装・HTTP・定義・状態・エラーの互換範囲を照合する"
+  default_prompt: "$jp1-compatibility を使い、この変更の公式根拠・互換範囲・受入テストを確認してください。"
