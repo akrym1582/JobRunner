@@ -86,4 +86,24 @@ public sealed class Occurrence
 
     /// <summary>Gets or sets. 子世代の生成が完了したかを示します。旧形式のnullは従来の検査を使います。</summary>
     public bool? Materialized { get; set; } = null;
+
+    /// <summary>Gets or sets. この登録または世代が参照する不変定義版。旧形式では採用版です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? DefinitionHash { get; set; }
+
+    /// <summary>Gets or sets. 次から再実行で明示的に通過する先行世代IDです。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? BypassedPredecessors { get; set; }
+
+    /// <summary>Gets or sets. ONLY方式では上位の終了状態を変えず、選択した部分木だけ実行します。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public bool? StandaloneRerun { get; set; }
+
+    /// <summary>Gets or sets. スケジュール除外を条件不成立の非実行と区別します。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public bool? ScheduleExcluded { get; set; }
+
+    /// <summary>Gets or sets. 保存した先行終了コードに対する条件判定結果です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public bool? ConditionMatched { get; set; }
 }

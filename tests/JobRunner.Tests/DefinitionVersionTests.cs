@@ -1,0 +1,55 @@
+using System.Text;
+using JobRunner.Models;
+using JobRunner.Services;
+using JobRunner.Storage;
+using Xunit;
+using Operation = JobRunner.Models.Operation;
+
+namespace JobRunner.Tests;
+
+/// <summary>補充定義の切替が確定済み世代と復旧を変更しないことを検証します。</summary>
+public sealed class DefinitionVersionTests
+{
+    /// <summary>生成済みの部分世代は旧版で補完し、次の補充だけ新版を使用します。</summary>
+    /// <param name="missingChildren">子保存前の中断を再現する場合trueです。</param>
+    /// <returns>実Storageと再起動を含む検証です。</returns>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PinsExistingGenerationAcrossUpdateAndRestart(bool missingChildren)
+    {
+        await using var scenario = new EngineScenario();
+        scenario.Scope.Options.ConfirmedFutureGenerations = 1;
+        await scenario.StartAsync("unit=net;{ty=n;sd=2026/11/5;st=10:00;cy=(1,d);sh=no;unit=old;{ty=j;te=\"true\";}}");
+        var root = Assert.Single(await scenario.OccurrencesAsync(), o => o.Id == o.RootId);
+        var storage = scenario.Scope.Repository;
+        var service = new DefinitionService(storage, scenario.Scope.Options);
+        var definition = service.Validate([new SourceEvidence { Mapping = new DefinitionSource { BlobPath = "input/new" }, Base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes("unit=net;{ty=n;sd=2026/11/5;st=10:00;cy=(1,d);sh=no;unit=new;{ty=j;te=\"true\";}}")) }]);
+        await service.SaveAsync(definition, CancellationToken.None);
+        await scenario.EnqueueAsync(new Operation { Id = "update", Kind = "UpdateRegistrationDefinition", Target = root.RegistrationId, ExpectedDefinitionHash = root.DefinitionHash, DefinitionHash = definition.Hash });
+        await scenario.Engine.TickAsync(CancellationToken.None);
+        var result = StorageRepository.Read<Operation>((await storage.GetAsync("command:" + StorageRepository.Hash("update"), CancellationToken.None))!);
+        Assert.Equal("Completed", result.Status);
+        if (missingChildren)
+        {
+            var rows = await storage.ListAsync("occurrence:", CancellationToken.None);
+            var rootRow = Assert.Single(rows, r => StorageRepository.Read<Occurrence>(r).Id == root.Id);
+            root.Materialized = false;
+            await storage.Table.UpdateEntityAsync(storage.Entity(rootRow.RowKey, root), rootRow.ETag, Azure.Data.Tables.TableUpdateMode.Replace);
+            var child = Assert.Single(rows, r => StorageRepository.Read<Occurrence>(r).UnitPath == "/net/old");
+            await storage.Table.DeleteEntityAsync(storage.Partition, child.RowKey, child.ETag);
+        }
+
+        await scenario.RestartAsync();
+        Assert.Single(await scenario.OccurrencesAsync(), o => o.UnitPath == "/net/old" && o.DefinitionHash == root.DefinitionHash);
+        Assert.DoesNotContain(await scenario.OccurrencesAsync(), o => o.UnitPath == "/net/new");
+        scenario.Clock.Now = root.Due;
+        await scenario.AdvanceUntilAsync(rows => rows.Any(o => o.Id == root.Id && o.State == "Succeeded"));
+        var next = Assert.Single(await scenario.OccurrencesAsync(), o => o.Id == o.RootId && o.Id != root.Id);
+        Assert.Equal(definition.Hash, next.DefinitionHash);
+        Assert.Single(await scenario.OccurrencesAsync(), o => o.RootId == next.Id && o.UnitPath == "/net/new");
+        await scenario.EnqueueAsync(new Operation { Id = "stale", Kind = "UpdateRegistrationDefinition", Target = root.RegistrationId, ExpectedDefinitionHash = root.DefinitionHash, DefinitionHash = definition.Hash });
+        await scenario.Engine.TickAsync(CancellationToken.None);
+        Assert.Equal("Rejected", StorageRepository.Read<Operation>((await storage.GetAsync("command:" + StorageRepository.Hash("stale"), CancellationToken.None))!).Status);
+    }
+}

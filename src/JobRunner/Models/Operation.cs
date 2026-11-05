@@ -104,4 +104,36 @@ public sealed class Operation
     /// <summary>Gets or sets. 分割操作の不変変更計画。サーバーだけが設定します。</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? MutationPath { get; set; } = null;
+
+    /// <summary>Gets or sets. 補充用定義を更新する際の新しい保存済み版です。</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? DefinitionHash { get; set; }
+
+    /// <summary>Gets or sets. 補充用定義の更新前に一致を要求する版です。</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ExpectedDefinitionHash { get; set; }
+
+    /// <summary>Gets or sets. 確定期間の開始業務日。Endと組み合わせます。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public DateOnly? Start { get; set; }
+
+    /// <summary>Gets or sets. 定義の予定に依存しない単一の確定日時です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? FixedDue { get; set; }
+
+    /// <summary>Gets or sets. 未開始の過去予定をIMMEDIATEで実行、NEXTTIMEで除外します。旧形式はNEXTTIMEです。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? PassedDaemonStarts { get; set; }
+
+    /// <summary>Gets or sets. 固定日時から繰り返す間隔（分）。独自管理APIの指定です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public int? IntervalMinutes { get; set; }
+
+    /// <summary>Gets or sets. 間隔実行の排他的な終了日時です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? IntervalUntil { get; set; }
+
+    /// <summary>Gets or sets. 再実行時のHOLD、WARNINGオプションです。</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? RerunOptions { get; set; }
 }

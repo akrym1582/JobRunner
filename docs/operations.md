@@ -187,3 +187,19 @@ unit=pc;{ty=pj;te="printf 'hello from Linux'";}
 ```
 
 Windows専用のコマンド構文・パス・exe/batをLinux用に変換するものではありません。定義中のコマンドは実行ホストで動作するものを指定してください。Windows上のpjは従来どおりで、Windows実機検証は未実施です。
+
+## 補充定義と一定間隔の登録
+
+生成済み世代を変更せず補充用定義だけ更新するには、定義をimportしてから次の操作を送る。`Target`は登録ID、期待版は登録のDefinitionHash（旧形式では採用版）。競合時は新しい要求IDと確認済みの期待版でやり直す。
+
+```json
+{"Id":"change-definition-1","Kind":"UpdateRegistrationDefinition","Target":"登録ID","ExpectedDefinitionHash":"更新前の版","DefinitionHash":"import済みの版"}
+```
+
+一定間隔は完了からの待ち時間ではなく、固定された予定時刻からの繰り返し。次の例はUTCの00:00から30分ごと、03:00未満の6回を登録する。停止中の予定は既定では実行しない。終了日時を含まない。
+
+```json
+{"Id":"interval-1","Kind":"Register","Target":"/group/net","FixedDue":"2026-11-10T00:00:00Z","IntervalMinutes":30,"IntervalUntil":"2026-11-10T03:00:00Z","PassedDaemonStarts":"NEXTTIME"}
+```
+
+`IMMEDIATE`を指定すると未開始の過去予定も実行対象になる。ただしUnknownになった試行を再実行する指定ではない。業務更新の有無を確認し、従来どおり明示的に解決する。

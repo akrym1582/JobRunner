@@ -56,4 +56,32 @@ public sealed class Registration
 
     /// <summary>Gets or sets. 予定が不足した探索結果を同日に繰り返さないための日付です。</summary>
     public DateOnly? ExhaustedOn { get; set; } = null;
+
+    /// <summary>Gets or sets. この登録または世代が参照する不変定義版。旧形式では採用版です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? DefinitionHash { get; set; }
+
+    /// <summary>Gets or sets. 確定期間の開始業務日。Endと組み合わせます。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public DateOnly? Start { get; set; }
+
+    /// <summary>Gets or sets. 定義の予定に依存しない単一の確定日時です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? FixedDue { get; set; }
+
+    /// <summary>Gets or sets. 未開始の過去予定をIMMEDIATEで実行、NEXTTIMEで除外します。旧形式はNEXTTIMEです。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? PassedDaemonStarts { get; set; }
+
+    /// <summary>Gets or sets. 固定日時から繰り返す間隔（分）。独自管理APIの指定です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public int? IntervalMinutes { get; set; }
+
+    /// <summary>Gets or sets. 間隔実行の排他的な終了日時です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? IntervalUntil { get; set; }
+
+    /// <summary>Gets or sets. 次の未生成予定。応答喪失時は同じ決定的なキーで再開します。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? NextIntervalDue { get; set; }
 }

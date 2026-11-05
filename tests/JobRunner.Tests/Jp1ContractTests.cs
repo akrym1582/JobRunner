@@ -130,6 +130,31 @@ public sealed class Jp1ContractTests
             Assert.Equal(2, roots.Count);
             Assert.Equal("Held", roots[0].State);
             Assert.Equal("Waiting", roots[1].State);
+            string from = DateTimeOffset.UtcNow.AddDays(10).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+            string to = DateTimeOffset.UtcNow.AddDays(12).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+            using var period = await app.Client.PostAsJsonAsync(url, new { parameters = new { manager = "localhost", serviceName = "AJSROOT1", fixedScheduleFrom = from, fixedScheduleTo = to, passedDaemonStarts = "NEXTTIME", holding = true } });
+            Assert.Equal(HttpStatusCode.OK, period.StatusCode);
+            Assert.Empty(await period.Content.ReadAsByteArrayAsync());
+            var periodRegistration = Assert.Single((await storage.ListAsync("registration:", CancellationToken.None)).Select(StorageRepository.Read<Registration>), r => r.Start is not null);
+            Assert.Equal(3, (await storage.ListAsync("occurrence:", CancellationToken.None)).Select(StorageRepository.Read<Occurrence>).Count(o => o.RegistrationId == periodRegistration.Id));
+            using var dated = await app.Client.PostAsJsonAsync(url, new { parameters = new { manager = "localhost", serviceName = "AJSROOT1", startTime = from + "T10:00", holding = true } });
+            Assert.Equal(HttpStatusCode.OK, dated.StatusCode);
+            string executionId = (await dated.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("execID").GetString()!;
+            string statusUrl = "/ajs/api/v1/objects/statuses/" + Uri.EscapeDataString("/net:" + executionId) + "/actions/";
+            using var moved = await app.Client.PostAsJsonAsync(statusUrl + "changeStartTime/invoke", new { parameters = new { manager = "localhost", serviceName = "AJSROOT1", kindTime = "ABSOLUTETIME", absoluteTime = to + "T11:00", changeLower = "SHIFT", pushedAhead = "MOVE" } });
+            Assert.Equal(HttpStatusCode.OK, moved.StatusCode);
+            foreach (string action in new[] { "restoreChangedSchedule", "cancelExecSchedule" })
+            {
+                using var operated = await app.Client.PostAsJsonAsync(statusUrl + action + "/invoke", new { parameters = new { manager = "localhost", serviceName = "AJSROOT1" } });
+                Assert.Equal(HttpStatusCode.OK, operated.StatusCode);
+                Assert.Empty(await operated.Content.ReadAsByteArrayAsync());
+            }
+
+            using var rerun = await app.Client.PostAsJsonAsync(statusUrl + "rerun/invoke", new { parameters = new { manager = "localhost", serviceName = "AJSROOT1", rerunMethod = "TOP", rerunOptions = new[] { "HOLD" } } });
+            Assert.Equal(HttpStatusCode.OK, rerun.StatusCode);
+            using var unregistered = await app.Client.PostAsJsonAsync("/ajs/api/v1/objects/definitions/%2Fnet/actions/cancelRegistration/invoke", new { parameters = new { manager = "localhost", serviceName = "AJSROOT1" } });
+            Assert.Equal(HttpStatusCode.OK, unregistered.StatusCode);
+            Assert.All((await storage.ListAsync("registration:", CancellationToken.None)).Select(StorageRepository.Read<Registration>), r => Assert.True(r.Disabled));
         }
         finally
         {

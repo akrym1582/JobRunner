@@ -23,61 +23,7 @@ public static class ScheduleCalculator
     /// <param name="options">時間制とタイムゾーンです。</param>
     /// <returns>ルール番号・業務日・実日時を分離した予定です。</returns>
     public static IEnumerable<SchedulePoint> Calculate(UnitDefinition root, IReadOnlyDictionary<string, UnitDefinition> all, Registration registration, DateOnly from, DateOnly until, RunnerOptions options)
-    {
-        if (until.DayNumber - from.DayNumber > 3700)
-        {
-            throw new FormatException("一度の計算範囲は3700日以下にしてください。");
-        }
-
-        var zone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
-        foreach (string value in root.Attributes.GetValueOrDefault("sd") ?? ["1,en"])
-        {
-            var (rule, dateSpec) = SplitRule(value);
-            if (dateSpec == "ud")
-            {
-                continue;
-            }
-
-            string timeSpec = RuleValue(root, "st", rule, "+00:00");
-            string cycle = RuleValue(root, "cy", rule, string.Empty);
-            string shift = RuleValue(root, "sh", rule, "ca");
-            int shiftDays = int.Parse(RuleValue(root, "shd", rule, "2"), CultureInfo.InvariantCulture);
-            for (var day = from.AddDays(-31); day < until.AddDays(31); day = day.AddDays(1))
-            {
-                if (!Matches(day, dateSpec, cycle, registration.Anchor, d => IsWorking(d, root, all)))
-                {
-                    continue;
-                }
-
-                DateOnly? business = Shift(day, shift, shiftDays, root, all);
-                if (business is null || business < from || business >= until || (registration.End is not null && business >= registration.End))
-                {
-                    continue;
-                }
-
-                if (root.Get("ed") is { Length: > 0 } end && business > DateOnly.ParseExact(end, "yyyy/M/d", CultureInfo.InvariantCulture))
-                {
-                    continue;
-                }
-
-                int minutes = ParseTime(timeSpec.TrimStart('+'));
-                int baseline = ParseTime(Inherited(root, all, "stt", "00:00"));
-                int actual = timeSpec.StartsWith('+') ? baseline + minutes : minutes;
-                if (!timeSpec.StartsWith('+') && actual < baseline)
-                {
-                    actual += 1440;
-                }
-
-                var local = business.Value.ToDateTime(TimeOnly.MinValue).AddMinutes(actual);
-                if (zone.IsInvalidTime(local) || zone.IsAmbiguousTime(local))
-                {
-                    throw new FormatException("夏時間の欠落・重複時刻には明示的な運用方針が必要です。");
-                }
-
-                yield return new SchedulePoint(rule, business.Value, new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(local, zone)));
-            }
-        }
-    }
+        => CalculateRaw(root, all, registration, from, until, options).GroupBy(p => p.Due).Select(g => g.OrderBy(p => p.Rule).First());
 
     /// <summary>曜日と日付のカレンダー指定を上位から継承して評価します。</summary>
     /// <param name="date">評価する業務日です。</param>
@@ -155,20 +101,86 @@ public static class ScheduleCalculator
     /// <returns>親の完全名。最上位ならルートです。</returns>
     public static string Parent(string path) => path[..path.LastIndexOf('/')] is { Length: > 0 } parent ? parent : "/";
 
-    /// <summary>原文のカレンダー日付を桁揃えの違いに依存せず照合します。</summary>
-    /// <param name="value">曜日または年月日の属性値です。</param>
-    /// <param name="day">比較する年月日です。</param>
-    /// <returns>年月日が一致する場合だけtrueです。</returns>
-    private static bool DateMatches(string value, string day) => DateOnly.TryParseExact(value, "yyyy/M/d", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed) && parsed.ToString("yyyy/M/d", CultureInfo.InvariantCulture) == day;
-
     /// <summary>ルール番号に対応する属性を選び、別ルールの値を流用しません。</summary>
     /// <param name="unit">予定を持つユニットです。</param>
     /// <param name="key">スケジュール属性名です。</param>
     /// <param name="rule">対象ルール番号です。</param>
     /// <param name="fallback">省略時の仕様上の値です。</param>
     /// <returns>対応する属性値です。</returns>
-    private static string RuleValue(UnitDefinition unit, string key, int rule, string fallback) =>
+    public static string RuleValue(UnitDefinition unit, string key, int rule, string fallback) =>
         unit.Attributes.GetValueOrDefault(key)?.Select(SplitRule).Where(v => v.Rule == rule).Select(v => v.Value).FirstOrDefault() ?? fallback;
+
+    /// <summary>重複の優先順位を適用する前のルール別候補を計算します。</summary>
+    /// <param name="root">対象ネットです。</param>
+    /// <param name="all">全定義です。</param>
+    /// <param name="registration">登録基準です。</param>
+    /// <param name="from">開始業務日です。</param>
+    /// <param name="until">終了業務日です。</param>
+    /// <param name="options">時間帯設定です。</param>
+    /// <returns>ルール別の候補です。</returns>
+    private static IEnumerable<SchedulePoint> CalculateRaw(UnitDefinition root, IReadOnlyDictionary<string, UnitDefinition> all, Registration registration, DateOnly from, DateOnly until, RunnerOptions options)
+    {
+        if (until.DayNumber - from.DayNumber > 3700)
+        {
+            throw new FormatException("一度の計算範囲は3700日以下にしてください。");
+        }
+
+        var zone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
+        foreach (string value in root.Attributes.GetValueOrDefault("sd") ?? ["1,en"])
+        {
+            var (rule, dateSpec) = SplitRule(value);
+            if (dateSpec == "ud")
+            {
+                continue;
+            }
+
+            string timeSpec = RuleValue(root, "st", rule, "+00:00");
+            string cycle = RuleValue(root, "cy", rule, string.Empty);
+            string shift = RuleValue(root, "sh", rule, "ca");
+            int shiftDays = int.Parse(RuleValue(root, "shd", rule, "2"), CultureInfo.InvariantCulture);
+            for (var day = from.AddDays(-93); day < until.AddDays(93); day = day.AddDays(1))
+            {
+                if (!Matches(day, dateSpec, cycle, registration.Anchor, d => IsWorking(d, root, all), m => CalendarMonth(m, root, all)))
+                {
+                    continue;
+                }
+
+                DateOnly? business = Shift(day, shift, shiftDays, root, all);
+                business = business is null ? null : Origin(business.Value, RuleValue(root, "cftd", rule, "no"), root, all);
+                if (business is null || business < from || business >= until || (registration.End is not null && business >= registration.End))
+                {
+                    continue;
+                }
+
+                if (root.Get("ed") is { Length: > 0 } end && business > DateOnly.ParseExact(end, "yyyy/M/d", CultureInfo.InvariantCulture))
+                {
+                    continue;
+                }
+
+                int minutes = ParseTime(timeSpec.TrimStart('+'));
+                int baseline = ParseTime(Inherited(root, all, "stt", "00:00"));
+                int actual = timeSpec.StartsWith('+') ? baseline + minutes : minutes;
+                if (!timeSpec.StartsWith('+') && actual < baseline)
+                {
+                    actual += 1440;
+                }
+
+                var local = business.Value.ToDateTime(TimeOnly.MinValue).AddMinutes(actual);
+                if (zone.IsInvalidTime(local) || zone.IsAmbiguousTime(local))
+                {
+                    throw new FormatException("夏時間の欠落・重複時刻には明示的な運用方針が必要です。");
+                }
+
+                yield return new SchedulePoint(rule, business.Value, new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(local, zone)));
+            }
+        }
+    }
+
+    /// <summary>原文のカレンダー日付を桁揃えの違いに依存せず照合します。</summary>
+    /// <param name="value">曜日または年月日の属性値です。</param>
+    /// <param name="day">比較する年月日です。</param>
+    /// <returns>年月日が一致する場合だけtrueです。</returns>
+    private static bool DateMatches(string value, string day) => DateOnly.TryParseExact(value, "yyyy/M/d", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed) && parsed.ToString("yyyy/M/d", CultureInfo.InvariantCulture) == day;
 
     /// <summary>親に定義された日付切り替え時刻などを探索します。</summary>
     /// <param name="unit">探索開始ユニットです。</param>
@@ -222,20 +234,91 @@ public static class ScheduleCalculator
         return null;
     }
 
+    /// <summary>基準日と月区分から業務月の両端を求めます。</summary>
+    /// <param name="month">定義で指定する月です。</param>
+    /// <param name="unit">対象ネットです。</param>
+    /// <param name="all">継承先を含む定義です。</param>
+    /// <returns>開始日と翌月開始日です。</returns>
+    private static (DateOnly Start, DateOnly End) CalendarMonth(DateOnly month, UnitDefinition unit, IReadOnlyDictionary<string, UnitDefinition> all)
+    {
+        if (unit.Get("jc") is { Length: > 0 } reference)
+        {
+            unit = all[reference];
+        }
+
+        if (Inherited(unit, all, "md", "th") == "ne")
+        {
+            month = month.AddMonths(-1);
+        }
+
+        string baseline = Inherited(unit, all, "sdd", "1");
+        DateOnly BaseDay(DateOnly value)
+        {
+            if (int.TryParse(baseline, out int day))
+            {
+                return value.AddDays(day - 1);
+            }
+
+            var parts = baseline.Split(':');
+            int weekday = Array.IndexOf(Weekdays, parts[0]);
+            return value.AddDays(((weekday - (int)value.DayOfWeek + 7) % 7) + (7 * (int.Parse(parts[1], CultureInfo.InvariantCulture) - 1)));
+        }
+
+        return (BaseDay(month), BaseDay(month.AddMonths(1)));
+    }
+
+    /// <summary>サイクルと振替の後に起算日数を適用します。</summary>
+    /// <param name="date">振替後の起点日です。</param>
+    /// <param name="spec">cftdの値です。</param>
+    /// <param name="unit">対象ネットです。</param>
+    /// <param name="all">カレンダーを含む定義です。</param>
+    /// <returns>起算日または猶予超過のnullです。</returns>
+    private static DateOnly? Origin(DateOnly date, string spec, UnitDefinition unit, IReadOnlyDictionary<string, UnitDefinition> all)
+    {
+        var parts = spec.Split(',');
+        if (parts[0] == "no")
+        {
+            return date;
+        }
+
+        int count = parts.Length > 1 ? int.Parse(parts[1], CultureInfo.InvariantCulture) : 1;
+        int direction = parts[0] is "be" or "db" ? -1 : 1;
+        if (parts[0] is "db" or "da")
+        {
+            return date.AddDays(count * direction);
+        }
+
+        int grace = parts.Length > 2 ? int.Parse(parts[2], CultureInfo.InvariantCulture) : 10;
+        int limit = grace;
+        for (int i = 1; i <= limit; i++)
+        {
+            var candidate = date.AddDays(i * direction);
+            if (IsWorking(candidate, unit, all) && --count == 0)
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>開始日の指定と処理サイクルを組み合わせて候補日を判定します。</summary>
     /// <param name="day">判定する候補日です。</param>
     /// <param name="spec">sdのルール本体です。</param>
     /// <param name="cycle">cyのルール本体。空なら一度だけです。</param>
     /// <param name="anchor">登録時の基準日です。</param>
     /// <param name="working">対象カレンダーの稼働日判定です。</param>
+    /// <param name="period">基準日と月区分による業務月です。</param>
     /// <returns>候補日が開始日とサイクルに一致すればtrueです。</returns>
-    private static bool Matches(DateOnly day, string spec, string cycle, DateOnly anchor, Func<DateOnly, bool> working)
+    private static bool Matches(DateOnly day, string spec, string cycle, DateOnly anchor, Func<DateOnly, bool> working, Func<DateOnly, (DateOnly Start, DateOnly End)> period)
     {
         var parts = spec.Split('/');
         string selector = parts[^1];
         int year = parts.Length == 3 ? int.Parse(parts[0], CultureInfo.InvariantCulture) : anchor.Year;
         int month = parts.Length >= 2 ? int.Parse(parts[^2], CultureInfo.InvariantCulture) : anchor.Month;
         var firstMonth = new DateOnly(year, month, 1);
+        DateOnly weekdayAnchor = parts.Length >= 2 ? DateOnly.MinValue : anchor;
+        DateOnly? Pick(DateOnly selectedMonth) => Select(selectedMonth, selector == "en" ? anchor.Day.ToString(CultureInfo.InvariantCulture) : selector, weekdayAnchor, working, period);
 
         // 月・年単位では開始月に指定日がなくても、位相を保って後続月を評価します。
         if (cycle.Length > 0)
@@ -245,14 +328,21 @@ public static class ScheduleCalculator
             char unit = periodic.Groups[2].Value[0];
             if (unit is 'm' or 'y')
             {
-                int offset = ((day.Year - year) * 12) + day.Month - month;
-                return offset >= 0 && offset % (interval * (unit == 'y' ? 12 : 1)) == 0
-                    && (selector != "en" || day >= anchor)
-                    && day == Select(new DateOnly(day.Year, day.Month, 1), selector == "en" ? anchor.Day.ToString(CultureInfo.InvariantCulture) : selector, anchor, working);
+                for (int neighboringMonth = -2; neighboringMonth <= 2; neighboringMonth++)
+                {
+                    var candidateMonth = new DateOnly(day.Year, day.Month, 1).AddMonths(neighboringMonth);
+                    int offset = ((candidateMonth.Year - year) * 12) + candidateMonth.Month - month;
+                    if (offset >= 0 && offset % (interval * (unit == 'y' ? 12 : 1)) == 0 && (selector != "en" || day >= anchor) && day == Pick(candidateMonth))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
             }
         }
 
-        var seed = selector == "en" ? anchor : Select(firstMonth, selector, anchor, working);
+        var seed = selector == "en" ? anchor : Pick(firstMonth);
         if (seed is null || day < seed)
         {
             return false;
@@ -296,7 +386,7 @@ public static class ScheduleCalculator
             return false;
         }
 
-        return day == Select(new DateOnly(day.Year, day.Month, 1), selector == "en" ? anchor.Day.ToString(CultureInfo.InvariantCulture) : selector, anchor, working);
+        return day == Pick(new DateOnly(day.Year, day.Month, 1));
     }
 
     /// <summary>月内の暦日・末日・曜日・運用日番号を解決します。</summary>
@@ -304,10 +394,13 @@ public static class ScheduleCalculator
     /// <param name="selector">sdの年月を除いた指定です。</param>
     /// <param name="anchor">番号省略の曜日選択に使う登録日です。</param>
     /// <param name="working">稼働日を返すカレンダー関数です。</param>
+    /// <param name="period">基準日と月区分による業務月です。</param>
     /// <returns>存在する候補日。該当しなければnullです。</returns>
-    private static DateOnly? Select(DateOnly month, string selector, DateOnly anchor, Func<DateOnly, bool> working)
+    private static DateOnly? Select(DateOnly month, string selector, DateOnly anchor, Func<DateOnly, bool> working, Func<DateOnly, (DateOnly Start, DateOnly End)> period)
     {
-        var days = Enumerable.Range(0, DateTime.DaysInMonth(month.Year, month.Month)).Select(month.AddDays).ToList();
+        var (begin, end) = selector.StartsWith('+') || selector.StartsWith('*') || selector.StartsWith('@') ? period(month) : (month, month.AddMonths(1));
+        var days = Enumerable.Range(0, end.DayNumber - begin.DayNumber).Select(begin.AddDays).ToList();
+        selector = selector.TrimStart('+');
         if (selector.StartsWith('*') || selector.StartsWith('@'))
         {
             bool wantWorking = selector[0] == '*';
@@ -325,7 +418,7 @@ public static class ScheduleCalculator
                 return matching.Cast<DateOnly?>().FirstOrDefault(d => d >= anchor);
             }
 
-            return weekday[1] == "b" ? matching.LastOrDefault() : matching.Cast<DateOnly?>().ElementAtOrDefault(int.Parse(weekday[1], CultureInfo.InvariantCulture) - 1);
+            return weekday[1] == "b" ? matching.Cast<DateOnly?>().LastOrDefault() : matching.Cast<DateOnly?>().ElementAtOrDefault(int.Parse(weekday[1], CultureInfo.InvariantCulture) - 1);
         }
 
         if (selector.StartsWith('b'))

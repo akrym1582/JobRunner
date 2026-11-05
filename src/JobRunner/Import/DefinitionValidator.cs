@@ -12,16 +12,19 @@ public static class DefinitionValidator
     private static readonly HashSet<string> Common = ["ty", "cm", "sz", "el", "ex"];
 
     /// <summary>運用日、休業日、日付切り替えを定義するグループ属性です。</summary>
-    private static readonly HashSet<string> Group = ["op", "cl", "stt"];
+    private static readonly HashSet<string> Group = ["op", "cl", "stt", "sdd", "md"];
 
     /// <summary>予定と通常接続の実装に対応するネット属性です。</summary>
-    private static readonly HashSet<string> Network = ["sd", "st", "cy", "sh", "shd", "ed", "ar", "ha", "jc", "mp"];
+    private static readonly HashSet<string> Network = ["sd", "st", "cy", "sh", "shd", "ed", "ar", "ha", "jc", "mp", "cftd", "ln", "de"];
 
     /// <summary>ローカル実行器が解釈するコマンドと終了判定の属性です。</summary>
     private static readonly HashSet<string> Job = ["te", "sc", "prm", "wkp", "env", "etm", "jd", "wth", "tho", "ha"];
 
+    /// <summary>先行終了コードだけを参照する判定ジョブ属性です。</summary>
+    private static readonly HashSet<string> Judgment = ["ej", "ejc", "ejl", "ejh", "ejm", "eju", "ha"];
+
     /// <summary>繰り返しが意味を持つ属性。その他は二重指定を拒否します。</summary>
-    private static readonly HashSet<string> Repeated = ["sd", "st", "cy", "sh", "shd", "ar", "op", "cl", "env", "el"];
+    private static readonly HashSet<string> Repeated = ["sd", "st", "cy", "sh", "shd", "ar", "op", "cl", "env", "el", "cftd", "ln"];
 
     /// <summary>全ファイルを統合してから参照と属性の整合性を検証します。</summary>
     /// <param name="units">配置済みの最上位ユニットです。</param>
@@ -40,7 +43,8 @@ public static class DefinitionValidator
             {
                 "g" => Group,
                 "n" => Network,
-                "j" or "pj" => Job,
+                "j" or "pj" or "rj" or "rp" => Job,
+                "jdj" => Judgment,
                 _ => throw Error(unit, $"未対応のユニット種別: {unit.Type}"),
             };
             foreach (var (key, values) in unit.Attributes)
@@ -71,9 +75,24 @@ public static class DefinitionValidator
                 throw Error(unit, "実行先をLocalAgentsへ明示的に対応付けてください。");
             }
 
-            if (unit.Type is "j" or "pj")
+            if (unit.Type is "j" or "pj" or "rj" or "rp")
             {
                 ValidateJob(unit);
+            }
+
+            if (unit.Type == "jdj")
+            {
+                if (unit.Children.Count > 0 || unit.Get("ej", "gt") is not ("gt" or "ge" or "lt" or "le" or "eq" or "ne" or "ri" or "ro")
+                    || unit.Get("ejm", "ge") is not ("gt" or "ge") || unit.Get("eju", "le") is not ("lt" or "le")
+                    || new[] { "ejc", "ejl", "ejh" }.Any(k => !uint.TryParse(unit.Get(k, "0"), out _)))
+                {
+                    throw Error(unit, "判定ジョブは終了コード比較だけに対応しています。");
+                }
+
+                if (unit.Get("ej") is "ri" or "ro" && (!unit.Attributes.ContainsKey("ejl") || !unit.Attributes.ContainsKey("ejh") || long.Parse(unit.Get("ejl"), CultureInfo.InvariantCulture) + (unit.Get("ejm", "ge") == "gt" ? 1L : 0) > long.Parse(unit.Get("ejh"), CultureInfo.InvariantCulture) - (unit.Get("eju", "le") == "lt" ? 1L : 0)))
+                {
+                    throw Error(unit, "判定範囲に整数が存在しません。");
+                }
             }
 
             if (unit.Get("ha", "n") is not ("y" or "n") || unit.Get("mp", "n") is not ("y" or "n"))
@@ -96,6 +115,11 @@ public static class DefinitionValidator
                 ValidateCalendar(entry);
             }
 
+            if (!Regex.IsMatch(unit.Get("sdd", "1"), @"^([1-9]|[12][0-9]|3[01]|(su|mo|tu|we|th|fr|sa):[1-5])$") || unit.Get("md", "th") is not ("th" or "ne"))
+            {
+                throw Error(unit, "基準日または月区分が不正です。");
+            }
+
             if (unit.Get("stt") is { Length: > 0 } baseline && ScheduleCalculator.ParseTime(baseline) >= 1440)
             {
                 throw Error(unit, "カレンダー基準時刻は24時未満です。");
@@ -115,9 +139,14 @@ public static class DefinitionValidator
                 throw Error(unit, "ネットの下位にグループは配置できません。");
             }
 
-            if (unit.Type == "n" && parent is not null && parent.Type == "n" && unit.Attributes.Keys.Any(k => k is "sd" or "st" or "cy" or "sh" or "shd" or "ed"))
+            if (parent?.Type == "n" && unit.Type == "n" && unit.Attributes.ContainsKey("sd") && unit.Get("de", "y") != "n")
             {
-                throw Error(unit, "ネストの独立スケジュールは未対応です。");
+                throw Error(unit, "ネストの独立予定はde=nを指定してください。");
+            }
+
+            if (unit.Attributes.ContainsKey("de") && (unit.Get("de") is not ("y" or "n") || parent?.Type != "n" || (unit.Get("de") == "y" && unit.Attributes.ContainsKey("sd"))))
+            {
+                throw Error(unit, "上位依存deはネストだけに指定でき、yとsdは併用できません。");
             }
 
             string reference = unit.Get("jc");
@@ -137,6 +166,25 @@ public static class DefinitionValidator
                 graph[from].Add(to);
             }
 
+            foreach (var child in unit.Children)
+            {
+                var incoming = Edges(unit).Where(e => e.To == child.Path).ToList();
+                if (child.Type == "jdj" && (incoming.Count != 1 || incoming[0].Conditional || all[incoming[0].From].Type is not ("j" or "pj" or "rj" or "rp")))
+                {
+                    throw Error(child, "終了コード判定の先行は通常ジョブ一つにしてください。");
+                }
+
+                if (incoming.Any(e => e.Conditional) && (incoming.Count != 1 || all[incoming[0].From].Type != "jdj"))
+                {
+                    throw Error(child, "条件接続の先行は判定ジョブ一つにしてください。");
+                }
+
+                if (Edges(unit).Count(e => e.Conditional && e.From == child.Path) > 1)
+                {
+                    throw Error(child, "判定ジョブと従属ユニットは一対一です。");
+                }
+            }
+
             var visiting = new HashSet<string>();
             var done = new HashSet<string>();
             foreach (string path in graph.Keys)
@@ -149,17 +197,22 @@ public static class DefinitionValidator
     /// <summary>通常接続を完全名へ変換し、依存関係の判定へ渡します。</summary>
     /// <param name="network">ar属性を持つネットです。</param>
     /// <returns>先行と後続の完全名の組です。</returns>
-    public static IEnumerable<(string From, string To)> Connections(UnitDefinition network)
+    public static IEnumerable<(string From, string To)> Connections(UnitDefinition network) => Edges(network).Select(e => (e.From, e.To));
+
+    /// <summary>順接続と条件接続を区別して取得します。</summary>
+    /// <param name="network">接続定義のネットです。</param>
+    /// <returns>先行・後続・接続種別です。</returns>
+    public static IEnumerable<(string From, string To, bool Conditional)> Edges(UnitDefinition network)
     {
         foreach (string edge in network.Attributes.GetValueOrDefault("ar") ?? [])
         {
-            var match = Regex.Match(edge, @"^\(f=([^,]+),t=([^,\)]+)(?:,seq)?\)$");
+            var match = Regex.Match(edge, @"^\(f=([^,]+),t=([^,\)]+)(?:,(seq|con))?\)$");
             if (!match.Success)
             {
-                throw Error(network, "通常接続以外のar属性は未対応です。");
+                throw Error(network, "順接続と条件接続以外は未対応です。");
             }
 
-            yield return (network.Path + "/" + match.Groups[1].Value, network.Path + "/" + match.Groups[2].Value);
+            yield return (network.Path + "/" + match.Groups[1].Value, network.Path + "/" + match.Groups[2].Value, match.Groups[3].Value == "con");
         }
     }
 
@@ -191,7 +244,7 @@ public static class DefinitionValidator
         }
 
         // pjはLinuxでもローカルコマンドとして受理する独自拡張です。実行方式はホストOSで決めます。
-        if (unit.Type == "j" && OperatingSystem.IsWindows())
+        if (unit.Type is "j" or "rj" && OperatingSystem.IsWindows())
         {
             throw Error(unit, "ジョブ種別が実行OSに一致しません。");
         }
@@ -210,7 +263,7 @@ public static class DefinitionValidator
     /// <param name="options">時間制の設定です。</param>
     private static void ValidateSchedule(UnitDefinition unit, RunnerOptions options)
     {
-        foreach (string key in new[] { "sd", "st", "cy", "sh", "shd" })
+        foreach (string key in new[] { "sd", "st", "cy", "sh", "shd", "cftd", "ln" })
         {
             var rules = new HashSet<int>();
             foreach (string raw in unit.Attributes.GetValueOrDefault(key) ?? [])
@@ -221,7 +274,7 @@ public static class DefinitionValidator
                     throw Error(unit, $"重複または不正なルール番号: {key}");
                 }
 
-                if (key == "sd" && !Regex.IsMatch(value, @"^(en|ud|(?:(?:\d{4}/)?\d{1,2}/)?(?:[*@]?(?:\d{1,2}|b(?:-\d{1,2})?)|(?:su|mo|tu|we|th|fr|sa)(?::[1-5b])?))$"))
+                if (key == "sd" && !Regex.IsMatch(value, @"^(en|ud|(?:(?:\d{4}/)?\d{1,2}/)?(?:[+*@]?(?:\d{1,2}|b(?:-\d{1,2})?)|[+]?(?:su|mo|tu|we|th|fr|sa)(?::[1-5b])?))$"))
                 {
                     throw Error(unit, "相対日など未対応のsd指定です。");
                 }
@@ -249,6 +302,16 @@ public static class DefinitionValidator
                     {
                         throw Error(unit, "処理サイクルが単位ごとの上限を超えています。");
                     }
+                }
+
+                if (key == "ln" && (!int.TryParse(value, out int upper) || upper is < 1 or > 144))
+                {
+                    throw Error(unit, "上位ルール番号は1〜144です。");
+                }
+
+                if (key == "cftd" && !Regex.IsMatch(value, @"^(no|be|af|db|da)(,([1-9]|[12][0-9]|3[01]))?(,([1-9]|[12][0-9]|3[01]))?$"))
+                {
+                    throw Error(unit, "不正な起算スケジュールです。");
                 }
 
                 if (key == "sh" && value is not ("be" or "af" or "ca" or "no"))
