@@ -125,7 +125,7 @@ public sealed class HistoryRetentionService(StorageRepository storage, RunnerOpt
     /// <summary>結果不明と実行可能な状態を、保持期限だけで削除対象にしません。</summary>
     /// <param name="state">保存済みの世代または試行状態です。</param>
     /// <returns>業務結果が確定した状態であればtrueです。</returns>
-    private static bool IsTerminal(string state) => state is "Succeeded" or "Warning" or "Failed" or "TimedOut" or "Cancelled" or "Skipped";
+    private static bool IsTerminal(string state) => state is "Succeeded" or "Warning" or "Failed" or "TimedOut" or "Cancelled" or "Skipped" or "NotScheduled";
 
     /// <summary>境界時刻を含めて保持日数を満たすか確認します。</summary>
     /// <param name="finished">確定時刻。旧形式などで欠落している場合は整理しません。</param>

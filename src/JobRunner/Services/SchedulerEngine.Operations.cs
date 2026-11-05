@@ -10,6 +10,79 @@ namespace JobRunner.Services;
 /// <summary>確定世代の件数補充と再開可能なネット単位の運用操作を担当します。</summary>
 public sealed partial class SchedulerEngine
 {
+    /// <summary>固定した開始時刻を基点に、処理時間に依存せず一定間隔の予定を補充します。</summary>
+    /// <param name="row">生成カーソルの登録行です。</param>
+    /// <param name="registration">間隔と終了日時を持つ登録です。</param>
+    /// <param name="token">権限喪失の通知です。</param>
+    /// <returns>先読み範囲の生成完了です。</returns>
+    private async Task ReplenishIntervalAsync(TableEntity row, Registration registration, CancellationToken token)
+    {
+        var units = await ReadUnitsAsync(registration.DefinitionHash, token);
+        var next = registration.NextIntervalDue ?? registration.FixedDue!.Value;
+        int interval = registration.IntervalMinutes!.Value;
+        if (registration.PassedDaemonStarts != "IMMEDIATE" && next < recoveryBaseline)
+        {
+            next = next.AddMinutes(Math.Ceiling((recoveryBaseline - next).TotalMinutes / interval) * interval);
+        }
+
+        var until = clock.GetUtcNow().AddDays(options.ConfirmedHorizonDays);
+        if (until <= registration.FixedDue)
+        {
+            until = registration.FixedDue.Value.AddTicks(1);
+        }
+
+        if (until > registration.IntervalUntil)
+        {
+            until = registration.IntervalUntil.Value;
+        }
+
+        var generation = JsonSerializer.Deserialize<Registration>(JsonSerializer.Serialize(registration))!;
+        while (next < until)
+        {
+            generation.Holding = next == registration.FixedDue ? registration.Holding : null;
+            await CreateOccurrenceAsync(generation, new SchedulePoint(1, BusinessToday(next), next), units[registration.RootPath], token);
+            next = next.AddMinutes(interval);
+            registration.NextIntervalDue = next;
+            await CommitAsync([Update(row, registration)], token);
+            row = (await storage.GetAsync(row.RowKey, token))!;
+        }
+    }
+
+    /// <summary>明示された確定期間を分割して保存し、その後に未来世代枠を補充します。</summary>
+    /// <param name="row">期間カーソルを持つ登録行です。</param>
+    /// <param name="registration">開始日と排他的終了日を持つ登録です。</param>
+    /// <param name="token">権限喪失の通知です。</param>
+    /// <returns>期間内の確定と件数補充の完了です。</returns>
+    private async Task ReplenishPeriodAsync(TableEntity row, Registration registration, CancellationToken token)
+    {
+        var units = await ReadUnitsAsync(registration.DefinitionHash, token);
+        var root = units[registration.RootPath];
+        var existing = (await storage.ListAsync("occurrence:", token)).Select(StorageRepository.Read<Occurrence>)
+            .Where(o => o.Namespace == registration.Namespace && o.RegistrationId == registration.Id && o.Id == o.RootId).OrderBy(o => o.OriginalDue).ThenBy(o => o.Rule).ToList();
+        var generation = JsonSerializer.Deserialize<Registration>(JsonSerializer.Serialize(registration))!;
+        var first = existing.FirstOrDefault();
+        while (registration.Through < registration.End!.Value)
+        {
+            DateOnly until = registration.Through.AddDays(Math.Min(366, registration.End.Value.DayNumber - registration.Through.DayNumber));
+            foreach (var point in ScheduleCalculator.Calculate(root, units, registration, registration.Through, until, options).Distinct().OrderBy(p => p.Due).ThenBy(p => p.Rule))
+            {
+                // 中断後の再送でも最初の世代の保留を保持し、後続へ拡散させません。
+                generation.Holding = first is null || (first.OriginalDue == point.Due && first.Rule == point.Rule) ? registration.Holding : null;
+                await CreateOccurrenceAsync(generation, point, root, token);
+                first ??= new Occurrence { OriginalDue = point.Due, Rule = point.Rule };
+            }
+
+            registration.Through = until;
+            await CommitAsync([Update(row, registration)], token);
+            row = (await storage.GetAsync(row.RowKey, token))!;
+        }
+
+        if (registration.FutureGenerations is not null)
+        {
+            await ReplenishCountAsync(row, registration, token);
+        }
+    }
+
     /// <summary>未開始世代の枠を保ち、開始済み・取消済みの履歴は枠に数えません。</summary>
     /// <param name="row">更新前の登録行です。</param>
     /// <param name="registration">未来世代数を持つ登録です。</param>
@@ -17,13 +90,13 @@ public sealed partial class SchedulerEngine
     /// <returns>必要な予定の生成を表します。</returns>
     private async Task ReplenishCountAsync(TableEntity row, Registration registration, CancellationToken token)
     {
-        var units = bundle!.Units.Flatten().ToDictionary(u => u.Path, StringComparer.Ordinal);
+        var units = await ReadUnitsAsync(registration.DefinitionHash, token);
         var root = units[registration.RootPath];
         var roots = (await storage.ListAsync("occurrence:", token)).Select(StorageRepository.Read<Occurrence>)
             .Where(o => o.Namespace == registration.Namespace && o.RegistrationId == registration.Id && o.Id == o.RootId).ToList();
         foreach (var incomplete in roots.Where(o => o.Materialized == false))
         {
-            await CreateOccurrenceAsync(registration, new SchedulePoint(incomplete.Rule, incomplete.BusinessDate, incomplete.OriginalDue), root, token);
+            await CreateOccurrenceAsync(registration, new SchedulePoint(incomplete.Rule, incomplete.BusinessDate, incomplete.OriginalDue), (await ReadUnitsAsync(incomplete.DefinitionHash, token))[incomplete.UnitPath], token);
         }
 
         int needed = registration.FutureGenerations!.Value - roots.Count(o => !o.Started && o.State is "Waiting" or "Held");
@@ -35,6 +108,11 @@ public sealed partial class SchedulerEngine
 
         var generationRegistration = JsonSerializer.Deserialize<Registration>(JsonSerializer.Serialize(registration))!;
         generationRegistration.Holding = roots.Count == 0 ? registration.Holding : null;
+        if (registration.Start is not null)
+        {
+            generationRegistration.End = null;
+        }
+
         var last = roots.OrderBy(o => o.OriginalDue).ThenBy(o => o.Rule).LastOrDefault();
         DateTimeOffset baseline = registration.CreatedAt ?? active!.Baseline;
         if (baseline < recoveryBaseline)
@@ -53,7 +131,7 @@ public sealed partial class SchedulerEngine
                 until = limit;
             }
 
-            foreach (var point in ScheduleCalculator.Calculate(root, units, registration, from.AddDays(-3), until, options).Distinct().OrderBy(p => p.Due).ThenBy(p => p.Rule))
+            foreach (var point in ScheduleCalculator.Calculate(root, units, generationRegistration, from.AddDays(-3), until, options).Distinct().OrderBy(p => p.Due).ThenBy(p => p.Rule))
             {
                 DateOnly actualDay = BusinessToday(point.Due);
                 if (actualDay < from || actualDay >= until || point.Due < baseline || (last is not null && (point.Due < last.OriginalDue || (point.Due == last.OriginalDue && point.Rule <= last.Rule))))
@@ -116,7 +194,7 @@ public sealed partial class SchedulerEngine
     /// <returns>この経路で操作を完了した場合trueです。</returns>
     private async Task<bool> ApplyTreeOperationAsync(TableEntity commandRow, Operation operation, TableEntity targetRow, Occurrence target, CancellationToken token)
     {
-        var units = bundle!.Units.Flatten().ToDictionary(u => u.Path, StringComparer.Ordinal);
+        var units = await ReadUnitsAsync(target.DefinitionHash, token);
         bool network = units.TryGetValue(target.UnitPath, out var unit) && unit.Type == "n";
         if (!(network && operation.Kind is "Move" or "Restore" or "Cancel" or "Stop" or "Rerun") && operation.Kind != "RunNow")
         {
@@ -132,7 +210,7 @@ public sealed partial class SchedulerEngine
             : [targetRow];
         var values = rows.Select(r => (Row: r, Value: StorageRepository.Read<Occurrence>(r))).ToList();
         var plan = new OperationMutation { OperationId = operation.Id };
-        bool pending = values.All(v => v.Value.State is "Waiting" or "Held");
+        bool pending = values.All(v => v.Value.State is "Waiting" or "Held" or "NotScheduled");
         if (operation.Kind is "Move" or "Restore" or "RunNow" or "Cancel")
         {
             if (!pending || (operation.Kind == "Move" && operation.Due is null))
@@ -188,16 +266,24 @@ public sealed partial class SchedulerEngine
         }
         else
         {
-            if (operation.RerunMethod != "TOP" || target.State is not ("Succeeded" or "Warning" or "Failed" or "TimedOut" or "Cancelled" or "Interrupted")
+            if ((operation.RerunOptions?.Any(o => o != "HOLD") ?? false) || operation.RerunMethod != "TOP" || target.State is not ("Succeeded" or "Warning" or "Failed" or "TimedOut" or "Cancelled" or "Interrupted")
                 || values.Any(v => v.Value.State is "Running" or "Starting" or "Unknown" or "Archiving" or "Archived"))
             {
                 throw new FormatException("ネット再実行はTOPを指定し、結果不明・実行中の子を先に解決してください。");
             }
 
-            foreach (var item in values)
+            foreach (var excluded in values.Where(v => v.Value.ScheduleExcluded == true))
             {
-                item.Value.State = units[item.Value.UnitPath].Get("ha", "n") == "y" ? "Held" : "Waiting";
+                excluded.Value.State = "NotScheduled";
+            }
+
+            foreach (var item in values.Where(v => v.Value.ScheduleExcluded != true))
+            {
+                item.Value.State = (units[item.Value.UnitPath].Get("ha", "n") == "y" || (item.Value.Id == target.Id && operation.RerunOptions?.Contains("HOLD") == true)) ? "Held" : "Waiting";
                 item.Value.AttemptId = null;
+                item.Value.BypassedPredecessors = null;
+                item.Value.StandaloneRerun = null;
+                item.Value.ConditionMatched = null;
                 item.Value.FinishedAt = null;
 
                 // 手動で再開するルートを未来枠へ数えず、復旧で過去予定として除外しません。

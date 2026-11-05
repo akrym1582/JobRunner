@@ -80,7 +80,7 @@ ExecutionControlTestsで、一時変更後もOriginalDueを保持し、同じ入
 
 受入は未来世代数の上下限・開始時の補充・再起動と解除・保留の維持、ネット即時化と原予定復元、取消の全子孫反映、実プロセス停止とUnknown拒否、TOPの試行追加、99行境界での応答喪失と復旧を実Storageで確認する。計画登録は未達項目から外す。
 
-JP1形式のregisterFixedExecはfutureGeneration=1〜99、passedDaemonStarts=NEXTTIMEだけを受理し、同期200・空本文を返す。holdingは最初の世代だけに適用し、補充世代には定義の保留設定を使う。期間・日時指定・IMMEDIATE指定・非空macroは未対応として拒否する。Jp1ContractTestsで実HTTP、再送、初回保留、生成世代数を検証する。
+JP1形式のregisterFixedExecは未来世代数に加えて期間・日時指定を扱う。詳細な組合せと応答は本書の「確定登録とスケジュール拡張」に示す。非空macroは引き続き拒否する。
 
 未来世代数の補充は業務日順ではなくUTC実日時順に選ぶ。48時間制で前の業務日の実行予定が後から来る場合も、基準時刻加算を含む直前3業務日を候補へ含める。ConfirmedGenerationTestsで業務日と実日時の順序が逆になる2ルールを確認する。
 
@@ -96,3 +96,25 @@ JP1形式のregisterFixedExecはfutureGeneration=1〜99、passedDaemonStarts=NEX
 - 実行中のネットや開始済みで保留中の世代が残る間、管理APIによる定義切替を拒否する。復旧時の新しい入力採用は従来の復旧処理で扱う。
 - 月・年サイクルは開始月に指定日がなくても位相を維持し、後の月に存在する日を生成する。
 - 結果不明の試行を手動解決したとき、世代・試行・操作を同一トランザクションで更新し、試行に解決理由と解決時刻を残す。終了コードや完全なログの取得を推測しない。
+
+## 確定登録とスケジュール拡張
+
+追加の一次資料は[設計ガイド3.5.3](https://itpfdoc.hitachi.co.jp/manuals/3021/30213d2330/AJSG0049.HTM)。同時刻に重なるルートの予定は最小ルール番号を採用する。ネストは上位と同じ業務日・リンクルールの候補のうち最早時刻、同時刻なら最小ルール番号を採用する。該当しないネストと子孫は`NotScheduled`で保存し、プロセスを起動しない。予定は生成時に固定し、復旧で入力の新版へ差し替えない。
+
+`UpdateRegistrationDefinition`は登録ID、`ExpectedDefinitionHash`、保存済みの`DefinitionHash`を必要とする。採用IDを維持したまま、その登録の未生成世代だけに新版を適用する。生成済み世代は`DefinitionHash`を保持し、部分生成も旧版で補完する。旧保存形式のnullは採用版を意味する。
+
+独自管理APIの`Register`は`Start`と排他的な`End`による期間を確定できる。未来世代数との併用時は期間を確定した後に未開始枠を補充する。`FixedDue`はスケジュール定義に依存しない単一予定で、期間・未来世代数と併用しない。`PassedDaemonStarts`は`NEXTTIME`（旧データの既定）または`IMMEDIATE`。後者を明示した未開始予定は復旧後に開始できる。Unknownの試行はこの指定でも再実行しない。
+
+一定間隔の実行は独自管理APIで`FixedDue`、`IntervalMinutes`、`IntervalUntil`を指定する。開始日時から1〜1440分間隔で、終了日時未満までの予定を生成する。処理終了時刻からの相対待機ではない。要求は最大10万予定。先読み期間ごとにカーソル補充し、リースと決定的IDで再送・再起動時の重複を防ぐ。JP1イベント起動や実行間隔制御ジョブのエミュレーションとは区別する。
+
+カレンダーは`+sd`、`sdd`、`md`、`cftd`を追加する。`sdd`は1〜28日と第1〜4曜日を受理する。29〜31日・第5曜日は欠落月の仕様照合が未完了のため明示拒否する（JP1で無効という意味ではない）。ネストの絶対時刻が参照カレンダーの基準時刻より前なら、上位と異なる業務日として除外する。`cftd`はサイクル計算・休業日振替の後に適用する。終了コード判定`jdj`は`gt/ge/lt/le/eq/ne/ri/ro`に対応し、保存済み先行試行の終了コードを比較する。`con`は判定ジョブと従属ユニットを一対一で接続する。条件不成立の従属は非実行、成立時の通常後続は従属の完了を待つ。ファイル・変数による判定は対象外として拒否する。異常時後続は`rj/rp`を追加し、先行の異常時だけ起動する。
+
+再実行はTOPに加えて、ルートの`ABNORMAL_JOB/ABNORMAL_NEXT/ABNORMAL_JOBNET/WARNING`と下位の`FROM/ONLY/NEXT`を扱う。変更計画を保存してから分割適用し、途中状態では起動しない。`ONLY`は上位の終了状態を変えず、指定した部分木だけを実行する。`NEXT`では明示的に通過する異常先行を保存する。過去の試行は書き換えない。Unknown・実行中を含む世代は拒否する。
+
+受入テスト: DefinitionVersionTests、FixedRegistrationTests、ExtendedScheduleTests、NestedScheduleTests、SelectiveRerunTests、BranchAndIntervalTests、Jp1ContractTests。実JP1との比較は別途必要。
+
+### JP1 HTTPの対応範囲
+
+`registerFixedExec`は期間（終了日は包含）、件数、期間＋件数、日時を扱う。日時だけの場合はexecID、それ以外は空本文の同期200。`holding`は初回だけ。`passedDaemonStarts`はNEXTTIME/IMMEDIATEを扱い、日時で省略したときはIMMEDIATE。
+
+運用APIは`changeHold`、`cancelExecSchedule`、`restoreChangedSchedule`、`kill`、`rerun`、期間無指定の`cancelRegistration`を公開する。`changeStartTime`はABSOLUTETIME、`changeStartTime/execImmediate`はSHIFT＋MOVEの組み合わせに限定する。ADD、NOTSHIFT、相対日時、期間指定の登録解除はまだ拒否する。エラーIDの全面互換、ファイル・変数判定、リカバリーネットは未達であり、この実装を完全互換とはしない。

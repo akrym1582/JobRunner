@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Azure;
@@ -60,22 +61,26 @@ public static class Jp1Endpoints
             const string registerSuffix = "/actions/registerImmediateExec/invoke";
             const string fixedSuffix = "/actions/registerFixedExec/invoke";
             const string holdSuffix = "/actions/changeHold/invoke";
+            int actionIndex = path.LastIndexOf("/actions/", StringComparison.Ordinal);
+            string action = actionIndex >= 0 && path.EndsWith("/invoke", StringComparison.Ordinal) ? path[(actionIndex + 9)..^7] : string.Empty;
             bool register = path.StartsWith(prefix + "definitions/", StringComparison.Ordinal) && path.EndsWith(registerSuffix, StringComparison.Ordinal);
             bool fixedRegistration = path.StartsWith(prefix + "definitions/", StringComparison.Ordinal) && path.EndsWith(fixedSuffix, StringComparison.Ordinal);
+            bool unregister = path.StartsWith(prefix + "definitions/", StringComparison.Ordinal) && action == "cancelRegistration";
             bool hold = path.StartsWith(prefix + "statuses/", StringComparison.Ordinal) && path.EndsWith(holdSuffix, StringComparison.Ordinal);
-            if (!register && !fixedRegistration && !hold)
+            bool statusOperation = path.StartsWith(prefix + "statuses/", StringComparison.Ordinal) && action is "cancelExecSchedule" or "restoreChangedSchedule" or "kill" or "rerun" or "changeStartTime" or "execImmediate";
+            if (!register && !fixedRegistration && !hold && !unregister && !statusOperation)
             {
                 return Error(context, 404, "このAPIは未対応です。");
             }
 
-            string resource = register ? path[(prefix.Length + "definitions/".Length)..^registerSuffix.Length] : fixedRegistration ? path[(prefix.Length + "definitions/".Length)..^fixedSuffix.Length] : path[(prefix.Length + "statuses/".Length)..^holdSuffix.Length];
+            string resource = path[(prefix.Length + (register || fixedRegistration || unregister ? "definitions/".Length : "statuses/".Length))..actionIndex];
             var body = await context.Request.ReadFromJsonAsync<JsonElement>(context.RequestAborted);
             if (body.ValueKind != JsonValueKind.Object || !body.TryGetProperty("parameters", out var parameters) || parameters.ValueKind != JsonValueKind.Object)
             {
                 return Error(context, 400, "parametersオブジェクトを指定してください。", "parameters");
             }
 
-            foreach (string required in fixedRegistration ? new[] { "manager", "serviceName", "passedDaemonStarts" } : register ? new[] { "manager", "serviceName" } : new[] { "manager", "serviceName", "holdAttr" })
+            foreach (string required in hold ? new[] { "manager", "serviceName", "holdAttr" } : new[] { "manager", "serviceName" })
             {
                 if (!parameters.TryGetProperty(required, out var value) || value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(value.GetString()))
                 {
@@ -95,7 +100,18 @@ public static class Jp1Endpoints
                 return Error(context, 404, "ローカルのマネージャー名またはサービス名が一致しません。");
             }
 
-            var allowed = fixedRegistration ? new[] { "manager", "serviceName", "futureGeneration", "passedDaemonStarts", "holding", "macro" } : register ? new[] { "manager", "serviceName", "holding", "macro", "startCondition" } : new[] { "manager", "serviceName", "holdAttr" };
+            var allowed = fixedRegistration ? new[] { "manager", "serviceName", "futureGeneration", "passedDaemonStarts", "holding", "macro", "fixedScheduleFrom", "fixedScheduleTo", "startTime" } : register ? new[] { "manager", "serviceName", "holding", "macro", "startCondition" } : new[] { "manager", "serviceName", "holdAttr" };
+            if (unregister || statusOperation)
+            {
+                allowed = action switch
+                {
+                    "rerun" => ["manager", "serviceName", "rerunMethod", "rerunOptions"],
+                    "changeStartTime" => ["manager", "serviceName", "kindTime", "absoluteTime", "changeLower", "pushedAhead"],
+                    "execImmediate" => ["manager", "serviceName", "changeLower", "pushedAhead"],
+                    _ => ["manager", "serviceName"],
+                };
+            }
+
             if (parameters.EnumerateObject().Any(p => !allowed.Contains(p.Name, StringComparer.Ordinal))
                 || (parameters.TryGetProperty("startCondition", out var condition) && condition.ValueKind != JsonValueKind.Null)
                 || (parameters.TryGetProperty("macro", out var macro) && macro.ValueKind != JsonValueKind.Null && (macro.ValueKind != JsonValueKind.Array || macro.GetArrayLength() != 0)))
@@ -104,15 +120,46 @@ public static class Jp1Endpoints
             }
 
             int? futureGenerations = null;
+            DateOnly? fixedFrom = null;
+            DateOnly? fixedUntil = null;
+            DateTimeOffset? fixedDue = null;
+            string? passed = null;
             if (fixedRegistration)
             {
-                if (!parameters.TryGetProperty("futureGeneration", out var generation) || !generation.TryGetInt32(out int count) || count is < 1 or > 99
-                    || parameters.GetProperty("passedDaemonStarts").GetString() != "NEXTTIME")
+                fixedFrom = ReadDate(parameters, "fixedScheduleFrom");
+                var fixedTo = ReadDate(parameters, "fixedScheduleTo");
+                if (fixedFrom.HasValue != fixedTo.HasValue || fixedFrom > fixedTo)
                 {
-                    return Error(context, 400, "futureGenerationは1〜99、passedDaemonStartsはNEXTTIMEを指定してください。他の確定登録方式は未対応です。");
+                    return Error(context, 400, "確定期間の開始日と終了日を順序どおりに指定してください。");
                 }
 
-                futureGenerations = count;
+                fixedUntil = fixedTo?.AddDays(1);
+                if (parameters.TryGetProperty("futureGeneration", out var generation) && generation.ValueKind != JsonValueKind.Null)
+                {
+                    if (generation.ValueKind != JsonValueKind.Number || !generation.TryGetInt32(out int count) || count is < 0 or > 99)
+                    {
+                        return Error(context, 400, "futureGenerationは0〜99です。");
+                    }
+
+                    futureGenerations = count == 0 ? null : count;
+                }
+
+                if (parameters.TryGetProperty("startTime", out var start) && start.ValueKind != JsonValueKind.Null)
+                {
+                    fixedDue = ReadLocalTime(start.GetString()!, options);
+                }
+
+                if ((fixedDue is not null && (fixedFrom is not null || futureGenerations is not null))
+                    || (fixedDue is null && fixedFrom is null && futureGenerations is null))
+                {
+                    return Error(context, 400, "期間・未来世代数または単独の日時を指定してください。");
+                }
+
+                passed = parameters.TryGetProperty("passedDaemonStarts", out var policy) && policy.ValueKind != JsonValueKind.Null ? policy.GetString() : fixedDue is not null ? "IMMEDIATE" : null;
+                if (passed is not ("NEXTTIME" or "IMMEDIATE"))
+                {
+                    return Error(context, 400, "passedDaemonStartsはNEXTTIMEまたはIMMEDIATEを指定してください。", passed is null ? "passedDaemonStarts" : null);
+                }
             }
 
             bool holding = (register || fixedRegistration) && parameters.TryGetProperty("holding", out var holdingValue) && holdingValue.GetBoolean();
@@ -120,6 +167,47 @@ public static class Jp1Endpoints
             if (hold && holdAttr is not ("SET" or "RELEASE"))
             {
                 return Error(context, 400, "holdAttrはSETまたはRELEASEで指定してください。");
+            }
+
+            DateTimeOffset? moveDue = null;
+            string? rerunMethod = null;
+            List<string>? rerunFlags = null;
+            if (action is "changeStartTime" or "execImmediate")
+            {
+                if (!parameters.TryGetProperty("changeLower", out var lower) || lower.GetString() != "SHIFT"
+                    || !parameters.TryGetProperty("pushedAhead", out var ahead) || ahead.GetString() != "MOVE")
+                {
+                    return Error(context, 400, "現在の対応範囲はchangeLower=SHIFT、pushedAhead=MOVEです。");
+                }
+
+                if (action == "changeStartTime")
+                {
+                    if (!parameters.TryGetProperty("kindTime", out var kind) || kind.GetString() != "ABSOLUTETIME" || !parameters.TryGetProperty("absoluteTime", out var time))
+                    {
+                        return Error(context, 400, "kindTime=ABSOLUTETIMEとabsoluteTimeを指定してください。");
+                    }
+
+                    moveDue = ReadLocalTime(time.GetString()!, options);
+                }
+            }
+
+            if (action == "rerun")
+            {
+                if (!parameters.TryGetProperty("rerunMethod", out var method) || method.ValueKind != JsonValueKind.String)
+                {
+                    return Error(context, 400, "rerunMethodを指定してください。", "rerunMethod");
+                }
+
+                rerunMethod = method.GetString();
+                if (parameters.TryGetProperty("rerunOptions", out var rerunOptions) && rerunOptions.ValueKind != JsonValueKind.Null)
+                {
+                    if (rerunOptions.ValueKind != JsonValueKind.Array || rerunOptions.EnumerateArray().Any(v => v.ValueKind != JsonValueKind.String || v.GetString() is not ("HOLD" or "WARNING")))
+                    {
+                        return Error(context, 400, "再実行オプションが不正です。");
+                    }
+
+                    rerunFlags = rerunOptions.EnumerateArray().Select(v => v.GetString()!).Distinct().Order(StringComparer.Ordinal).ToList();
+                }
             }
 
             string requestId = context.Request.Headers["X-JobRunner-Request-Id"].ToString();
@@ -133,6 +221,16 @@ public static class Jp1Endpoints
             string hash = fixedRegistration
                 ? StorageRepository.Hash(JsonSerializer.Serialize(new { fixedRegistration, resource, manager, service, holding, futureGenerations }))
                 : StorageRepository.Hash(JsonSerializer.Serialize(new { register, resource, manager, service, holding, holdAttr }));
+            if (statusOperation || unregister)
+            {
+                hash = StorageRepository.Hash(JsonSerializer.Serialize(new { action, resource, manager, service, moveDue, rerunMethod, rerunFlags }));
+            }
+
+            if (fixedRegistration && (fixedFrom is not null || fixedDue is not null || passed != "NEXTTIME"))
+            {
+                hash = StorageRepository.Hash(JsonSerializer.Serialize(new { BaseHash = hash, fixedFrom, fixedUntil, fixedDue, passed }));
+            }
+
             context.Response.Headers["X-JobRunner-Operation-Id"] = id;
             var existing = await storage.GetAsync(key, context.RequestAborted);
             if (existing is not null)
@@ -142,7 +240,7 @@ public static class Jp1Endpoints
                     return Error(context, 409, "同じ要求IDに異なる内容が指定されています。");
                 }
 
-                return await AwaitResultAsync(context, key, register, storage, clock);
+                return await AwaitResultAsync(context, key, register || fixedDue is not null, storage, clock);
             }
 
             var activeRow = await storage.GetAsync("definition-active", context.RequestAborted);
@@ -153,7 +251,7 @@ public static class Jp1Endpoints
 
             var active = StorageRepository.Read<Activation>(activeRow);
             string target;
-            if (register || fixedRegistration)
+            if (register || fixedRegistration || unregister)
             {
                 var bundle = await definitions.ReadAsync(active.DefinitionHash, context.RequestAborted);
                 var units = bundle.Units.Flatten().ToDictionary(u => u.Path, StringComparer.Ordinal);
@@ -188,11 +286,17 @@ public static class Jp1Endpoints
                 Id = id,
                 RequestHash = hash,
                 StateNamespace = active.Id,
-                Kind = register || fixedRegistration ? "Register" : holdAttr == "SET" ? "Hold" : "Release",
+                Kind = register || fixedRegistration ? "Register" : unregister ? "UnregisterRoot" : hold ? holdAttr == "SET" ? "Hold" : "Release" : action switch { "cancelExecSchedule" => "Cancel", "restoreChangedSchedule" => "Restore", "kill" => "Stop", "rerun" => "Rerun", "changeStartTime" => "Move", _ => "RunNow" },
                 Target = target,
                 RegistrationKind = fixedRegistration ? "Confirmed" : "Immediate",
                 FutureGenerations = futureGenerations,
-                Due = register ? clock.GetUtcNow() : null,
+                Start = fixedFrom,
+                End = fixedUntil,
+                FixedDue = fixedDue,
+                PassedDaemonStarts = passed,
+                Due = register ? clock.GetUtcNow() : moveDue,
+                RerunMethod = rerunMethod,
+                RerunOptions = rerunFlags,
                 Holding = register || fixedRegistration ? holding : null,
                 CreatedAt = clock.GetUtcNow(),
             };
@@ -209,9 +313,9 @@ public static class Jp1Endpoints
                 }
             }
 
-            return await AwaitResultAsync(context, key, register, storage, clock);
+            return await AwaitResultAsync(context, key, register || fixedDue is not null, storage, clock);
         }
-        catch (Exception ex) when (ex is JsonException or InvalidOperationException or BadHttpRequestException)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or BadHttpRequestException or FormatException or ArgumentException)
         {
             return Error(context, 400, "JSONまたは引数の型が不正です。");
         }
@@ -223,6 +327,47 @@ public static class Jp1Endpoints
         {
             return Error(context, 412, "Storageへ到達できません。操作IDで結果を再確認してください。");
         }
+    }
+
+    /// <summary>公式の年月日表記と年の範囲を検証します。</summary>
+    /// <param name="parameters">要求パラメーターです。</param>
+    /// <param name="name">対象のキーです。</param>
+    /// <returns>指定がない場合nullです。</returns>
+    private static DateOnly? ReadDate(JsonElement parameters, string name)
+    {
+        if (!parameters.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (!DateOnly.TryParseExact(value.GetString(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) || date.Year is < 1994 or > 2036)
+        {
+            throw new FormatException("年月日は1994〜2036年のYYYY-MM-DDです。");
+        }
+
+        return date;
+    }
+
+    /// <summary>47時までのローカル予定をタイムゾーンでUTCに変換します。</summary>
+    /// <param name="value">YYYY-MM-DDThh:mm表記です。</param>
+    /// <param name="options">サービスの時間帯です。</param>
+    /// <returns>確定した実日時です。</returns>
+    private static DateTimeOffset ReadLocalTime(string value, RunnerOptions options)
+    {
+        if (value.Length != 16 || value[10] != 'T' || !DateOnly.TryParseExact(value[..10], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) || date.Year is < 1994 or > 2036)
+        {
+            throw new FormatException("日時の書式が不正です。");
+        }
+
+        int minutes = Scheduling.ScheduleCalculator.ParseTime(value[11..]);
+        var local = date.ToDateTime(TimeOnly.MinValue).AddMinutes(minutes);
+        var zone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
+        if (zone.IsInvalidTime(local) || zone.IsAmbiguousTime(local))
+        {
+            throw new FormatException("夏時間の重複・欠落時刻です。");
+        }
+
+        return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(local, zone));
     }
 
     /// <summary>保存された要求を稼働系が適用するまで待ち、独自202を返さないようにします。</summary>
