@@ -37,9 +37,13 @@ public sealed partial class SchedulerEngine
         generationRegistration.Holding = roots.Count == 0 ? registration.Holding : null;
         var last = roots.OrderBy(o => o.OriginalDue).ThenBy(o => o.Rule).LastOrDefault();
         DateTimeOffset baseline = registration.CreatedAt ?? active!.Baseline;
+        if (baseline < recoveryBaseline)
+        {
+            baseline = recoveryBaseline;
+        }
 
         // 48時間制や基準時刻加算では、次の実日時が前の業務日に属することがあります。
-        DateOnly from = BusinessToday(last?.OriginalDue ?? baseline);
+        DateOnly from = BusinessToday(last is not null && last.OriginalDue > baseline ? last.OriginalDue : baseline);
         DateOnly limit = from.AddYears(Math.Min(100, 9998 - from.Year));
         while (from < limit && needed > 0)
         {

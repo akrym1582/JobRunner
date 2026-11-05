@@ -39,6 +39,9 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
     /// <summary>保持期限の全件走査を毎回のポーリングで行わないための次回確認時刻です。</summary>
     private DateTimeOffset nextRetentionCheck;
 
+    /// <summary>復旧時点より前に未開始のルートは補充後も起動しません。</summary>
+    private DateTimeOffset recoveryBaseline;
+
     /// <summary>Gets. 現在採用している状態領域。初期化前はnullです。</summary>
     public string? Namespace => active?.Id;
 
@@ -51,9 +54,10 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
         leader = coordinator;
         var loaded = await definitions.LoadSourcesAsync(cancellationToken);
         await definitions.SaveAsync(loaded, cancellationToken);
-        await ActivateAsync(loaded.Hash, cancellationToken);
+        recoveryBaseline = clock.GetUtcNow();
+        await ActivateAsync(loaded.Hash, true, cancellationToken);
         await ResumeMutationsAsync(cancellationToken);
-        DateTimeOffset recoveryTime = clock.GetUtcNow();
+        DateTimeOffset recoveryTime = recoveryBaseline;
 
         // 新版を採用しても旧版の未解決試行を消さず、同じ業務の並行起動を防ぎます。
         foreach (var row in await storage.ListAsync("occurrence:", cancellationToken))
@@ -269,11 +273,12 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
 
     /// <summary>定義採用のジャーナルを再開し、登録作成後にReadyへ進めます。</summary>
     /// <param name="hash">採用する保存済み定義です。</param>
+    /// <param name="recovering">復旧時は旧領域を引き継ぐためtrueです。</param>
     /// <param name="cancellationToken">権限喪失の通知です。</param>
     /// <returns>Tableと管理Blobの整合が取れた時点で完了します。</returns>
-    private async Task ActivateAsync(string hash, CancellationToken cancellationToken)
+    private async Task ActivateAsync(string hash, bool recovering, CancellationToken cancellationToken)
     {
-        if (running.Count > 0)
+        if (running.Count > 0 || (!recovering && (await storage.ListAsync("occurrence:", cancellationToken)).Select(StorageRepository.Read<Occurrence>).Any(o => o.Namespace == active?.Id && (o.State is "Starting" or "Running" || (o.Started && o.State is "Waiting" or "Held")))))
         {
             throw new FormatException("実行中の定義切り替えは、プロセスが終了してから要求してください。");
         }
@@ -393,7 +398,14 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
         }
 
         var all = bundle!.Units.Flatten().ToDictionary(u => u.Path, StringComparer.Ordinal);
-        foreach (var point in ScheduleCalculator.Calculate(all[registration.RootPath], all, registration, registration.Through, until, options))
+        var from = registration.Through;
+        var recoveryDay = BusinessToday(recoveryBaseline).AddDays(-3);
+        if (from < recoveryDay)
+        {
+            from = recoveryDay;
+        }
+
+        foreach (var point in ScheduleCalculator.Calculate(all[registration.RootPath], all, registration, from, until, options))
         {
             await CreateOccurrenceAsync(registration, point, all[registration.RootPath], cancellationToken);
         }
@@ -441,10 +453,10 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
                 Materialized = unit.Path == root.Path ? false : null,
                 State = (unit.Path == root.Path && registration.Holding is bool holding ? holding : unit.Get("ha", "n") == "y") ? "Held" : "Waiting",
             };
-            if (unit.Path == root.Path && point.Due < active!.Baseline)
+            if (unit.Path == root.Path && point.Due < (recoveryBaseline > active!.Baseline ? recoveryBaseline : active.Baseline))
             {
                 occurrence.State = "Skipped";
-                occurrence.FinishedAt = active.Baseline;
+                occurrence.FinishedAt = recoveryBaseline > active.Baseline ? recoveryBaseline : active.Baseline;
                 occurrence.Reason = "初期化基準時刻より前の予定です。";
             }
 
@@ -554,7 +566,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
 
             if (operation.Kind == "Activate")
             {
-                await ActivateAsync(operation.Target, cancellationToken);
+                await ActivateAsync(operation.Target, false, cancellationToken);
             }
             else if (operation.Kind == "Register")
             {
@@ -691,8 +703,19 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
                             throw new FormatException("解決には期待状態、対象試行ID、理由、SucceededまたはFailedが必要です。");
                         }
 
+                        var resolvedAttemptRow = await storage.GetAsync("attempt:" + occurrence.AttemptId, cancellationToken) ?? throw new InvalidDataException("解決対象の試行が欠損しています。");
+                        var resolvedAttempt = StorageRepository.Read<JobAttempt>(resolvedAttemptRow);
+                        if (resolvedAttempt.OccurrenceId != occurrence.Id || resolvedAttempt.State != "Unknown")
+                        {
+                            throw new InvalidDataException("解決対象の試行状態が一致しません。");
+                        }
+
+                        resolvedAttempt.State = operation.Resolution;
+                        resolvedAttempt.FinishedAt = clock.GetUtcNow();
+                        resolvedAttempt.ResolutionReason = operation.Reason;
+                        changes.Add(Update(resolvedAttemptRow, resolvedAttempt));
                         occurrence.State = operation.Resolution;
-                        occurrence.FinishedAt = clock.GetUtcNow();
+                        occurrence.FinishedAt = resolvedAttempt.FinishedAt;
                         occurrence.Reason = operation.Reason;
                         break;
                     default:

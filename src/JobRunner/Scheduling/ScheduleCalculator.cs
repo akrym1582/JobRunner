@@ -236,6 +236,22 @@ public static class ScheduleCalculator
         int year = parts.Length == 3 ? int.Parse(parts[0], CultureInfo.InvariantCulture) : anchor.Year;
         int month = parts.Length >= 2 ? int.Parse(parts[^2], CultureInfo.InvariantCulture) : anchor.Month;
         var firstMonth = new DateOnly(year, month, 1);
+
+        // 月・年単位では開始月に指定日がなくても、位相を保って後続月を評価します。
+        if (cycle.Length > 0)
+        {
+            var periodic = Regex.Match(cycle, @"^\((\d+),([ymwd])\)$");
+            int interval = int.Parse(periodic.Groups[1].Value, CultureInfo.InvariantCulture);
+            char unit = periodic.Groups[2].Value[0];
+            if (unit is 'm' or 'y')
+            {
+                int offset = ((day.Year - year) * 12) + day.Month - month;
+                return offset >= 0 && offset % (interval * (unit == 'y' ? 12 : 1)) == 0
+                    && (selector != "en" || day >= anchor)
+                    && day == Select(new DateOnly(day.Year, day.Month, 1), selector == "en" ? anchor.Day.ToString(CultureInfo.InvariantCulture) : selector, anchor, working);
+            }
+        }
+
         var seed = selector == "en" ? anchor : Select(firstMonth, selector, anchor, working);
         if (seed is null || day < seed)
         {

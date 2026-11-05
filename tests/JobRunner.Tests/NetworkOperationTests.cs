@@ -89,7 +89,9 @@ public sealed class NetworkOperationTests
             await scenario.AdvanceUntilAsync(values => values.All(o => o.State == "Succeeded"));
             var attempts = (await scenario.Scope.Repository.ListAsync("attempt:", CancellationToken.None)).Select(StorageRepository.Read<JobAttempt>).ToList();
             Assert.Equal(3, attempts.Count);
-            Assert.Equal("Unknown", Assert.Single(attempts, a => a.Id == unknown.AttemptId).State);
+            var resolved = Assert.Single(attempts, a => a.Id == unknown.AttemptId);
+            Assert.Equal("Failed", resolved.State);
+            Assert.Equal("停止されたテストプロセスを確認済み", resolved.ResolutionReason);
         }
         finally
         {

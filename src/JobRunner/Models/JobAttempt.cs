@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace JobRunner.Models;
 
 /// <summary>
@@ -49,6 +51,10 @@ public sealed class JobAttempt
     /// Gets or sets. 結果を収集したUTC日時。結果不明ならnullです。
     /// </summary>
     public DateTimeOffset? FinishedAt { get; set; } = null;
+
+    /// <summary>Gets or sets. 手動解決の根拠。自動収集した結果ではnullです。</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ResolutionReason { get; set; }
 
     /// <summary>
     /// Gets or sets a value indicating whether. 両出力のBlob保存を完了した場合だけtrueにします。
