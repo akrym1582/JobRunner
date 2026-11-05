@@ -83,3 +83,9 @@ ExecutionControlTestsで、一時変更後もOriginalDueを保持し、同じ入
 JP1形式のregisterFixedExecはfutureGeneration=1〜99、passedDaemonStarts=NEXTTIMEだけを受理し、同期200・空本文を返す。holdingは最初の世代だけに適用し、補充世代には定義の保留設定を使う。期間・日時指定・IMMEDIATE指定・非空macroは未対応として拒否する。Jp1ContractTestsで実HTTP、再送、初回保留、生成世代数を検証する。
 
 未来世代数の補充は業務日順ではなくUTC実日時順に選ぶ。48時間制で前の業務日の実行予定が後から来る場合も、基準時刻加算を含む直前3業務日を候補へ含める。ConfirmedGenerationTestsで業務日と実日時の順序が逆になる2ルールを確認する。
+
+## Linux上のPCジョブ
+
+ユーザー指定により、PCジョブ（ty=pj）をLinuxでも受理し、ホストOS上のローカルコマンドとして実行する。JP1のWindows専用PCジョブとは異なるJobRunner独自の拡張である。Linuxではteを/bin/sh -cで実行し、scは実行ファイル、prmはその引数として既存実行器へ渡す。Windowsのpjと、Linuxのjの処理は維持する。Windows上のjの拒否は変更しない。
+
+受入条件は、Blob原文のpj定義を検証・採用でき、実エンジンからte/sc両方を実行してログ・終了コード・世代状態を保存できること。teでは環境変数・作業ディレクトリ・標準エラーも検証する。未知属性、未対応OSユーザー指定、リモート実行先は引き続き拒否する。Windowsのコマンド構文やexe/batをLinux向けに変換する機能は追加しない。保存モデルと要求ハッシュは変更しない。

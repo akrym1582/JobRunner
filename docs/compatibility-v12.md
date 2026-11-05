@@ -20,6 +20,7 @@
 | 時刻24時間制の24時以降 | 詳細仕様の追加確認が必要 | JP1で不正とは断定せず、未対応として拒否 | 調査中・未実装 | 実装後に境界テストが必要 |
 | 相対日、月区分、基準日、起算、時間間隔 | `+sd/sdd/md/cftd`ほか | 未対応の実行属性を拒否 | 未実装 | 拒否を継続し、仕様確認後に追加 |
 | ネスト | 5.2.4 | 通常依存階層を実装。ネスト独自スケジュールは拒否 | 一部実装・未達 | ネストの予定・上位ルール対応テストが必要 |
+| Linux上のPCジョブ | ユーザー指定の独自拡張 | ty=pjをLinuxでも受理。teは/bin/sh、sc/prmはローカル実行ファイルと引数。Windowsコマンドの変換はしない | 実装済み・Linux統合テスト済み | PcJobTests |
 | ローカル実行・終了判定 | 5.2.5 pp.1064–1067 `te/sc/prm/wkp/env/etm/jd/wth/tho` | シェル/実行ファイル分離、両出力収集、コード分類 | 実装済み・仕様テスト済み（Linux teとコード判定） | ExecutionTests.ClassifiesActualExitCodes、LogStorageFailureStopsProducer |
 | 自動確定登録・補充・解除維持 | 計画16章（JobRunner独自運用） | 採用IDと基準日固定、決定的な世代キー、カーソル補充、解除行保持 | 実装あり・追加検証未達 | RecoveryTestsで起動登録を検証。ExecutionControlTestsで解除・保留・予定変更の再起動復元も検証。補充中断は未検証 |
 | 即時登録・保留解除 | 独自管理API。JP1互換DTOではない | 操作IDで重複防止、親・先行成功後に開始 | 実装済み・仕様テスト済み | IntegrationTests.RunsRealProcessesThroughStandbyApiAndRecovers |

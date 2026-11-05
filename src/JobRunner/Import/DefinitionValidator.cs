@@ -190,7 +190,8 @@ public static class DefinitionValidator
             throw Error(unit, "警告しきい値は異常しきい値以下にしてください。");
         }
 
-        if ((unit.Type == "j" && OperatingSystem.IsWindows()) || (unit.Type == "pj" && !OperatingSystem.IsWindows()))
+        // pjはLinuxでもローカルコマンドとして受理する独自拡張です。実行方式はホストOSで決めます。
+        if (unit.Type == "j" && OperatingSystem.IsWindows())
         {
             throw Error(unit, "ジョブ種別が実行OSに一致しません。");
         }
