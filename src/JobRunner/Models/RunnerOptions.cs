@@ -54,4 +54,19 @@ public sealed class RunnerOptions
     /// Gets or sets. ローカル実行へ明示的に対応付ける実行エージェント名です。
     /// </summary>
     public List<string> LocalAgents { get; set; } = [];
+
+    /// <summary>Gets or sets. 履歴をBlobへ退避するまでの日数。nullは自動退避しません。</summary>
+    public int? HistoryArchiveAfterDays { get; set; } = null;
+
+    /// <summary>Gets or sets. 結果が確定した試行ログの保持日数。Unknownは期限に関係なく保持します。</summary>
+    public int? LogRetentionDays { get; set; } = null;
+
+    /// <summary>Gets or sets. 完了した操作本文を退避する日数。再送判定の墓標は削除しません。</summary>
+    public int? OperationArchiveAfterDays { get; set; } = null;
+
+    /// <summary>Gets or sets. 所有者実行指定を現在のローカルOSユーザーへ明示的に対応付けるJP1ユーザー名です。</summary>
+    public List<string> LocalUsers { get; set; } = [];
+
+    /// <summary>Gets or sets. 互換APIで受け付けるローカルマネージャー名。別名へのリモート実行はしません。</summary>
+    public string Jp1ManagerName { get; set; } = "localhost";
 }

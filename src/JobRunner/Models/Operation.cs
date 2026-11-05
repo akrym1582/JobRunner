@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace JobRunner.Models;
 
 /// <summary>
@@ -74,4 +76,20 @@ public sealed class Operation
     /// Gets or sets. 登録期間の排他的上限。省略時は継続補充します。
     /// </summary>
     public DateOnly? End { get; set; } = null;
+
+    /// <summary>Gets or sets. サーバーが受付時に記録するUTC時刻。要求ハッシュには含めません。</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? CreatedAt { get; set; } = null;
+
+    /// <summary>Gets or sets. 稼働系が要求の完了または拒否を保存したUTC時刻です。</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? CompletedAt { get; set; } = null;
+
+    /// <summary>Gets or sets. 原要求を退避した不変Blobパス。冪等性の墓標に保持します。</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ArchivePath { get; set; } = null;
+
+    /// <summary>Gets or sets. 登録でルート保留を明示上書きする指定。nullは定義に従います。</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Holding { get; set; } = null;
 }

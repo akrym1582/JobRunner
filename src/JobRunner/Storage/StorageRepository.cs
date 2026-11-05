@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Azure;
+using Azure.Core;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
@@ -14,16 +15,21 @@ namespace JobRunner.Storage;
 /// </summary>
 public sealed class StorageRepository
 {
+    /// <summary>BlobとTableの両方へ適用する送信要求数の計測です。</summary>
+    private readonly RequestCountingPolicy requestCounter = new();
+
     /// <summary>Initializes a new instance of the <see cref="StorageRepository"/> class. 接続先と名前空間を固定したStorageアダプターを作ります。</summary>
     /// <param name="options">接続設定とスケジューラーの識別子です。</param>
     public StorageRepository(RunnerOptions options)
     {
         var blobOptions = new BlobClientOptions(BlobClientOptions.ServiceVersion.V2023_11_03);
+        blobOptions.AddPolicy(requestCounter, HttpPipelinePosition.PerRetry);
         blobOptions.Retry.MaxRetries = 0;
         blobOptions.Retry.NetworkTimeout = TimeSpan.FromSeconds(5);
         Blobs = new BlobServiceClient(options.ConnectionString, blobOptions);
         Container = Blobs.GetBlobContainerClient(options.ManagementContainer);
         var tableOptions = new TableClientOptions();
+        tableOptions.AddPolicy(requestCounter, HttpPipelinePosition.PerRetry);
         tableOptions.Retry.MaxRetries = 0;
         tableOptions.Retry.NetworkTimeout = TimeSpan.FromSeconds(5);
         Table = new TableClient(options.ConnectionString, options.TableName, tableOptions);
@@ -41,6 +47,9 @@ public sealed class StorageRepository
 
     /// <summary>Gets. 禁止文字を含まないSchedulerIdのハッシュです。</summary>
     public string Partition { get; }
+
+    /// <summary>Gets. このインスタンスのBlob/Table送信数。API照会による要求も含みます。</summary>
+    public long RequestCount => requestCounter.Count;
 
     /// <summary>バイト列を安定したSHA-256の小文字16進数へ変換します。</summary>
     /// <param name="bytes">ハッシュ対象の原文などです。</param>

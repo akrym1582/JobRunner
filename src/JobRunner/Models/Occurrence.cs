@@ -74,4 +74,13 @@ public sealed class Occurrence
     /// Gets or sets. スキップや明示解決などの操作理由です。
     /// </summary>
     public string? Reason { get; set; } = null;
+
+    /// <summary>Gets or sets. この世代の結果が確定したUTC時刻。未開始や結果不明ではnullです。</summary>
+    public DateTimeOffset? FinishedAt { get; set; } = null;
+
+    /// <summary>Gets or sets. 退避済みルート一式の不変Blobパス。退避中の復旧にも使います。</summary>
+    public string? ArchivePath { get; set; } = null;
+
+    /// <summary>Gets or sets. 互換API用の不透明な実行ID。ルート世代に保存し、子はRootIdから参照します。</summary>
+    public string? Jp1ExecutionId { get; set; } = null;
 }

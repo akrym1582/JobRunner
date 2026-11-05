@@ -44,6 +44,7 @@ public static class Program
                 await Results.Problem("Storageへの要求が失敗しました。操作IDで結果を再照会してください。", statusCode: 503).ExecuteAsync(context);
             }
         });
+        Controllers.Jp1.Jp1Endpoints.Map(app);
         app.MapGet("/health/live", () => Results.Ok(new { status = "live" }));
         app.MapGet("/health/ready", async (StorageRepository storage, CancellationToken token) =>
         {
@@ -51,13 +52,14 @@ public static class Program
             await storage.GetAsync("leader", token);
             return Results.Ok(new { status = "ready" });
         });
-        app.MapGet("/api/jobrunner/status", (SchedulerWorker worker, SchedulerEngine engine) => new { worker.IsLeader, worker.Epoch, worker.Phase, engine.Namespace });
-        app.MapGet("/api/jobrunner/configuration", () => new { options.SchedulerId, options.DefinitionSources, options.ScheduleTimeMode, options.TimeZone, options.ConfirmedHorizonDays, options.LocalAgents });
+        app.MapGet("/api/jobrunner/status", (SchedulerWorker worker, SchedulerEngine engine, StorageRepository storage) => new { worker.IsLeader, worker.Epoch, worker.Phase, engine.Namespace, storage.RequestCount });
+        app.MapGet("/api/jobrunner/configuration", () => new { options.SchedulerId, options.Jp1ManagerName, options.DefinitionSources, options.ScheduleTimeMode, options.TimeZone, options.ConfirmedHorizonDays, options.LocalAgents, options.LocalUsers, options.HistoryArchiveAfterDays, options.LogRetentionDays, options.OperationArchiveAfterDays });
         app.MapGet("/api/jobrunner/compatibility", () => new
         {
             reference = "JP1/AJS3 V12 3021-3-D28-20",
             comparedWithJp1 = false,
-            unsupported = new[] { "JP1互換HTTP契約", "別形式Schedule/Calendar", "イベント", "待ち合わせ", "条件接続", "相対日", "24時間制の24時以降", "ネストの独立スケジュール", "OSユーザー切り替え" },
+            supportedJp1Actions = new[] { "registerImmediateExec", "changeHold" },
+            unsupported = new[] { "その他のJP1 HTTP操作・完全なエラーID互換", "計画登録", "別形式Schedule/Calendar", "イベント", "待ち合わせ", "条件接続", "相対日", "24時間制の24時以降", "ネストの独立スケジュール", "OSユーザー切り替え" },
         });
         app.MapPost("/api/jobrunner/definitions/validate", (List<SourceEvidence> sources, DefinitionService definitions) => definitions.Validate(sources));
         app.MapPost("/api/jobrunner/definitions/import", async (List<SourceEvidence> sources, DefinitionService definitions, CancellationToken token) =>
@@ -82,10 +84,22 @@ public static class Program
         app.MapGet("/api/jobrunner/operations/{id}", async (string id, StorageRepository storage, CancellationToken token) =>
         {
             var row = await storage.GetAsync("command:" + StorageRepository.Hash(id), token);
-            return row is null ? Results.NotFound() : Results.Ok(StorageRepository.Read<Operation>(row));
+            return row is null ? Results.NotFound() : Results.Ok(await HistoryRetentionService.ReadOperationAsync(row, storage, token));
         });
         app.MapGet("/api/jobrunner/executions", async (StorageRepository storage, CancellationToken token) =>
             (await storage.ListAsync("occurrence:", token)).Select(StorageRepository.Read<Occurrence>));
+        app.MapGet("/api/jobrunner/executions/{id}/archive", async (string id, StorageRepository storage, CancellationToken token) =>
+        {
+            var row = await storage.GetAsync("occurrence:" + id, token);
+            var occurrence = row is null ? null : StorageRepository.Read<Occurrence>(row);
+            if (occurrence?.ArchivePath is null)
+            {
+                return Results.NotFound();
+            }
+
+            var data = await storage.Container.GetBlobClient(occurrence.ArchivePath).DownloadContentAsync(token);
+            return Results.Ok(data.Value.Content.ToObjectFromJson<HistoryArchive>());
+        });
         app.MapGet("/api/jobrunner/registrations", async (StorageRepository storage, CancellationToken token) =>
             (await storage.ListAsync("registration:", token)).Select(StorageRepository.Read<Registration>));
         app.MapGet("/api/jobrunner/executions/{id}/attempts", async (string id, StorageRepository storage, CancellationToken token) =>
@@ -134,9 +148,13 @@ public static class Program
 
         operation.Status = "Pending";
         operation.Result = null;
+        operation.CreatedAt = null;
+        operation.CompletedAt = null;
+        operation.ArchivePath = null;
         operation.RequestHash = string.Empty;
         operation.StateNamespace = string.Empty;
         operation.RequestHash = StorageRepository.Hash(JsonSerializer.Serialize(operation));
+        operation.CreatedAt = DateTimeOffset.UtcNow;
         string key = "command:" + StorageRepository.Hash(operation.Id);
         var active = await storage.GetAsync("definition-active", token);
         if (active is null)
@@ -152,7 +170,7 @@ public static class Program
         catch (RequestFailedException ex) when (ex.Status == 409)
         {
             var current = StorageRepository.Read<Operation>((await storage.GetAsync(key, token))!);
-            return current.RequestHash == operation.RequestHash ? Results.Ok(current) : Results.Conflict(new { error = "同じ操作IDに異なる内容が指定されています。" });
+            return current.RequestHash == operation.RequestHash ? Results.Ok(await HistoryRetentionService.ReadOperationAsync((await storage.GetAsync(key, token))!, storage, token)) : Results.Conflict(new { error = "同じ操作IDに異なる内容が指定されています。" });
         }
 
         return Results.Accepted($"/api/jobrunner/operations/{Uri.EscapeDataString(operation.Id)}", operation);

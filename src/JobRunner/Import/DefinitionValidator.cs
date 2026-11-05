@@ -61,6 +61,11 @@ public static class DefinitionValidator
                 }
             }
 
+            if (unit.PermissionMode is { Length: 4 } mode && mode[0] >= '4' && (unit.OwnerName is null || !options.LocalUsers.Contains(unit.OwnerName, StringComparer.Ordinal)))
+            {
+                throw Error(unit, "所有者実行のJP1ユーザーをLocalUsersで現在のOSユーザーへ明示的に対応付けてください。");
+            }
+
             if (unit.Get("ex") is { Length: > 0 } agent && !options.LocalAgents.Contains(agent, StringComparer.Ordinal))
             {
                 throw Error(unit, "実行先をLocalAgentsへ明示的に対応付けてください。");

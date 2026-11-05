@@ -22,6 +22,11 @@ public sealed class DefinitionService(StorageRepository storage, RunnerOptions o
             throw new FormatException("時間制、先読み日数、同時実行数、SchedulerIdを確認してください。");
         }
 
+        if (new[] { options.HistoryArchiveAfterDays, options.LogRetentionDays, options.OperationArchiveAfterDays }.Any(days => days is <= 0))
+        {
+            throw new FormatException("保持期間は未指定または正の日数で指定してください。");
+        }
+
         TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
         if (options.DefinitionSources.Count == 0)
         {
@@ -164,7 +169,11 @@ public sealed class DefinitionService(StorageRepository storage, RunnerOptions o
 
     /// <summary>意味を変える設定を決定的にハッシュ化します。</summary>
     /// <returns>時間制・タイムゾーン・実行先に対応したハッシュです。</returns>
-    public string SettingsHash() => StorageRepository.Hash(JsonSerializer.Serialize(new { options.ScheduleTimeMode, options.TimeZone, options.ConfirmedHorizonDays, Agents = options.LocalAgents.Order(StringComparer.Ordinal) }));
+    public string SettingsHash()
+    {
+        string original = StorageRepository.Hash(JsonSerializer.Serialize(new { options.ScheduleTimeMode, options.TimeZone, options.ConfirmedHorizonDays, Agents = options.LocalAgents.Order(StringComparer.Ordinal) }));
+        return options.LocalUsers.Count == 0 ? original : StorageRepository.Hash(JsonSerializer.Serialize(new { BaseSettings = original, Users = options.LocalUsers.Order(StringComparer.Ordinal) }));
+    }
 
     /// <summary>親グループを補完し、全体を検証してからハッシュを確定します。</summary>
     /// <param name="bundle">すべての入力を解析した一式です。</param>

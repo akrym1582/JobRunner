@@ -20,18 +20,23 @@
 | ConfirmedHorizonDays | 32。1〜366日 |
 | MaxConcurrency | 4。1〜128プロセス |
 | LocalAgents | 空。ex属性をローカルへ対応付ける名前の許可一覧 |
+| LocalUsers | 空。所有者実行指定を現在のOSユーザーへ対応付けるJP1ユーザー名の許可一覧 |
+| Jp1ManagerName | `localhost`。JP1形式APIで受理するmanager |
+| HistoryArchiveAfterDays | 未指定。完了ルート一式をBlobへ退避する正の保持日数 |
+| LogRetentionDays | 未指定。結果が確定した試行ログを削除する正の保持日数 |
+| OperationArchiveAfterDays | 未指定。完了・拒否した操作本文をBlobへ退避する正の保持日数 |
 
 Blobの内容変更、配置先・入力一覧変更、時間制等の設定変更は新しい採用IDに分離します。同内容への切り戻しも別採用です。同じ入力・設定の通常再起動では採用ID、登録、保留、変更済み予定、履歴を維持します。入力のETagだけが変わっても再登録しません。文字コードは解釈を変えるため定義ハッシュへ含めます。
 
 ## 管理API
 
-ここに記載するのはJobRunner独自APIです。JP1互換HTTP APIは未実装です。
+ここに記載するのはJobRunner独自APIです。JP1形式の対応操作は後述します。
 
 | API | 内容 |
 | --- | --- |
 | GET `/health/live` | プロセス稼働 |
 | GET `/health/ready` | 現時点のBlob/Table到達確認。スケジューラーReadyとは別 |
-| GET `/api/jobrunner/status` | IsLeader、Epoch、Phase、Namespace |
+| GET `/api/jobrunner/status` | IsLeader、Epoch、Phase、Namespace、プロセス内のStorage SDK送信回数RequestCount |
 | GET `/api/jobrunner/configuration` | 秘密接続設定を除く実効入力一覧 |
 | GET `/api/jobrunner/compatibility` | 未対応分類と実機未比較の表示 |
 | POST `/api/jobrunner/definitions/validate` | 原文を解析・検証。登録しない |
@@ -42,6 +47,7 @@ Blobの内容変更、配置先・入力一覧変更、時間制等の設定変�
 | GET `/api/jobrunner/operations/{id}` | Pending/Completed/Rejectedと結果 |
 | GET `/api/jobrunner/registrations` | 全採用領域の登録 |
 | GET `/api/jobrunner/executions` | 全採用領域の世代 |
+| GET `/api/jobrunner/executions/{id}/archive` | 退避済みルートの元の世代・試行JSONとETag |
 | GET `/api/jobrunner/executions/{id}/attempts` | 再実行を含む試行履歴 |
 | GET `/api/jobrunner/executions/{id}/logs` | 試行・出力別の分割ログパス一覧 |
 | GET `/api/jobrunner/logs?path=...` | 個別ログチャンク |
@@ -77,7 +83,7 @@ Blobの内容変更、配置先・入力一覧変更、時間制等の設定変�
 
 即時登録にもDueを必須とし、再処理で日時を変えません。初期化基準より前の予定はスキップします。Confirmedは固定定義から先読み補充します。Unregisterは対象登録IDを指定し、未開始ルートを止め、解除済み行を残します。
 
-世代IDをtargetとする操作はHold、Release、Move（due必須）、Restore、Cancel、Stop、Rerun、Resolveです。状態が適合しない操作はRejectedとなります。保留解除や再実行では先行・親の状態も開始条件になります。Stop後の副作用を判定できない場合はUnknownとします。Rerunは新しいattemptIdを発行し、以前の試行を保存します。
+世代IDをtargetとする操作はHold、Release、Move（due必須）、Restore、Cancel、Stop、Rerun、Resolveです。状態が適合しない操作はRejectedとなります。保留解除や再実行では先行・親の状態も開始条件になります。Stop後の副作用を判定できない場合はUnknownとします。RerunはFailed/TimedOutの末端ジョブに新しいattemptIdを発行し、以前の試行を保存します。失敗した祖先ネットをRunningへ戻しますが、完了した兄弟は再実行しません。ネット一括再実行は拒否します。
 
 要求Idは1〜128文字。同じId・同じ内容は保存済み結果を返し、異なる内容は409です。新規受付は202と照会URLを返します。変更は稼働系で行います。受付時の採用IDをサーバーが固定し、処理前に版が変わった要求を別版へ誤適用しません。HTTPタイムアウトだけで未実行とは判断せず、同じIdで照会してください。
 
@@ -97,4 +103,35 @@ Blob/TableとOSの起動は一括トランザクションではありません�
 4. Unknownの試行について旧ホストと外部業務の結果を確認する。結果を確認せず再実行しない。
 5. 根拠を記したResolve操作を送信し、後続の再開と操作結果を確認する。
 
-同じ定義と設定だけでなく、実行ファイル、作業ディレクトリ、OSユーザー環境を各ホストへ配備してください。ローカル生成ファイルを別ホストへ引き継ぐ機構はありません。ログは8Ki文字ごとのチャンクで保存し、完全保存はattemptのLogsCompleteで確認します。履歴・ログの自動保持期限処理は未実装です。
+同じ定義と設定だけでなく、実行ファイル、作業ディレクトリ、OSユーザー環境を各ホストへ配備してください。ローカル生成ファイルを別ホストへ引き継ぐ機構はありません。ログは8Ki文字ごとのチャンクで保存し、完全保存はattemptのLogsCompleteで確認します。保持期限の設定と退避方法は後述します。
+
+## JP1形式の即時登録・保留変更
+
+以下のPOSTを提供します。ユニット完全名はURLエンコードします。
+
+- `/ajs/api/v1/objects/definitions/{unit}/actions/registerImmediateExec/invoke`
+- `/ajs/api/v1/objects/statuses/{unit:execID}/actions/changeHold/invoke`
+
+即時登録の例:
+
+```json
+{"parameters":{"manager":"localhost","serviceName":"default","holding":true}}
+```
+
+保留変更では同じmanager/serviceNameに `"holdAttr":"SET"` または `"holdAttr":"RELEASE"` を指定します。serviceNameはSchedulerIdに一致させます。即時登録の成功は200と `{"execID":"@A0001"}` 形式、保留変更の成功は200と空本文です。execIDはSchedulerId内で永続化された独自の単調採番で、JP1内部の採番順序を保証しません。
+
+任意の `X-JobRunner-Request-Id`（最大100文字）で同じ要求の再送を識別できます。異内容は409、同内容は同じ結果です。応答の `X-JobRunner-Operation-Id` は独自管理APIの照会に使用できます。30秒以内に処理結果を確認できなければ500を返しますが、受付済み操作を取り消しません。
+
+未対応の起動条件、非空macro、未知パラメーターは400で拒否します。エラー本文はerrorSource/message/messageID/application/extensions形式です。確認済みの必須引数不足以外はJobRunner独自メッセージIDを返します。計画・確定登録など他のJP1 API操作、完全なエラーID互換、実JP1比較は未対応です。
+
+## 履歴・ログ・操作要求の保持期限
+
+3種類の保持日数は個別指定で、未指定は新たな期限処理を行いません。稼働系が起動後と約1分ごとに処理します。既に開始した履歴退避は、設定を解除しても起動後に再開します。
+
+ルートと全子世代・全試行の結果が確定し、ルート終了時刻からHistoryArchiveAfterDaysを経過した場合、不変Blobへ原JSON・ETagを保存してからTable詳細を削除します。Archivingは処理途中、Archivedは完了です。途中停止は保存済みETagで再開し、変更された行を削除しません。ルートIDと退避先はTableへ残し、世代の再生成を防止します。退避後の詳細はルートの `/archive` から取得してください。通常の `/attempts` には削除済み詳細は含まれません。
+
+Unknown、実行中、保留中、未開始の子がある履歴は退避しません。Failedネットでも未開始後続があれば保持します。手動解決した世代についても元の試行がUnknownなら履歴とそのログを自動削除しません。旧データで終了時刻がない場合も保持します。
+
+LogRetentionDaysは既知の終了試行だけに適用し、履歴退避とは独立しています。期限削除したログは一覧から消えます。履歴Blobはログ本文を含まず、ログ削除後に復元する機能はありません。
+
+完了・拒否した操作はOperationArchiveAfterDays後に本文をBlobへ退避します。同じIDを再受理しないようハッシュ・結果をTableへ残し、照会APIは元の操作を復元して返します。履歴Blob、操作Blob、重複防止用の墓標に自動削除期限は設けていません。

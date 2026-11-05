@@ -36,6 +36,9 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
     /// <summary>すべての状態変更とOS起動の直前に確認する権限です。</summary>
     private LeaderCoordinator? leader;
 
+    /// <summary>保持期限の全件走査を毎回のポーリングで行わないための次回確認時刻です。</summary>
+    private DateTimeOffset nextRetentionCheck;
+
     /// <summary>Gets. 現在採用している状態領域。初期化前はnullです。</summary>
     public string? Namespace => active?.Id;
 
@@ -73,6 +76,7 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
             else if (occurrence.Namespace == active!.Id && occurrence.Id == occurrence.RootId && !occurrence.Started && occurrence.State == "Waiting" && occurrence.Due < recoveryTime)
             {
                 occurrence.State = "Skipped";
+                occurrence.FinishedAt = recoveryTime;
                 occurrence.Reason = "復旧基準時刻より前の未開始予定です。";
                 await CommitAsync([Update(row, occurrence)], cancellationToken);
             }
@@ -86,6 +90,12 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
     {
         leader!.Ensure();
         await CollectAsync(cancellationToken);
+        if (clock.GetUtcNow() >= nextRetentionCheck && (nextRetentionCheck == default || options.HistoryArchiveAfterDays is not null || options.LogRetentionDays is not null || options.OperationArchiveAfterDays is not null))
+        {
+            await new HistoryRetentionService(storage, options, clock).SweepAsync(CommitAsync, leader.Ensure, cancellationToken);
+            nextRetentionCheck = clock.GetUtcNow().AddMinutes(1);
+        }
+
         foreach (var commandRow in await storage.ListAsync("command:", cancellationToken))
         {
             var operation = StorageRepository.Read<Operation>(commandRow);
@@ -95,19 +105,26 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
             }
         }
 
-        foreach (var registrationRow in await storage.ListAsync($"registration:{active!.Id}:", cancellationToken))
+        var registrationRows = await storage.ListAsync($"registration:{active!.Id}:", cancellationToken);
+        foreach (var registrationRow in registrationRows)
         {
             await ReplenishAsync(registrationRow, cancellationToken);
         }
 
+        // このTick中は操作適用が終わっているため、解除状態を一度の列挙から参照できます。
+        // ジョブごとに同じ登録を読み直すStorage要求をなくします。
+        var registrations = registrationRows.Select(StorageRepository.Read<Registration>).ToDictionary(r => r.Id, StringComparer.Ordinal);
         var rows = await storage.ListAsync("occurrence:", cancellationToken);
+        var archivedRoots = rows.Select(StorageRepository.Read<Occurrence>).Where(o => o.State is "Archiving" or "Archived").Select(o => o.RootId).ToHashSet(StringComparer.Ordinal);
+        rows = rows.Where(r => !archivedRoots.Contains(StorageRepository.Read<Occurrence>(r).RootId)).ToList();
         var all = rows.ToDictionary(r => StorageRepository.Read<Occurrence>(r).Id, r => (Row: r, Value: StorageRepository.Read<Occurrence>(r)), StringComparer.Ordinal);
         var units = bundle!.Units.Flatten().ToDictionary(u => u.Path, StringComparer.Ordinal);
+        var memberPaths = all.Values.GroupBy(v => v.Value.RootId).ToDictionary(g => g.Key, g => g.Select(v => v.Value.UnitPath).ToHashSet(StringComparer.Ordinal), StringComparer.Ordinal);
         foreach (var network in all.Values.Where(v => v.Value.Namespace == active!.Id && units[v.Value.UnitPath].Type == "n"))
         {
             foreach (var child in units[network.Value.UnitPath].Children)
             {
-                if (!all.Values.Any(v => v.Value.RootId == network.Value.RootId && v.Value.UnitPath == child.Path))
+                if (!memberPaths[network.Value.RootId].Contains(child.Path))
                 {
                     throw new InvalidDataException("世代の子ユニットが欠損しています。成功扱いや部分実行はできません。");
                 }
@@ -120,8 +137,17 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
             if (occurrence.State == "Waiting" && occurrence.Due <= clock.GetUtcNow())
             {
                 var unit = units[occurrence.UnitPath];
-                var registrationRow = await storage.GetAsync($"registration:{occurrence.Namespace}:{occurrence.RegistrationId}", cancellationToken) ?? throw new InvalidDataException("登録行が欠損しています。");
-                if (StorageRepository.Read<Registration>(registrationRow).Disabled && !all[occurrence.RootId].Value.Started)
+                if (unit.Type != "n" && running.Count >= options.MaxConcurrency)
+                {
+                    continue;
+                }
+
+                if (!registrations.TryGetValue(occurrence.RegistrationId, out var registration))
+                {
+                    throw new InvalidDataException("登録行が欠損しています。");
+                }
+
+                if (registration.Disabled && !all[occurrence.RootId].Value.Started)
                 {
                     continue;
                 }
@@ -164,6 +190,16 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
                 if (children.All(c => c.State is "Succeeded" or "Warning"))
                 {
                     occurrence.State = children.Any(c => c.State == "Warning") ? "Warning" : "Succeeded";
+                    occurrence.FinishedAt = clock.GetUtcNow();
+                    await CommitAsync([Update(item.Row, occurrence)], cancellationToken);
+                }
+                else if (children.Any(c => c.State is "Failed" or "TimedOut")
+                    && !children.Any(c => c.State is "Running" or "Starting" or "Unknown" or "Held")
+                    && !children.Any(c => c.State == "Waiting" && DependenciesReady(c, units, all.Values.Select(v => v.Value))))
+                {
+                    // 独立した後続が開始可能なら先に実行します。異常先行で待つ後続だけになった時点で結果を確定します。
+                    occurrence.State = "Failed";
+                    occurrence.FinishedAt = clock.GetUtcNow();
                     await CommitAsync([Update(item.Row, occurrence)], cancellationToken);
                 }
             }
@@ -194,6 +230,22 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
         }
 
         running.Clear();
+    }
+
+    /// <summary>公式の実行ID書式を保った独自採番を行い、上限到達時は再利用せず停止します。</summary>
+    /// <param name="sequence">SchedulerId全体で単調増加する番号です。</param>
+    /// <returns>任意の数字接頭辞、英大文字、4桁数字からなる不透明なIDです。</returns>
+    private static string FormatExecutionId(long sequence)
+    {
+        long prefix = sequence / 260000;
+        if (prefix > 9999)
+        {
+            throw new InvalidOperationException("互換APIの実行ID領域を使い切りました。IDは再利用できません。");
+        }
+
+        char letter = (char)('A' + ((sequence / 10000) % 26));
+        string start = prefix == 0 ? string.Empty : prefix.ToString("D4", System.Globalization.CultureInfo.InvariantCulture);
+        return $"@{start}{letter}{sequence % 10000:D4}";
     }
 
     /// <summary>親ネットと先行の成功を確認して後続を許可します。</summary>
@@ -351,6 +403,12 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
     private async Task CreateOccurrenceAsync(Registration registration, SchedulePoint point, UnitDefinition root, CancellationToken cancellationToken)
     {
         string rootId = StorageRepository.Hash(JsonSerializer.Serialize(new { registration.Namespace, registration.Id, point.Rule, point.BusinessDate, point.Due }));
+        var existingRoot = await storage.GetAsync("occurrence:" + rootId, cancellationToken);
+        if (existingRoot is not null && StorageRepository.Read<Occurrence>(existingRoot).State is "Archiving" or "Archived")
+        {
+            return;
+        }
+
         foreach (var unit in new[] { root }.Flatten())
         {
             string id = unit.Path == root.Path ? rootId : StorageRepository.Hash(rootId + ":" + unit.Path);
@@ -372,15 +430,26 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
                 Rule = point.Rule,
                 Due = point.Due,
                 OriginalDue = point.Due,
-                State = unit.Get("ha", "n") == "y" ? "Held" : "Waiting",
+                State = (unit.Path == root.Path && registration.Holding is bool holding ? holding : unit.Get("ha", "n") == "y") ? "Held" : "Waiting",
             };
             if (unit.Path == root.Path && point.Due < active!.Baseline)
             {
                 occurrence.State = "Skipped";
+                occurrence.FinishedAt = active.Baseline;
                 occurrence.Reason = "初期化基準時刻より前の予定です。";
             }
 
-            await CommitAsync([Add(key, occurrence)], cancellationToken);
+            if (id == rootId)
+            {
+                var sequenceRow = await storage.GetAsync("execution-sequence", cancellationToken);
+                long sequence = (sequenceRow is null ? 0 : StorageRepository.Read<long>(sequenceRow)) + 1;
+                occurrence.Jp1ExecutionId = FormatExecutionId(sequence);
+                await CommitAsync([Add(key, occurrence), sequenceRow is null ? Add("execution-sequence", sequence) : Update(sequenceRow, sequence)], cancellationToken);
+            }
+            else
+            {
+                await CommitAsync([Add(key, occurrence)], cancellationToken);
+            }
         }
     }
 
@@ -444,6 +513,7 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
 
             attempt.FinishedAt = attempt.State == "Unknown" ? null : clock.GetUtcNow();
             occurrence.State = attempt.State;
+            occurrence.FinishedAt = attempt.FinishedAt;
             await CommitAsync([Update(row!, occurrence), Update(attemptRow!, attempt)], cancellationToken);
             item.Stop.Dispose();
             running.Remove(id);
@@ -491,7 +561,7 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
                 string key = $"registration:{active!.Id}:{id}";
                 var current = await storage.GetAsync(key, cancellationToken);
                 var day = BusinessToday(clock.GetUtcNow());
-                var registration = current is null ? new Registration { Id = id, Namespace = active.Id, RootPath = root.Path, Kind = operation.RegistrationKind, Anchor = day, Through = day.AddDays(-1), End = operation.End } : StorageRepository.Read<Registration>(current);
+                var registration = current is null ? new Registration { Id = id, Namespace = active.Id, RootPath = root.Path, Kind = operation.RegistrationKind, Anchor = day, Through = day.AddDays(-1), End = operation.End, Holding = operation.Holding } : StorageRepository.Read<Registration>(current);
                 if (current is null)
                 {
                     await CommitAsync([Add(key, registration)], cancellationToken);
@@ -522,6 +592,11 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
             {
                 var row = await storage.GetAsync("occurrence:" + operation.Target, cancellationToken) ?? throw new FormatException("世代がありません。");
                 var occurrence = StorageRepository.Read<Occurrence>(row);
+                if (occurrence.Namespace != active.Id && operation.Kind != "Resolve")
+                {
+                    throw new FormatException("旧採用領域の世代は結果不明の解決だけを受け付けます。");
+                }
+
                 if (operation.ExpectedState is not null && occurrence.State != operation.ExpectedState)
                 {
                     throw new FormatException("期待状態が一致しません。");
@@ -543,13 +618,31 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
                         break;
                     case "Cancel" when occurrence.State is "Waiting" or "Held":
                         occurrence.State = "Cancelled";
+                        occurrence.FinishedAt = clock.GetUtcNow();
                         break;
                     case "Stop" when running.TryGetValue(occurrence.Id, out var task):
                         await task.Stop.CancelAsync();
                         break;
                     case "Rerun" when occurrence.State is "Failed" or "TimedOut":
+                        if (bundle!.Units.Flatten().Single(u => u.Path == occurrence.UnitPath).Type == "n")
+                        {
+                            throw new FormatException("再実行する末端ジョブを指定してください。ネット一括再実行の方式は未対応です。");
+                        }
+
                         occurrence.State = "Waiting";
                         occurrence.AttemptId = null;
+                        occurrence.FinishedAt = null;
+                        foreach (var ancestorRow in await storage.ListAsync("occurrence:", cancellationToken))
+                        {
+                            var ancestor = StorageRepository.Read<Occurrence>(ancestorRow);
+                            if (ancestor.RootId == occurrence.RootId && ancestor.State == "Failed" && occurrence.UnitPath.StartsWith(ancestor.UnitPath + "/", StringComparison.Ordinal))
+                            {
+                                ancestor.State = "Running";
+                                ancestor.FinishedAt = null;
+                                changes.Add(Update(ancestorRow, ancestor));
+                            }
+                        }
+
                         break;
                     case "Resolve" when occurrence.State == "Unknown":
                         if (operation.ExpectedState != "Unknown" || string.IsNullOrWhiteSpace(operation.Reason) || operation.AttemptId != occurrence.AttemptId || operation.Resolution is not ("Succeeded" or "Failed"))
@@ -558,6 +651,7 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
                         }
 
                         occurrence.State = operation.Resolution;
+                        occurrence.FinishedAt = clock.GetUtcNow();
                         occurrence.Reason = operation.Reason;
                         break;
                     default:
@@ -576,6 +670,7 @@ public sealed class SchedulerEngine(StorageRepository storage, DefinitionService
             operation.Result = ex.Message;
         }
 
+        operation.CompletedAt = clock.GetUtcNow();
         changes.Add(Update(commandRow, operation));
         await CommitAsync(changes, cancellationToken);
     }

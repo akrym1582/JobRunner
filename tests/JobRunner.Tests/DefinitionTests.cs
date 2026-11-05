@@ -77,6 +77,31 @@ public sealed class DefinitionTests
         Assert.Throws<FormatException>(() => service.Validate([Source("a", "/"), Source("b", "/")]));
     }
 
+    /// <summary>所有者はメタデータとして保持し、所有者実行の指定だけ明示的なローカル対応を要求します。</summary>
+    [Fact]
+    public void ParsesHeaderWithoutImplicitUserSwitch()
+    {
+        var units = Jp1DefinitionParser.Parse("unit=net,0000,owner,group_1;{ty=n;}", new DefinitionSource());
+        DefinitionValidator.Validate(units, new RunnerOptions());
+        Assert.Equal("owner", units[0].OwnerName);
+        Assert.Equal("group_1", units[0].ResourceGroup);
+        Assert.Equal("0000", units[0].PermissionMode);
+        units[0].PermissionMode = "4000";
+        Assert.Throws<FormatException>(() => DefinitionValidator.Validate(units, new RunnerOptions()));
+        DefinitionValidator.Validate(units, new RunnerOptions { LocalUsers = ["owner"] });
+    }
+
+    /// <summary>許可モードと資源グループを任意テキストとして受け入れないことを確認します。</summary>
+    /// <param name="header">公式の構文制約に違反するヘッダーです。</param>
+    [Theory]
+    [InlineData("net,8888,owner,group")]
+    [InlineData("net,0000,owner,bad-group")]
+    [InlineData("net,0000,owner,group,extra")]
+    public void RejectsInvalidHeader(string header)
+    {
+        Assert.Throws<FormatException>(() => Jp1DefinitionParser.Parse($"unit={header};{{ty=n;}}", new DefinitionSource()));
+    }
+
     /// <summary>API入力用に原文バイト列を保持した証跡を作ります。</summary>
     /// <param name="file">入力ファイルの識別名です。</param>
     /// <param name="target">配置先の親です。</param>

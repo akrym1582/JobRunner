@@ -30,6 +30,6 @@ import xml.etree.ElementTree as ET
 path = Path('tests/JobRunner.Tests/TestResults/verification.trx')
 root = ET.parse(path).getroot()
 counters = root.find('.//{*}Counters')
-assert counters is not None and int(counters.attrib['executed']) >= 29, '必須テストの検出件数が不足しています'
+assert counters is not None and int(counters.attrib['executed']) >= 44, '必須テストの検出件数が不足しています'
 assert int(counters.attrib['failed']) == 0
 PY

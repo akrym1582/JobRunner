@@ -17,4 +17,6 @@ jobs:
         if: always()
         with:
           name: test-results
-          path: tests/JobRunner.Tests/TestResults/*.trx
+          path: |
+            tests/JobRunner.Tests/TestResults/*.trx
+            tests/JobRunner.Tests/TestResults/scale.json

@@ -70,4 +70,23 @@ public sealed class StorageTests
         await storage.Container.DeleteIfExistsAsync();
         await storage.Table.DeleteAsync();
     }
+
+    /// <summary>UTC補正では権限を延長せず、単調時計の安全期限で起動権限を失うことを確認します。</summary>
+    /// <returns>実Blobリースとローカル期限の検証です。</returns>
+    [Fact]
+    public async Task MonotonicDeadlineRejectsResumedOwnerDespiteUtcRollback()
+    {
+        await using var scope = new StorageScope();
+        await scope.Repository.InitializeAsync(CancellationToken.None);
+        var clock = new LeaseClock();
+        await using var leader = new LeaderCoordinator(scope.Repository, clock);
+        Assert.True(await leader.AcquireAsync(CancellationToken.None));
+        clock.Utc = clock.Utc.AddYears(1);
+        Assert.True(leader.IsLeader);
+        clock.Utc = clock.Utc.AddYears(-2);
+        clock.ElapsedTicks = TimeSpan.FromSeconds(40).Ticks;
+        Assert.False(leader.IsLeader);
+        Assert.Throws<InvalidOperationException>(leader.Ensure);
+        Assert.True(leader.Lost.IsCancellationRequested);
+    }
 }

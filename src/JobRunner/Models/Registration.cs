@@ -44,4 +44,7 @@ public sealed class Registration
     /// Gets or sets a value indicating whether. 解除された登録を補充や再起動で復活させないための印です。
     /// </summary>
     public bool Disabled { get; set; } = false;
+
+    /// <summary>Gets or sets. ルートの保留を登録時に明示上書きする指定。nullは定義に従います。</summary>
+    public bool? Holding { get; set; } = null;
 }

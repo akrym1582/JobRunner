@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace JobRunner.Models;
 
 /// <summary>
@@ -39,4 +41,16 @@ public sealed class UnitDefinition
     /// Gets or sets. 原文で定義された下位ユニットです。
     /// </summary>
     public List<UnitDefinition> Children { get; set; } = [];
+
+    /// <summary>Gets or sets. 原文ヘッダーの4桁8進許可モードです。省略時は旧形式との保存互換のためnullです。</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? PermissionMode { get; set; }
+
+    /// <summary>Gets or sets. 原文ヘッダーの所有JP1ユーザー名です。OSユーザーを自動変更する指定ではありません。</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? OwnerName { get; set; }
+
+    /// <summary>Gets or sets. 原文ヘッダーのJP1資源グループ名です。API認証は実装対象外のため属性として保持します。</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ResourceGroup { get; set; }
 }

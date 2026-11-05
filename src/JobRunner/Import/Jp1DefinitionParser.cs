@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using JobRunner.Models;
 
 namespace JobRunner.Import;
@@ -81,10 +82,19 @@ public sealed class Jp1DefinitionParser
             ExpectWord("unit");
             Expect('=');
             string header = Value();
-            string name = header.Split(',')[0].Trim();
-            if (header.Contains(',') || name.Length == 0 || name.Contains('/') || name is "." or "..")
+            string[] fields = header.Split(',').Select(f => f.Trim()).ToArray();
+            string name = fields[0];
+            if (fields.Length > 4 || name.Length == 0 || name.Contains('/') || name is "." or "..")
             {
-                throw Error("所有者・許可属性または絶対名の基点解決は未対応です。単純ユニット名を指定してください。");
+                throw Error("ヘッダーは名前・許可モード・所有者・資源グループです。絶対名の基点解決は未対応です。");
+            }
+
+            string? mode = fields.Length > 1 && fields[1].Length > 0 ? fields[1] : null;
+            string? owner = fields.Length > 2 && fields[2].Length > 0 ? fields[2] : null;
+            string? resource = fields.Length > 3 && fields[3].Length > 0 ? fields[3] : null;
+            if ((mode is not null && !Regex.IsMatch(mode, "^[0-7]{4}$")) || (resource is not null && !Regex.IsMatch(resource, "^[a-zA-Z0-9_]{1,63}$")))
+            {
+                throw Error("許可モードまたは資源グループの指定が不正です。");
             }
 
             var unit = new UnitDefinition
@@ -93,6 +103,9 @@ public sealed class Jp1DefinitionParser
                 Path = parent.TrimEnd('/') + "/" + name,
                 Line = startLine,
                 Source = source,
+                PermissionMode = mode,
+                OwnerName = owner,
+                ResourceGroup = resource,
             };
             Expect('{');
             while (true)
