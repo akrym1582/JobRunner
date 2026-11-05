@@ -1,0 +1,21 @@
+/* UNIX用の安全な例。時刻はAsia/Tokyoの業務日で解釈します。 */
+unit=daily;
+{
+    ty=n;
+    jc=/business;
+    sd=1,en;
+    st=1,12:00;
+    cy=1,(1,d);
+    sh=1,ca;
+    ar=(f=first,t=second,seq);
+    unit=first;
+    {
+        ty=j;
+        te="printf 'first job\n'";
+    }
+    unit=second;
+    {
+        ty=j;
+        te="printf 'second job\n'";
+    }
+}
