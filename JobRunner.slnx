@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/JobRunner/JobRunner.csproj" />
+  <Project Path="tests/JobRunner.Tests/JobRunner.Tests.csproj" />
+</Solution>
