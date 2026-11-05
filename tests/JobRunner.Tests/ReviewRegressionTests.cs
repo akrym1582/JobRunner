@@ -137,4 +137,50 @@ public sealed class ReviewRegressionTests
         var saved = Assert.Single(history.Rows, r => r.Key == "attempt:" + child.AttemptId);
         Assert.Equal(resolution, System.Text.Json.JsonSerializer.Deserialize<JobAttempt>(saved.Json)!.State);
     }
+
+    /// <summary>長期停止前の部分世代を、生成の各中断点から安全に補完します。</summary>
+    /// <param name="childrenToKeep">停止時に保存済みの子の件数です。</param>
+    /// <param name="futureCount">件数方式の枠。nullは日数方式です。</param>
+    /// <returns>過去の世代を再実行せずに未来の世代が完了することを確認します。</returns>
+    [Theory]
+    [InlineData(0, null)]
+    [InlineData(1, null)]
+    [InlineData(2, null)]
+    [InlineData(0, 1)]
+    [InlineData(1, 1)]
+    [InlineData(2, 1)]
+    public async Task RepairsPartialGenerationAfterLongOutage(int childrenToKeep, int? futureCount)
+    {
+        await using var scenario = new EngineScenario();
+        scenario.Scope.Options.ConfirmedFutureGenerations = futureCount;
+        await scenario.StartAsync("unit=net;{ty=n;sd=2026/11/5;st=10:00;cy=(1,d);sh=no;unit=a;{ty=j;te=\"true\";}unit=b;{ty=j;te=\"true\";}}");
+        var storage = scenario.Scope.Repository;
+        var rows = await storage.ListAsync("occurrence:", CancellationToken.None);
+        var rootRow = Assert.Single(rows, r => StorageRepository.Read<Occurrence>(r).Id == StorageRepository.Read<Occurrence>(r).RootId);
+        var root = StorageRepository.Read<Occurrence>(rootRow);
+        var children = rows.Where(r => StorageRepository.Read<Occurrence>(r).RootId == root.Id && r.RowKey != rootRow.RowKey).OrderBy(r => r.RowKey).ToList();
+        Assert.Equal(2, children.Count);
+        root.Materialized = false;
+        await storage.Table.UpdateEntityAsync(storage.Entity(rootRow.RowKey, root), rootRow.ETag, TableUpdateMode.Replace);
+        foreach (var child in children.Skip(childrenToKeep))
+        {
+            await storage.Table.DeleteEntityAsync(storage.Partition, child.RowKey, child.ETag);
+        }
+
+        scenario.Clock.Now = scenario.Clock.Now.AddDays(10);
+        await scenario.RestartAsync();
+        await scenario.Engine.TickAsync(CancellationToken.None);
+        var repaired = (await scenario.OccurrencesAsync()).Where(o => o.RootId == root.Id).ToList();
+        Assert.Equal(3, repaired.Count);
+        var oldRoot = Assert.Single(repaired, o => o.Id == root.Id);
+        Assert.True(oldRoot.Materialized);
+        Assert.Equal("Skipped", oldRoot.State);
+        Assert.Empty(await storage.ListAsync("attempt:", CancellationToken.None));
+        await scenario.RestartAsync();
+        await scenario.Engine.TickAsync(CancellationToken.None);
+        var next = (await scenario.OccurrencesAsync()).Where(o => o.Id == o.RootId && o.State == "Waiting").OrderBy(o => o.Due).First();
+        scenario.Clock.Now = next.Due;
+        await scenario.AdvanceUntilAsync(all => all.Any(o => o.Id == next.Id && o.State == "Succeeded"));
+        Assert.Equal(2, (await storage.ListAsync("attempt:", CancellationToken.None)).Count);
+    }
 }

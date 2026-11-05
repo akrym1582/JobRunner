@@ -57,6 +57,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
         recoveryBaseline = clock.GetUtcNow();
         await ActivateAsync(loaded.Hash, true, cancellationToken);
         await ResumeMutationsAsync(cancellationToken);
+        await RepairIncompleteGenerationsAsync(cancellationToken);
         DateTimeOffset recoveryTime = recoveryBaseline;
 
         // 新版を採用しても旧版の未解決試行を消さず、同じ業務の並行起動を防ぎます。
@@ -366,6 +367,33 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
         leader!.Ensure();
         await mirror.UploadAsync(BinaryData.FromObjectAsJson(active), new BlobUploadOptions { Conditions = condition }, cancellationToken);
         await storage.PutImmutableAsync($"management/{storage.Partition}/{hash}/{settingsHash}/{active.Id}/activation.json", BinaryData.FromObjectAsJson(active), cancellationToken);
+    }
+
+    /// <summary>補充範囲に依存せず、途中まで保存された現行領域の世代を先に完成させます。</summary>
+    /// <param name="cancellationToken">権限喪失の通知です。</param>
+    /// <returns>既存の決定的な世代IDを維持した補完の完了です。</returns>
+    private async Task RepairIncompleteGenerationsAsync(CancellationToken cancellationToken)
+    {
+        var units = bundle!.Units.Flatten().ToDictionary(u => u.Path, StringComparer.Ordinal);
+        foreach (var row in await storage.ListAsync("occurrence:", cancellationToken))
+        {
+            var occurrence = StorageRepository.Read<Occurrence>(row);
+            if (occurrence.Namespace != active!.Id || occurrence.Id != occurrence.RootId || occurrence.Materialized != false)
+            {
+                continue;
+            }
+
+            var registrationRow = await storage.GetAsync($"registration:{active.Id}:{occurrence.RegistrationId}", cancellationToken)
+                ?? throw new InvalidDataException("未完成世代の登録が欠損しています。");
+            var registration = StorageRepository.Read<Registration>(registrationRow);
+            if (registration.RootPath != occurrence.UnitPath || !units.TryGetValue(occurrence.UnitPath, out var root) || root.Type != "n")
+            {
+                throw new InvalidDataException("未完成世代の登録と定義が一致しません。");
+            }
+
+            // 無効化された登録も含め、既に保存された子を維持し欠けた子だけを補います。
+            await CreateOccurrenceAsync(registration, new SchedulePoint(occurrence.Rule, occurrence.BusinessDate, occurrence.OriginalDue), root, cancellationToken);
+        }
     }
 
     /// <summary>未作成の予定だけを決定的なキーで補充し、確定済み世代を再計算しません。</summary>
