@@ -3,6 +3,21 @@ namespace JobRunner.Models;
 /// <summary>保持した属性と階層を、定義を書き換えずに参照する共通処理です。</summary>
 public static class UnitExtensions
 {
+    /// <summary>通常・リカバリーのネットを同じ階層処理へ渡します。</summary>
+    /// <param name="unit">対象のユニットです。</param>
+    /// <returns>該当種別ならtrueです。</returns>
+    public static bool IsNetwork(this UnitDefinition unit) => unit.Type is "n" or "rn";
+
+    /// <summary>異常時にだけ開始する属性を識別します。</summary>
+    /// <param name="unit">対象のユニットです。</param>
+    /// <returns>該当種別ならtrueです。</returns>
+    public static bool IsRecovery(this UnitDefinition unit) => unit.Type is "rj" or "rp" or "rn" or "rjdj";
+
+    /// <summary>条件を保存して後続を解放する判定ジョブです。</summary>
+    /// <param name="unit">対象のユニットです。</param>
+    /// <returns>該当種別ならtrueです。</returns>
+    public static bool IsJudgment(this UnitDefinition unit) => unit.Type is "jdj" or "rjdj";
+
     /// <summary>単一値属性を取得します。繰り返し可否は有効化前に検証します。</summary>
     /// <param name="unit">対象ユニットです。</param>
     /// <param name="key">JP1属性名です。</param>

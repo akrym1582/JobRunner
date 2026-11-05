@@ -106,4 +106,40 @@ public sealed class Occurrence
     /// <summary>Gets or sets. 保存した先行終了コードに対する条件判定結果です。</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public bool? ConditionMatched { get; set; }
+
+    /// <summary>Gets or sets. 起動失敗など、内部状態だけでは区別できない終了理由です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? StatusDetail { get; set; }
+
+    /// <summary>Gets or sets. 未開始予定の最初の変更操作。復元対象の追加世代と関連付けます。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? ScheduleChangeId { get; set; }
+
+    /// <summary>Gets or sets. ADDで作成した元の予定変更の識別子です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? AddedByChangeId { get; set; }
+
+    /// <summary>Gets or sets. 最初の一時変更前の予定時刻です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? BeforeChangeDue { get; set; }
+
+    /// <summary>Gets or sets. 最初の一時変更前の待機・保留・非実行状態です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? BeforeChangeState { get; set; }
+
+    /// <summary>Gets or sets. 最初の開始日時。再実行でも保持します。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? StartedAt { get; set; }
+
+    /// <summary>Gets or sets. 最新の再実行開始日時です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? RestartedAt { get; set; }
+
+    /// <summary>Gets or sets. 運用操作で上書きした保留属性。nullは定義に従います。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public bool? HoldOverride { get; set; }
+
+    /// <summary>Gets or sets. 一時変更前の保留属性です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public bool? BeforeChangeHoldOverride { get; set; }
 }

@@ -11,6 +11,13 @@ internal sealed class StorageScope : IAsyncDisposable
     {
         string suffix = Guid.NewGuid().ToString("N");
         Options = new RunnerOptions { ManagementContainer = "test-" + suffix, TableName = "Test" + suffix, SchedulerId = suffix };
+
+        // 共有エミュレーターと競合しない専用ポートでの検証も可能にします。
+        if (Environment.GetEnvironmentVariable("JOBRUNNER_TEST_CONNECTION_STRING") is { Length: > 0 } connectionString)
+        {
+            Options.ConnectionString = connectionString;
+        }
+
         Repository = new StorageRepository(Options);
     }
 

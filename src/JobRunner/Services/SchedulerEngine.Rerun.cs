@@ -44,11 +44,11 @@ public sealed partial class SchedulerEngine
         }
 
         var seeds = root
-            ? values.Values.Where(v => units[v.Value.UnitPath].Type != "n" && (method == "WARNING" ? v.Value.State == "Warning" : v.Value.State is "Failed" or "TimedOut" or "Interrupted")).Select(v => v.Value.UnitPath).ToHashSet(StringComparer.Ordinal)
+            ? values.Values.Where(v => !units[v.Value.UnitPath].IsNetwork() && (method == "WARNING" ? v.Value.State == "Warning" : v.Value.State is "Failed" or "TimedOut" or "Interrupted")).Select(v => v.Value.UnitPath).ToHashSet(StringComparer.Ordinal)
             : new HashSet<string>([target.UnitPath], StringComparer.Ordinal);
         if (method == "ABNORMAL_JOBNET")
         {
-            seeds = values.Values.Where(v => v.Value.Id != v.Value.RootId && units[v.Value.UnitPath].Type == "n" && v.Value.State is "Failed" or "Interrupted").Select(v => v.Value.UnitPath).ToHashSet(StringComparer.Ordinal);
+            seeds = values.Values.Where(v => v.Value.Id != v.Value.RootId && units[v.Value.UnitPath].IsNetwork() && v.Value.State is "Failed" or "Interrupted").Select(v => v.Value.UnitPath).ToHashSet(StringComparer.Ordinal);
         }
 
         if (seeds.Count == 0)
@@ -81,7 +81,7 @@ public sealed partial class SchedulerEngine
             if (!only)
             {
                 string parent = ScheduleCalculator.Parent(path);
-                while (units.TryGetValue(parent, out var network) && network.Type == "n")
+                while (units.TryGetValue(parent, out var network) && network.IsNetwork())
                 {
                     foreach (var edge in DefinitionValidator.Connections(network).Where(e => e.From == path))
                     {
@@ -106,6 +106,7 @@ public sealed partial class SchedulerEngine
             }
 
             value.State = (units[path].Get("ha", "n") == "y" || (path == target.UnitPath && rerunOptions.Contains("HOLD"))) ? "Held" : "Waiting";
+            value.HoldOverride = path == target.UnitPath && rerunOptions.Contains("HOLD") ? true : null;
             value.AttemptId = null;
             value.ConditionMatched = null;
             value.StandaloneRerun = method == "ONLY" && path == target.UnitPath ? true : null;

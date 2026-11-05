@@ -134,7 +134,7 @@ public sealed partial class SchedulerEngine
             foreach (var point in ScheduleCalculator.Calculate(root, units, generationRegistration, from.AddDays(-3), until, options).Distinct().OrderBy(p => p.Due).ThenBy(p => p.Rule))
             {
                 DateOnly actualDay = BusinessToday(point.Due);
-                if (actualDay < from || actualDay >= until || point.Due < baseline || (last is not null && (point.Due < last.OriginalDue || (point.Due == last.OriginalDue && point.Rule <= last.Rule))))
+                if (IsExcluded(registration, point.BusinessDate, point.Due) || actualDay < from || actualDay >= until || point.Due < baseline || (last is not null && (point.Due < last.OriginalDue || (point.Due == last.OriginalDue && point.Rule <= last.Rule))))
                 {
                     continue;
                 }
@@ -195,8 +195,8 @@ public sealed partial class SchedulerEngine
     private async Task<bool> ApplyTreeOperationAsync(TableEntity commandRow, Operation operation, TableEntity targetRow, Occurrence target, CancellationToken token)
     {
         var units = await ReadUnitsAsync(target.DefinitionHash, token);
-        bool network = units.TryGetValue(target.UnitPath, out var unit) && unit.Type == "n";
-        if (!(network && operation.Kind is "Move" or "Restore" or "Cancel" or "Stop" or "Rerun") && operation.Kind != "RunNow")
+        bool network = units.TryGetValue(target.UnitPath, out var unit) && unit.IsNetwork();
+        if (!network || operation.Kind is not ("Stop" or "Rerun"))
         {
             return false;
         }
@@ -210,36 +210,7 @@ public sealed partial class SchedulerEngine
             : [targetRow];
         var values = rows.Select(r => (Row: r, Value: StorageRepository.Read<Occurrence>(r))).ToList();
         var plan = new OperationMutation { OperationId = operation.Id };
-        bool pending = values.All(v => v.Value.State is "Waiting" or "Held" or "NotScheduled");
-        if (operation.Kind is "Move" or "Restore" or "RunNow" or "Cancel")
-        {
-            if (!pending || (operation.Kind == "Move" && operation.Due is null))
-            {
-                throw new FormatException("未開始の対象一式だけを変更できます。MoveにはDueが必要です。");
-            }
-
-            var delta = (operation.Kind == "RunNow" ? clock.GetUtcNow() : operation.Due ?? target.Due) - target.Due;
-            foreach (var item in values)
-            {
-                if (operation.Kind == "Cancel")
-                {
-                    item.Value.State = "Cancelled";
-                    item.Value.FinishedAt = clock.GetUtcNow();
-                }
-                else
-                {
-                    try
-                    {
-                        item.Value.Due = operation.Kind == "Restore" ? item.Value.OriginalDue : item.Value.Due + delta;
-                    }
-                    catch (ArgumentOutOfRangeException ex)
-                    {
-                        throw new FormatException("子孫の変更後日時が有効範囲を超えます。", ex);
-                    }
-                }
-            }
-        }
-        else if (operation.Kind == "Stop")
+        if (operation.Kind == "Stop")
         {
             if (target.State != "Running")
             {
@@ -254,7 +225,7 @@ public sealed partial class SchedulerEngine
                     item.Value.State = "Cancelled";
                     item.Value.FinishedAt = clock.GetUtcNow();
                 }
-                else if (item.Value.State == "Running" && units[item.Value.UnitPath].Type == "n")
+                else if (item.Value.State == "Running" && units[item.Value.UnitPath].IsNetwork())
                 {
                     item.Value.State = "Interrupted";
                     item.Value.FinishedAt = clock.GetUtcNow();
@@ -280,6 +251,7 @@ public sealed partial class SchedulerEngine
             foreach (var item in values.Where(v => v.Value.ScheduleExcluded != true))
             {
                 item.Value.State = (units[item.Value.UnitPath].Get("ha", "n") == "y" || (item.Value.Id == target.Id && operation.RerunOptions?.Contains("HOLD") == true)) ? "Held" : "Waiting";
+                item.Value.HoldOverride = item.Value.Id == target.Id && operation.RerunOptions?.Contains("HOLD") == true ? true : null;
                 item.Value.AttemptId = null;
                 item.Value.BypassedPredecessors = null;
                 item.Value.StandaloneRerun = null;

@@ -60,4 +60,16 @@ public sealed class JobAttempt
     /// Gets or sets a value indicating whether. 両出力のBlob保存を完了した場合だけtrueにします。
     /// </summary>
     public bool LogsComplete { get; set; } = false;
+
+    /// <summary>Gets or sets. この試行だけの確定した出力変数です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, string>? OutputVariables { get; set; }
+
+    /// <summary>Gets or sets. OS起動失敗など、確定した詳細状態です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? StatusDetail { get; set; }
+
+    /// <summary>Gets or sets. 出力JSONを受理できなかった理由です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? OutputError { get; set; }
 }

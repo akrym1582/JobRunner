@@ -136,7 +136,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
         }
 
         var memberPaths = all.Values.GroupBy(v => v.Value.RootId).ToDictionary(g => g.Key, g => g.Select(v => v.Value.UnitPath).ToHashSet(StringComparer.Ordinal), StringComparer.Ordinal);
-        foreach (var network in all.Values.Where(v => v.Value.Namespace == active!.Id && rootUnits[v.Value.RootId][v.Value.UnitPath].Type == "n"))
+        foreach (var network in all.Values.Where(v => v.Value.Namespace == active!.Id && rootUnits[v.Value.RootId][v.Value.UnitPath].IsNetwork()))
         {
             foreach (var child in rootUnits[network.Value.RootId][network.Value.UnitPath].Children)
             {
@@ -163,7 +163,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
             if (occurrence.State == "Waiting" && occurrence.Due <= clock.GetUtcNow())
             {
                 var unit = units[occurrence.UnitPath];
-                if (unit.Type != "n" && running.Count >= options.MaxConcurrency)
+                if (!unit.IsNetwork() && running.Count >= options.MaxConcurrency)
                 {
                     continue;
                 }
@@ -186,7 +186,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
                         continue;
                     }
 
-                    occurrence.Started = true;
+                    MarkStarted(occurrence);
                     occurrence.State = "Running";
                     await CommitAsync([Update(item.Row, occurrence)], cancellationToken);
                 }
@@ -199,23 +199,15 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
                         continue;
                     }
 
-                    if (unit.Type == "n")
+                    if (unit.IsNetwork())
                     {
                         occurrence.State = "Running";
-                        occurrence.Started = true;
+                        MarkStarted(occurrence);
                         await CommitAsync([Update(item.Row, occurrence)], cancellationToken);
                     }
-                    else if (unit.Type == "jdj")
+                    else if (unit.IsJudgment())
                     {
-                        var edge = DefinitionValidator.Edges(units[ScheduleCalculator.Parent(unit.Path)]).Single(e => e.To == unit.Path);
-                        var predecessor = all.Values.Single(v => v.Value.RootId == occurrence.RootId && v.Value.UnitPath == edge.From).Value;
-                        var attemptRow = await storage.GetAsync("attempt:" + predecessor.AttemptId, cancellationToken) ?? throw new InvalidDataException("判定元の試行が欠損しています。");
-                        int code = StorageRepository.Read<JobAttempt>(attemptRow).ExitCode ?? throw new InvalidDataException("判定元の終了コードがありません。");
-                        occurrence.ConditionMatched = EvaluateCondition(unit, unchecked((uint)code));
-                        occurrence.State = "Succeeded";
-                        occurrence.Started = true;
-                        occurrence.FinishedAt = clock.GetUtcNow();
-                        await CommitAsync([Update(item.Row, occurrence)], cancellationToken);
+                        await JudgeAsync(item.Row, occurrence, unit, units, all.Values.Select(v => v.Value), cancellationToken);
                     }
                     else if (running.Count < options.MaxConcurrency)
                     {
@@ -223,7 +215,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
                     }
                 }
             }
-            else if (occurrence.State == "Running" && units[occurrence.UnitPath].Type == "n")
+            else if (occurrence.State == "Running" && units[occurrence.UnitPath].IsNetwork())
             {
                 var children = all.Values.Where(v => v.Value.RootId == occurrence.RootId && ScheduleCalculator.Parent(v.Value.UnitPath) == occurrence.UnitPath).Select(v => v.Value).ToList();
                 if (children.All(c => c.State is "Succeeded" or "Warning" or "NotScheduled"))
@@ -301,12 +293,20 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
             return false;
         }
 
-        return DefinitionValidator.Edges(units[parentPath]).Where(e => e.To == occurrence.UnitPath).All(e =>
+        var incoming = DefinitionValidator.Edges(units[parentPath]).Where(e => e.To == occurrence.UnitPath).ToList();
+        if (units[occurrence.UnitPath].IsRecovery() && incoming.Count == 0)
+        {
+            return false;
+        }
+
+        return incoming.All(e =>
         {
             var predecessor = siblings[e.From];
-            if (units[occurrence.UnitPath].Type is "rj" or "rp")
+            if (units[occurrence.UnitPath].IsRecovery())
             {
-                return predecessor.State is "Failed" or "TimedOut";
+                return units[e.From].IsRecovery()
+                    ? predecessor.State == "Succeeded" && (!e.Conditional || predecessor.ConditionMatched == true)
+                    : predecessor.State is "Failed" or "TimedOut" or "Interrupted";
             }
 
             if (e.Conditional)
@@ -343,7 +343,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
         }
 
         var existing = row is null ? null : StorageRepository.Read<Activation>(row);
-        if (existing is not null && existing.FormatVersion is not (1 or 2))
+        if (existing is not null && existing.FormatVersion is not (1 or 2 or 3))
         {
             throw new InvalidDataException("有効版の保存形式を認識できません。");
         }
@@ -354,8 +354,8 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
         active = same ? existing : new Activation { Id = Guid.NewGuid().ToString("N"), DefinitionHash = hash, SettingsHash = settingsHash, Baseline = clock.GetUtcNow() };
 
         // 新しい登録意味論を旧実行器が読み飛ばして起動しないよう、採用IDを保ったまま形式を進めます。
-        bool upgrade = active!.FormatVersion == 1;
-        active.FormatVersion = 2;
+        bool upgrade = active!.FormatVersion < 3;
+        active.FormatVersion = 3;
         if (!same || upgrade)
         {
             await CommitAsync([row is null ? Add("definition-active", active) : Update(row, active)], cancellationToken);
@@ -407,7 +407,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
             try
             {
                 var manifest = current.Value.Content.ToObjectFromJson<Activation>();
-                if (manifest is null || manifest.FormatVersion is not (1 or 2) || manifest.Phase != "Ready" || string.IsNullOrWhiteSpace(manifest.Id))
+                if (manifest is null || manifest.FormatVersion is not (1 or 2 or 3) || manifest.Phase != "Ready" || string.IsNullOrWhiteSpace(manifest.Id))
                 {
                     throw new InvalidDataException("管理Blobが破損しています。");
                 }
@@ -422,7 +422,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
 
         leader!.Ensure();
         await mirror.UploadAsync(BinaryData.FromObjectAsJson(active), new BlobUploadOptions { Conditions = condition }, cancellationToken);
-        await storage.PutImmutableAsync($"management/{storage.Partition}/{hash}/{settingsHash}/{active.Id}/activation-v2.json", BinaryData.FromObjectAsJson(active), cancellationToken);
+        await storage.PutImmutableAsync($"management/{storage.Partition}/{hash}/{settingsHash}/{active.Id}/activation-v3.json", BinaryData.FromObjectAsJson(active), cancellationToken);
     }
 
     /// <summary>補充範囲に依存せず、途中まで保存された現行領域の世代を先に完成させます。</summary>
@@ -518,6 +518,11 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
     /// <returns>同じキーの世代がそろった時点で完了します。</returns>
     private async Task CreateOccurrenceAsync(Registration registration, SchedulePoint point, UnitDefinition root, CancellationToken cancellationToken)
     {
+        if (IsExcluded(registration, point.BusinessDate, point.Due))
+        {
+            return;
+        }
+
         string rootId = StorageRepository.Hash(JsonSerializer.Serialize(new { registration.Namespace, registration.Id, point.Rule, point.BusinessDate, point.Due }));
         var existingRoot = await storage.GetAsync("occurrence:" + rootId, cancellationToken);
         if (existingRoot is not null && StorageRepository.Read<Occurrence>(existingRoot).State is "Archiving" or "Archived")
@@ -532,7 +537,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
         foreach (var unit in new[] { root }.Flatten())
         {
             var selected = unit.Path == root.Path ? (Point: point, Enabled: true) : schedule[ScheduleCalculator.Parent(unit.Path)];
-            if (unit.Path != root.Path && unit.Type == "n" && unit.Get("de", "y") != "y" && selected.Enabled && unit.Attributes.Keys.Any(k => k is "sd" or "st" or "ln" or "cy" or "sh" or "shd" or "cftd" or "ed"))
+            if (unit.Path != root.Path && unit.IsNetwork() && unit.Get("de", "y") != "y" && selected.Enabled && unit.Attributes.Keys.Any(k => k is "sd" or "st" or "ln" or "cy" or "sh" or "shd" or "cftd" or "ed"))
             {
                 // 上位ルールにリンクする候補から、当該業務日の最も早い予定を一つだけ採用します。
                 var linked = JsonSerializer.Deserialize<UnitDefinition>(JsonSerializer.Serialize(unit))!;
@@ -564,6 +569,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
                 Due = selected.Point.Due,
                 OriginalDue = selected.Point.Due,
                 ScheduleExcluded = selected.Enabled ? null : true,
+                HoldOverride = unit.Path == root.Path ? registration.Holding : null,
                 Materialized = unit.Path == root.Path ? false : null,
                 State = !selected.Enabled ? "NotScheduled" : (unit.Path == root.Path && registration.Holding is bool holding ? holding : unit.Get("ha", "n") == "y") ? "Held" : "Waiting",
             };
@@ -607,7 +613,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
         var attempt = new JobAttempt { Id = Guid.NewGuid().ToString("N"), OccurrenceId = occurrence.Id, Owner = leader!.Owner, Epoch = leader.Epoch, StartedAt = clock.GetUtcNow() };
         occurrence.AttemptId = attempt.Id;
         occurrence.State = "Starting";
-        occurrence.Started = true;
+        MarkStarted(occurrence);
         await CommitAsync([Update(row, occurrence), Add("attempt:" + attempt.Id, attempt)], cancellationToken);
         var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var task = executor.ExecuteAsync(
@@ -656,6 +662,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
 
             attempt.FinishedAt = attempt.State == "Unknown" ? null : clock.GetUtcNow();
             occurrence.State = attempt.State;
+            occurrence.StatusDetail = attempt.StatusDetail;
             occurrence.FinishedAt = attempt.FinishedAt;
             await CommitAsync([Update(row!, occurrence), Update(attemptRow!, attempt)], cancellationToken);
             item.Stop.Dispose();
@@ -791,24 +798,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
             }
             else if (operation.Kind == "UnregisterRoot")
             {
-                var rows = await storage.ListAsync($"registration:{active.Id}:", cancellationToken);
-                var plan = new OperationMutation { OperationId = operation.Id };
-                foreach (var row in rows)
-                {
-                    var registration = StorageRepository.Read<Registration>(row);
-                    if (registration.RootPath == operation.Target)
-                    {
-                        registration.Disabled = true;
-                        plan.Changes.Add(new ArchivedRow(row.RowKey, row.ETag.ToString(), JsonSerializer.Serialize(registration)));
-                    }
-                }
-
-                if (plan.Changes.Count == 0)
-                {
-                    throw new FormatException("解除対象の登録がありません。");
-                }
-
-                await new OperationMutationService(storage, clock).ApplyAsync(commandRow, operation, plan, CommitAsync, leader!.Ensure, StopOwnedAsync, cancellationToken);
+                await UnregisterRootAsync(commandRow, operation, cancellationToken);
                 return;
             }
             else if (operation.Kind == "Unregister")
@@ -834,7 +824,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
                     throw new FormatException("期待状態が一致しません。");
                 }
 
-                if (await ApplySelectiveRerunAsync(commandRow, operation, occurrence, cancellationToken) || await ApplyTreeOperationAsync(commandRow, operation, row, occurrence, cancellationToken))
+                if (await ApplyScheduleChangeAsync(commandRow, operation, row, occurrence, cancellationToken) || await ApplySelectiveRerunAsync(commandRow, operation, occurrence, cancellationToken) || await ApplyTreeOperationAsync(commandRow, operation, row, occurrence, cancellationToken))
                 {
                     return;
                 }
@@ -843,25 +833,17 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
                 {
                     case "Hold" when occurrence.State == "Waiting":
                         occurrence.State = "Held";
+                        occurrence.HoldOverride = true;
                         break;
                     case "Release" when occurrence.State == "Held":
                         occurrence.State = "Waiting";
-                        break;
-                    case "Move" when occurrence.State is "Waiting" or "Held" && operation.Due is not null:
-                        occurrence.Due = operation.Due.Value;
-                        break;
-                    case "Restore" when occurrence.State is "Waiting" or "Held":
-                        occurrence.Due = occurrence.OriginalDue;
-                        break;
-                    case "Cancel" when occurrence.State is "Waiting" or "Held":
-                        occurrence.State = "Cancelled";
-                        occurrence.FinishedAt = clock.GetUtcNow();
+                        occurrence.HoldOverride = false;
                         break;
                     case "Stop" when running.TryGetValue(occurrence.Id, out var task):
                         await task.Stop.CancelAsync();
                         break;
                     case "Rerun" when occurrence.State is "Failed" or "TimedOut" && operation.RerunMethod is null:
-                        if ((await ReadUnitsAsync(occurrence.DefinitionHash, cancellationToken))[occurrence.UnitPath].Type == "n")
+                        if ((await ReadUnitsAsync(occurrence.DefinitionHash, cancellationToken))[occurrence.UnitPath].IsNetwork())
                         {
                             throw new FormatException("再実行する末端ジョブを指定してください。ネット一括再実行の方式は未対応です。");
                         }
@@ -919,6 +901,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
             changes.Clear();
             operation.Status = "Rejected";
             operation.Result = ex.Message;
+            operation.ErrorCode = "JOBRUNNER_STATE_CONFLICT";
         }
 
         operation.CompletedAt = clock.GetUtcNow();

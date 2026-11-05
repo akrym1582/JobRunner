@@ -117,4 +117,21 @@ JP1形式のregisterFixedExecは未来世代数に加えて期間・日時指定
 
 `registerFixedExec`は期間（終了日は包含）、件数、期間＋件数、日時を扱う。日時だけの場合はexecID、それ以外は空本文の同期200。`holding`は初回だけ。`passedDaemonStarts`はNEXTTIME/IMMEDIATEを扱い、日時で省略したときはIMMEDIATE。
 
-運用APIは`changeHold`、`cancelExecSchedule`、`restoreChangedSchedule`、`kill`、`rerun`、期間無指定の`cancelRegistration`を公開する。`changeStartTime`はABSOLUTETIME、`changeStartTime/execImmediate`はSHIFT＋MOVEの組み合わせに限定する。ADD、NOTSHIFT、相対日時、期間指定の登録解除はまだ拒否する。エラーIDの全面互換、ファイル・変数判定、リカバリーネットは未達であり、この実装を完全互換とはしない。
+運用APIは`changeHold`、`cancelExecSchedule`、`restoreChangedSchedule`、`kill`、`rerun`、期間無指定の`cancelRegistration`を公開する。`changeStartTime`は絶対・相対日時、`changeStartTime/execImmediate`はSHIFT/NOTSHIFTとADD/MOVEに対応する。期間指定解除、ファイル・変数判定、リカバリーネットとHTTP参照の範囲は下記仕様に従う。エラーIDの全面互換を意味しない。
+
+## 予定操作・条件・HTTP互換の追加仕様
+
+確認済みの範囲はJP1 V12のローカルジョブと確定登録です。計画登録、イベント、待ち合わせ、認証・Agent、OSユーザー切替は対象外です。
+
+- 日時変更は絶対・相対、ADD/MOVE、SHIFT/NOTSHIFTに対応する。JP1 HTTPの既定はADD/NOTSHIFT、独自APIの既定は既存のMOVE/SHIFTを維持する。相対変更は適用時の対象予定を基準にサービス時刻で計算する。
+- ADDは前倒し前の予定を新しい実行IDで保持する。変更解除は変更前の時刻と取消状態を復元し、関連する未開始の追加世代を取り消す。開始済みを含めば全体を拒否する。新規行を含む変更計画を永続化してから適用し、途中状態では起動しない。
+- 期間解除は暦日/実行日と終了日を含む範囲を保存し、補充と再起動で復活させない。
+- 判定は終了コードに加えファイル存在/不存在、変数の数値・範囲・文字列・有無に対応する。ファイルは実行ホストの絶対パス。アクセス失敗は不存在ではなく判定エラーとする。
+- 変数出力は独自仕様。JOBRUNNER_OUTPUT_FILEの試行専用JSONへAJS2名と文字列値を出力する。最大32変数、各値255 UTF-8バイト。重複・不正・超過は出力エラー。先行試行の永続値だけを判定し、再実行で古い値を使わない。未定義と空文字は有無判定で値なし、数値化失敗や必要な結果欠落は判定エラー。AJSVARとコマンドへのマクロ展開は対象外。
+- rn/rjdjを扱う。通常先行はすべて対象異常の場合にリカバリーを開始し、リカバリー先行は正常終了後に続ける。先行なしは非実行。リカバリー成功で元の異常を消さない。Unknownとルート停止からは開始しない。
+- HTTP参照はstatuses一覧とunitName:execID。NO/STATUS/RESULT/PERIOD/EXECIDを扱い、STATUSはVIEWSTATUSRANGE=all。1000件超は拒否。正規表現、Agent、リリース、遅延監視検索は対象外。
+- エラーは条件に一致するKNAK3201/3202/3203/3204/3206/3207/3209-Eだけを対応対象とし、それ以外はJOBRUNNER由来を明示する。エラーメッセージ全文・複数違反の報告順は完全互換を保証しない。
+- 結果不明はUNKNOWN（終了状態不明）。API資料の「終了状態不正」との表記差を注記する。実行結果を推測せず、自動再実行と後続を抑止する。退避状態は業務上の状態へ復元して表示する。
+- 形式3へ移行し旧採用ID・履歴を保持する。全旧API・実行器を停止して切り替え、混在運用しない。
+
+受入条件: 予定操作の組合せ・取消復元・期間解除、99行を跨ぐ追加/復旧、変数の欠落/空/境界/再実行、リカバリー連鎖/正常異常混在/Unknown、HTTP入出力と状態・エラー・1000件境界、旧形式移行を回帰試験する。実JP1比較未実施の項目は文書仕様テスト済みと区別する。

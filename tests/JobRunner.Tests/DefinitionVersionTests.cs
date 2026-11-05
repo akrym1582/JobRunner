@@ -11,22 +11,25 @@ namespace JobRunner.Tests;
 public sealed class DefinitionVersionTests
 {
     /// <summary>旧形式を同じ採用領域で昇格し、旧バイナリの再選出時には形式検査で停止させます。</summary>
+    /// <param name="format">移行元の保存形式です。</param>
     /// <returns>採用IDと既存世代の維持を確認します。</returns>
-    [Fact]
-    public async Task UpgradesLegacyActivationWithoutReplacingNamespace()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task UpgradesLegacyActivationWithoutReplacingNamespace(int format)
     {
         await using var scenario = new EngineScenario();
         await scenario.StartAsync("unit=net;{ty=n;sd=2026/11/5;st=10:00;sh=no;}");
         var storage = scenario.Scope.Repository;
         var row = (await storage.GetAsync("definition-active", CancellationToken.None))!;
         var legacy = StorageRepository.Read<Activation>(row);
-        legacy.FormatVersion = 1;
+        legacy.FormatVersion = format;
         await storage.Table.UpdateEntityAsync(storage.Entity(row.RowKey, legacy), row.ETag, Azure.Data.Tables.TableUpdateMode.Replace);
         await storage.Container.GetBlobClient($"management/{storage.Partition}/active.json").UploadAsync(BinaryData.FromObjectAsJson(legacy), overwrite: true);
         var before = (await scenario.OccurrencesAsync()).Select(o => o.Id).Order().ToList();
         await scenario.RestartAsync();
         var upgraded = StorageRepository.Read<Activation>((await storage.GetAsync("definition-active", CancellationToken.None))!);
-        Assert.Equal(2, upgraded.FormatVersion);
+        Assert.Equal(3, upgraded.FormatVersion);
         Assert.Equal(legacy.Id, upgraded.Id);
         Assert.Equal(before, (await scenario.OccurrencesAsync()).Select(o => o.Id).Order().ToList());
     }
