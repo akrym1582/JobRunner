@@ -166,7 +166,7 @@ export function TimingProperties({
   onChange: (draft: EditorDraft) => void;
 }) {
   const [calendarId, setCalendarId] = useState("");
-  if (draft.editorVersion !== 4) return null;
+  if (![4, 5].includes(draft.editorVersion ?? 1)) return null;
   const schedule = draft.schedules?.find((s) => s.id === current);
   const calendar =
     draft.calendars?.find((c) => c.id === calendarId) ?? draft.calendars?.[0];

@@ -738,6 +738,13 @@
               "$ref": "#/components/schemas/SourceEvidence"
             },
             "nullable": true
+          },
+          "execution": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorAttributes"
+            },
+            "nullable": true
           }
         },
         "additionalProperties": false

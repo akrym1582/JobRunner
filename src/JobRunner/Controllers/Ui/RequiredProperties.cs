@@ -23,6 +23,7 @@ public sealed class RequiredProperties : ISchemaFilter
                 schema.Required.Remove("schedules");
                 schema.Required.Remove("calendars");
                 schema.Required.Remove("localSources");
+                schema.Required.Remove("execution");
             }
 
             if (context.Type == typeof(EditorLocalRequest))

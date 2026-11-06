@@ -21,6 +21,7 @@ public sealed class DefinitionEditorApiTests
     public async Task LocalFilesRoundTripWithoutSavingDefinitions()
     {
         await using var scope = new StorageScope();
+        scope.Options.LocalAgents = ["local"];
         string containerName = "local-" + Guid.NewGuid().ToString("N");
         scope.Options.DefinitionSources = [new() { BlobPath = containerName + "/active.ajs" }];
         await scope.Repository.InitializeAsync(CancellationToken.None);
@@ -43,9 +44,33 @@ public sealed class DefinitionEditorApiTests
             var forged = document.Draft with { DefinitionHash = "wrong" };
             Assert.Equal(HttpStatusCode.BadRequest, (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/preview", forged)).StatusCode);
             document.Draft.Networks[0].Nodes[0].Attributes["te"] = ["echo local"];
+            var jobExecution = document.Draft.Execution!.Single(e => e.Id == "/local/job").Attributes;
+            jobExecution["ha"] = ["n"];
+            jobExecution["jd"] = ["cod"];
+            jobExecution["wth"] = ["1"];
+            jobExecution["tho"] = ["5"];
+            jobExecution["etm"] = ["1440"];
+            jobExecution["ex"] = ["local"];
+            var netExecution = document.Draft.Execution!.Single(e => e.Id == "/local").Attributes;
+            netExecution["ha"] = ["n"];
+            netExecution["mp"] = ["y"];
+            netExecution["sy"] = ["1,09:00", "144,C30"];
+            netExecution["ey"] = ["1,C60"];
+            netExecution["fd"] = ["2879"];
             var preview = await (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/preview", document.Draft)).Content.ReadFromJsonAsync<EditorPreview>();
-            Assert.True(preview!.Valid);
+            Assert.True(preview!.Valid, string.Join("\n", preview.Errors));
             Assert.Contains("echo local", preview.Sources[0].Text, StringComparison.Ordinal);
+            download = await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/export", document.Draft);
+            Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+            var editedSource = new SourceEvidence { Mapping = input.Sources![0].Mapping, Base64 = Convert.ToBase64String(await download.Content.ReadAsByteArrayAsync()) };
+            var reimport = await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/local", new EditorLocalRequest([editedSource]));
+            Assert.Equal(HttpStatusCode.OK, reimport.StatusCode);
+            var reimported = (await reimport.Content.ReadFromJsonAsync<EditorDocument>())!;
+            Assert.Equal("1440", reimported.Draft.Execution!.Single(e => e.Id == "/local/job").Attributes["etm"][0]);
+            Assert.Equal(["1,09:00", "144,C30"], reimported.Draft.Execution!.Single(e => e.Id == "/local").Attributes["sy"]);
+            jobExecution["ex"] = ["unconfigured-remote"];
+            Assert.Equal(HttpStatusCode.BadRequest, (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/export", document.Draft)).StatusCode);
+            jobExecution["ex"] = ["local"];
             var trial = await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/schedules", new EditorScheduleRequest(document.Draft, "/local", new(2026, 1, 1), new(2026, 1, 1), new(2026, 1, 2)));
             Assert.Empty((await trial.Content.ReadFromJsonAsync<EditorSchedulePreview>())!.Points);
             input.Sources!.Add(new() { Mapping = new() { BlobPath = "other/cal.ajs", TargetPath = "/business" }, Base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes("unit=cal;{ty=g;cl=su;}")) });
@@ -102,7 +127,7 @@ public sealed class DefinitionEditorApiTests
             var originalBundle = await new DefinitionService(scope.Repository, scope.Options).ReadSourcesAsync(document.Draft.DefinitionHash, CancellationToken.None);
             var before = await OperationalStateAsync(scope.Repository);
             var exact = await app.Client.GetFromJsonAsync<EditorDocument>("/api/jobrunner/ui/definition-editor?definitionHash=" + document.Draft.DefinitionHash);
-            Assert.Equal(4, exact!.Draft.EditorVersion);
+            Assert.Equal(5, exact!.Draft.EditorVersion);
             Assert.Equal("7", exact.Draft.Networks[0].Nodes.Single(n => n.Type == "jdj").Attributes["ejc"][0]);
             var legacy = DefinitionEditor.Project(originalBundle, 1) with { EditorVersion = null };
             var legacyPreview = await (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/preview", new { legacy.DefinitionHash, legacy.Networks })).Content.ReadFromJsonAsync<EditorPreview>();
@@ -157,6 +182,8 @@ public sealed class DefinitionEditorApiTests
             document.Draft.Networks.Add(new("new:nested", [], []));
             document.Draft.Schedules!.Add(new("new:root", new() { ["sd"] = ["0,ud"] }));
             document.Draft.Schedules.Add(new("new:nested", new()));
+            document.Draft.Execution!.Add(new("new:root", new() { ["ha"] = ["y"] }));
+            document.Draft.Execution.Add(new("new:nested", new()));
             preview = await (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/preview", document.Draft)).Content.ReadFromJsonAsync<EditorPreview>();
             Assert.True(preview!.Valid);
             Assert.Contains(preview.Sources, s => s.Text.Contains("sd=0,ud;ha=y;", StringComparison.Ordinal));

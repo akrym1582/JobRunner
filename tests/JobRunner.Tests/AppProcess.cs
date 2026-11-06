@@ -41,6 +41,11 @@ internal sealed class AppProcess : IDisposable
         info.Environment["JobRunner__ScheduleTimeMode"] = "48";
         info.Environment["JobRunner__ConfirmedHorizonDays"] = "2";
         info.Environment["Logging__LogLevel__Default"] = "Warning";
+        for (int i = 0; i < options.LocalAgents.Count; i++)
+        {
+            info.Environment[$"JobRunner__LocalAgents__{i}"] = options.LocalAgents[i];
+        }
+
         for (int i = 0; i < options.DefinitionSources.Count; i++)
         {
             info.Environment[$"JobRunner__DefinitionSources__{i}__Kind"] = "Unit";

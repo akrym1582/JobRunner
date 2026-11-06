@@ -21,6 +21,7 @@ import type {
 import { client, errorMessage } from "../client";
 import { EditorGraph } from "./EditorGraph";
 import { EditorProperties } from "./EditorProperties";
+import { ExecutionProperties } from "./ExecutionProperties";
 import { TimingProperties } from "./TimingProperties";
 import { LocalDefinitionInput } from "./LocalDefinitionInput";
 import { NetworkProperties } from "./NetworkProperties";
@@ -46,10 +47,14 @@ import {
 import "./editor.css";
 
 async function upgradeSaved(saved: SavedDraft): Promise<SavedDraft> {
-  if (saved.draft.editorVersion === 4) return saved;
-  const base = await client.ui.definition_editor.$get({
-    query: { definitionHash: saved.draft.definitionHash },
-  });
+  if (saved.draft.editorVersion === 5) return saved;
+  const base = saved.draft.localSources
+    ? await client.ui.definition_editor.local.$post({
+        body: { sources: saved.draft.localSources },
+      })
+    : await client.ui.definition_editor.$get({
+        query: { definitionHash: saved.draft.definitionHash },
+      });
   return { ...saved, base, draft: upgradeDraft(saved.draft, base.draft) };
 }
 
@@ -528,6 +533,12 @@ export function DefinitionEditor({
               onChange={update}
             />
           )}
+          <ExecutionProperties
+            key={selected || network.path}
+            draft={draft}
+            current={selected || network.path}
+            onChange={update}
+          />
           <div className="editor-toolbar">
             <div>
               <button
@@ -587,9 +598,17 @@ export function DefinitionEditor({
                         ...next.networks,
                         { path: added.id, nodes: [], edges: [] },
                       ];
-                    if (isNetwork(added.type) && draft.editorVersion === 4)
+                    if (
+                      isNetwork(added.type) &&
+                      (draft.editorVersion ?? 1) >= 4
+                    )
                       next.schedules = [
                         ...(draft.schedules ?? []),
+                        { id: added.id, attributes: {} },
+                      ];
+                    if (draft.editorVersion === 5)
+                      next.execution = [
+                        ...(draft.execution ?? []),
                         { id: added.id, attributes: {} },
                       ];
                     update(next);

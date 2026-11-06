@@ -15,13 +15,13 @@ public static partial class UiEndpoints
         group.MapPost("/definition-editor/local", (EditorLocalRequest request, DefinitionService definitions, RunnerOptions options) =>
         {
             var bundle = EditorLocalFiles.Read(request, definitions);
-            return new EditorDocument(DefinitionEditor.Project(bundle, 4) with { LocalSources = bundle.Sources }, DefinitionEditor.Describe(bundle.Sources, bundle.Sources), DefinitionEditor.Containers(bundle), options.TimeZone, options.ScheduleTimeMode);
+            return new EditorDocument(DefinitionEditor.Project(bundle, 5) with { LocalSources = bundle.Sources }, DefinitionEditor.Describe(bundle.Sources, bundle.Sources), DefinitionEditor.Containers(bundle), options.TimeZone, options.ScheduleTimeMode);
         });
         group.MapGet("/definition-editor", async (string? definitionHash, StorageRepository storage, DefinitionService definitions, RunnerOptions options, CancellationToken token) =>
         {
             string hash = definitionHash ?? (await ActiveAsync(storage, token)).DefinitionHash;
             var bundle = await definitions.ReadSourcesAsync(hash, token);
-            return new EditorDocument(DefinitionEditor.Project(bundle, 4), DefinitionEditor.Describe(bundle.Sources, bundle.Sources), DefinitionEditor.Containers(bundle), options.TimeZone, options.ScheduleTimeMode);
+            return new EditorDocument(DefinitionEditor.Project(bundle, 5), DefinitionEditor.Describe(bundle.Sources, bundle.Sources), DefinitionEditor.Containers(bundle), options.TimeZone, options.ScheduleTimeMode);
         });
         group.MapPost("/definition-editor/preview", async (EditorDraft draft, DefinitionService definitions, CancellationToken token) =>
         {

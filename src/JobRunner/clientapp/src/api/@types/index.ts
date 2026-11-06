@@ -66,6 +66,7 @@ export type EditorDraft = {
   schedules?: EditorAttributes[] | null | undefined;
   calendars?: EditorAttributes[] | null | undefined;
   localSources?: SourceEvidence[] | null | undefined;
+  execution?: EditorAttributes[] | null | undefined;
 }
 
 export type EditorEdge = {

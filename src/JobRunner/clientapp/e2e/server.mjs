@@ -110,6 +110,7 @@ launch(
     JobRunner__TableName: "UiTest",
     JobRunner__SchedulerId: "ui-test",
     JobRunner__ConfirmedFutureGenerations: "2",
+    JobRunner__LocalAgents__0: "local",
     JobRunner__DefinitionSources__0__Kind: "Unit",
     JobRunner__DefinitionSources__0__TargetPath: "/",
     JobRunner__DefinitionSources__0__BlobPath: "ui-definitions/jobs",

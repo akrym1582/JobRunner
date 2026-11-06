@@ -20,10 +20,10 @@ public static partial class DefinitionEditor
     /// <returns>ルートの候補です。ネストを独立ルートとして計算しません。</returns>
     public static EditorSchedulePreview PreviewSchedule(DefinitionBundle compiled, EditorScheduleRequest request, RunnerOptions options)
     {
-        if (request.Draft.EditorVersion != 4 || request.Anchor.Year is < 1994 or > 2036 || request.From.Year is < 1994 or > 2036
+        if (request.Draft.EditorVersion is not (4 or 5) || request.Anchor.Year is < 1994 or > 2036 || request.From.Year is < 1994 or > 2036
             || request.Until > new DateOnly(2037, 1, 1) || request.Until <= request.From || request.Until.DayNumber - request.From.DayNumber > 366)
         {
-            throw new ArgumentException("下書き試算は版4、1994〜2036年の業務日、終了を含まない1〜366日で指定してください。");
+            throw new ArgumentException("下書き試算は版4/5、1994〜2036年の業務日、終了を含まない1〜366日で指定してください。");
         }
 
         var paths = TimingPaths(request.Draft);
@@ -140,7 +140,7 @@ public static partial class DefinitionEditor
     private static void ValidateTimingValue(string key, string value)
     {
         if (string.IsNullOrWhiteSpace(value) || value != value.Trim() || value.Any(char.IsControl)
-            || (key != "jc" && value.Any(c => ";{}\"#".Contains(c, StringComparison.Ordinal))))
+            || (key is not ("jc" or "ex") && value.Any(c => ";{}\"#".Contains(c, StringComparison.Ordinal))))
         {
             throw new ArgumentException($"{key}: 空値や構文の区切り文字は指定できません。省略する場合は指定を解除してください。");
         }

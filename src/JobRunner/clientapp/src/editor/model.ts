@@ -1,4 +1,5 @@
 import type { EditorDraft, EditorNetwork, EditorNode } from "../api/@types";
+import { executionTargets } from "./execution";
 
 export const isJob = (type: string) => ["j", "pj", "rj", "rp"].includes(type);
 export const isJudgment = (type: string) => ["jdj", "rjdj"].includes(type);
@@ -6,41 +7,51 @@ export const isNetwork = (type: string) => ["n", "rn"].includes(type);
 export const canEdit = (type: string, version: number) =>
   isJob(type) ||
   (version >= 2 && isJudgment(type)) ||
-  (version >= 3 && version <= 4 && isNetwork(type));
+  (version >= 3 && version <= 5 && isNetwork(type));
 
 export function upgradeDraft(
   draft: EditorDraft,
   baseline: EditorDraft,
 ): EditorDraft {
   if (
-    ![1, 2, 3].includes(draft.editorVersion ?? 1) ||
-    baseline.editorVersion !== 4 ||
+    ![1, 2, 3, 4].includes(draft.editorVersion ?? 1) ||
+    ![4, 5].includes(baseline.editorVersion ?? 0) ||
+    (draft.editorVersion ?? 1) >= baseline.editorVersion! ||
+    (baseline.editorVersion === 5 && !baseline.execution) ||
     !baseline.roots ||
     !baseline.schedules ||
     !baseline.calendars ||
-    (draft.editorVersion === 3 && !draft.roots) ||
+    ((draft.editorVersion ?? 1) >= 3 && !draft.roots) ||
+    (draft.editorVersion === 4 && (!draft.schedules || !draft.calendars)) ||
     draft.definitionHash !== baseline.definitionHash
   )
     throw new Error("下書きの形式または元版が一致しません。");
   const originals = new Map(
     baseline.networks.flatMap((n) => n.nodes).map((n) => [n.id, n]),
   );
-  return {
+  const upgraded: EditorDraft = {
     ...draft,
-    editorVersion: 4,
+    editorVersion: baseline.editorVersion,
     roots: structuredClone(
-      draft.editorVersion === 3 ? draft.roots : baseline.roots,
+      (draft.editorVersion ?? 1) >= 3 ? draft.roots : baseline.roots,
     ),
-    calendars: structuredClone(baseline.calendars ?? []),
-    schedules: draft.networks.map((network) => {
-      const original = baseline.schedules?.find((s) => s.id === network.path);
-      const root = draft.roots?.some((r) => r.node.id === network.path);
-      if (!original && !network.path.startsWith("new:"))
-        throw new Error("元版の予定属性を確認できません。");
-      return original
-        ? structuredClone(original)
-        : { id: network.path, attributes: root ? { sd: ["0,ud"] } : {} };
-    }),
+    calendars: structuredClone(
+      draft.editorVersion === 4 ? draft.calendars : baseline.calendars,
+    ),
+    schedules:
+      draft.editorVersion === 4
+        ? structuredClone(draft.schedules)
+        : draft.networks.map((network) => {
+            const original = baseline.schedules?.find(
+              (s) => s.id === network.path,
+            );
+            const root = draft.roots?.some((r) => r.node.id === network.path);
+            if (!original && !network.path.startsWith("new:"))
+              throw new Error("元版の予定属性を確認できません。");
+            return original
+              ? structuredClone(original)
+              : { id: network.path, attributes: root ? { sd: ["0,ud"] } : {} };
+          }),
     networks: draft.networks.map((n) => ({
       ...n,
       nodes: n.nodes.map((node) => {
@@ -56,6 +67,24 @@ export function upgradeDraft(
       }),
     })),
   };
+  if (baseline.editorVersion === 5) {
+    const originalTargets = new Map(
+      executionTargets(baseline).map((t) => [t.id, t]),
+    );
+    upgraded.execution = executionTargets(upgraded).map((target) => {
+      const original = baseline.execution!.find((e) => e.id === target.id);
+      if (original) {
+        if (originalTargets.get(target.id)?.type !== target.type)
+          throw new Error("元版の実行属性の種別が一致しません。");
+        return structuredClone(original);
+      }
+      if (!target.id.startsWith("new:"))
+        throw new Error("元版の実行属性を確認できません。");
+      const root = upgraded.roots?.some((r) => r.node.id === target.id);
+      return { id: target.id, attributes: root ? { ha: ["y"] } : {} };
+    });
+  }
+  return upgraded;
 }
 export function snap(x: number, y: number) {
   return {
