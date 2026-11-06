@@ -1,5 +1,6 @@
 import type { EditorDraft } from "../api/@types";
 
+import { rootParent, networkType } from "./network-changes";
 import { groupPath } from "./group-paths";
 
 export function executionTargets(draft: EditorDraft) {
@@ -14,7 +15,7 @@ export function executionTargets(draft: EditorDraft) {
   for (const root of draft.roots ?? [])
     visit(
       root.node.id,
-      `${root.parentPath.replace(/\/$/, "")}/${root.node.name}`,
+      `${rootParent(draft, root).replace(/\/$/, "")}/${root.node.name}`,
     );
   const targets = [
     ...(draft.calendars ?? []).map((c) => ({
@@ -25,13 +26,13 @@ export function executionTargets(draft: EditorDraft) {
     ...(draft.roots ?? []).map((r) => ({
       id: r.node.id,
       name: names.get(r.node.id) ?? r.node.name,
-      type: r.node.type,
+      type: networkType(draft, r.node),
     })),
     ...draft.networks.flatMap((n) =>
       n.nodes.map((node) => ({
         id: node.id,
         name: names.get(node.id) ?? node.name,
-        type: node.type,
+        type: networkType(draft, node),
       })),
     ),
   ];

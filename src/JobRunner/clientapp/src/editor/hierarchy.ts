@@ -1,4 +1,5 @@
 import type { EditorDraft, EditorNode } from "../api/@types";
+import { rootParent } from "./network-changes";
 import { groupPath } from "./group-paths";
 import { isNetwork, removeNode, replaceNode } from "./model";
 
@@ -21,7 +22,7 @@ export function networkNames(draft: EditorDraft) {
   for (const root of draft.roots ?? [])
     visit(
       root.node.id,
-      (groupPath(draft, root.parentPath) ?? root.parentPath).replace(
+      (groupPath(draft, rootParent(draft, root)) ?? root.parentPath).replace(
         /\/$/,
         "",
       ) +
@@ -65,6 +66,7 @@ export function removeHierarchyNode(
   return {
     ...draft,
     roots: draft.roots?.filter((r) => !removed.has(r.node.id)),
+    networkChanges: draft.networkChanges?.filter((c) => !removed.has(c.id)),
     schedules: draft.schedules?.filter((s) => !removed.has(s.id)),
     execution: draft.execution?.filter((s) => !removed.has(s.id)),
     networks: draft.networks

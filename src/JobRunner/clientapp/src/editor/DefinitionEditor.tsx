@@ -27,6 +27,8 @@ import { LocalDefinitionInput } from "./LocalDefinitionInput";
 import { GroupProperties } from "./GroupProperties";
 import { CreationProperties } from "./CreationProperties";
 import { creationDocument } from "./creations";
+import { NetworkChangeProperties } from "./NetworkChangeProperties";
+import { networkType } from "./network-changes";
 import { NetworkProperties } from "./NetworkProperties";
 import { networkNames, removeHierarchyNode, subtreeIds } from "./hierarchy";
 import {
@@ -50,7 +52,7 @@ import {
 import "./editor.css";
 
 async function upgradeSaved(saved: SavedDraft): Promise<SavedDraft> {
-  if (saved.draft.editorVersion === 7) return saved;
+  if (saved.draft.editorVersion === 8) return saved;
   const base = saved.draft.localSources
     ? await client.ui.definition_editor.local.$post({
         body: { sources: saved.draft.localSources },
@@ -341,6 +343,7 @@ export function DefinitionEditor({
   async function addDraft(
     next: EditorDraft,
     successMessage = "下書きに追加しました。採用・登録はしていません。",
+    confirmation?: string,
   ) {
     const started = revision.current;
     setBusy(true);
@@ -356,6 +359,8 @@ export function DefinitionEditor({
         return;
       }
       if (!result.valid) throw new Error(result.errors.join("\n"));
+      if (confirmation && !window.confirm(confirmation)) return;
+      if (started !== revision.current) return;
       update(next);
       setMessage(successMessage);
     } catch (error) {
@@ -574,6 +579,22 @@ export function DefinitionEditor({
             />
           )}
           {base && (
+            <NetworkChangeProperties
+              key={`network-change:${network.path}`}
+              base={creationDocument(base, draft)}
+              draft={draft}
+              current={network.path}
+              disabled={busy || !saveAllowed}
+              onApply={(next, confirmation) =>
+                addDraft(
+                  next,
+                  "ネット操作を下書きへ反映しました。採用・登録はしていません。",
+                  confirmation,
+                )
+              }
+            />
+          )}
+          {base && (
             <TimingProperties
               base={base}
               draft={draft}
@@ -742,6 +763,7 @@ export function DefinitionEditor({
             <EditorGraph
               key={network.path}
               network={network}
+              typeOf={(n) => networkType(draft, n)}
               selected={selected}
               connecting={connecting}
               onSelect={select}
@@ -754,6 +776,7 @@ export function DefinitionEditor({
             />
             <EditorProperties
               node={node}
+              displayType={node ? networkType(draft, node) : undefined}
               editorVersion={draft.editorVersion ?? 1}
               onChange={(next) => edit(replaceNode(network, next))}
               onOpen={() => onNavigate(selected)}
@@ -786,7 +809,9 @@ export function DefinitionEditor({
                     aria-pressed={selected === n.id}
                     onClick={() => select(n.id)}
                   >
-                    <span className="outline-pill">{n.type}</span>
+                    <span className="outline-pill">
+                      {networkType(draft, n)}
+                    </span>
                     {n.name}
                     <small>
                       {n.x ?? "—"}, {n.y ?? "—"}

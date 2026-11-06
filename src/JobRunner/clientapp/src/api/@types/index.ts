@@ -72,6 +72,7 @@ export type EditorDraft = {
   newGroups?: EditorGroupCreation[] | null | undefined;
   newFiles?: EditorFileCreation[] | null | undefined;
   groupChanges?: EditorGroupChange[] | null | undefined;
+  networkChanges?: EditorNetworkChange[] | null | undefined;
 }
 
 export type EditorEdge = {
@@ -109,6 +110,12 @@ export type EditorNetwork = {
   path: string;
   nodes: EditorNode[];
   edges: EditorEdge[];
+}
+
+export type EditorNetworkChange = {
+  id: string;
+  parentPath?: string | null | undefined;
+  type?: string | null | undefined;
 }
 
 export type EditorNode = {

@@ -14,4 +14,5 @@ namespace JobRunner.Controllers.Ui;
 /// <param name="NewGroups">版6の追加グループです。</param>
 /// <param name="NewFiles">版6の追加ローカルファイルです。</param>
 /// <param name="GroupChanges">版7のグループ改名・削除です。</param>
-public sealed record EditorDraft(string DefinitionHash, List<EditorNetwork> Networks, int? EditorVersion = null, List<EditorRoot>? Roots = null, List<EditorAttributes>? Schedules = null, List<EditorAttributes>? Calendars = null, List<SourceEvidence>? LocalSources = null, List<EditorAttributes>? Execution = null, List<EditorGroupCreation>? NewGroups = null, List<EditorFileCreation>? NewFiles = null, List<EditorGroupChange>? GroupChanges = null);
+/// <param name="NetworkChanges">版8のルート移動と子ネット種別切替です。</param>
+public sealed record EditorDraft(string DefinitionHash, List<EditorNetwork> Networks, int? EditorVersion = null, List<EditorRoot>? Roots = null, List<EditorAttributes>? Schedules = null, List<EditorAttributes>? Calendars = null, List<SourceEvidence>? LocalSources = null, List<EditorAttributes>? Execution = null, List<EditorGroupCreation>? NewGroups = null, List<EditorFileCreation>? NewFiles = null, List<EditorGroupChange>? GroupChanges = null, List<EditorNetworkChange>? NetworkChanges = null);

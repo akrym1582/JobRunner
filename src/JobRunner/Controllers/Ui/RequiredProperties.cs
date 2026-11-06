@@ -27,12 +27,19 @@ public sealed class RequiredProperties : ISchemaFilter
                 schema.Required.Remove("newGroups");
                 schema.Required.Remove("newFiles");
                 schema.Required.Remove("groupChanges");
+                schema.Required.Remove("networkChanges");
             }
 
             if (context.Type == typeof(EditorGroupChange))
             {
                 schema.Required.Remove("name");
                 schema.Required.Remove("delete");
+            }
+
+            if (context.Type == typeof(EditorNetworkChange))
+            {
+                schema.Required.Remove("parentPath");
+                schema.Required.Remove("type");
             }
 
             if (context.Type == typeof(EditorAttributes))

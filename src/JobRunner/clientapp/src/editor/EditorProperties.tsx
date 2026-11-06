@@ -8,12 +8,14 @@ export function EditorProperties({
   onDelete,
   onOpen,
   editorVersion,
+  displayType,
 }: {
   node?: EditorNode;
   onChange: (node: EditorNode) => void;
   onDelete: () => void;
   onOpen: () => void;
   editorVersion: number;
+  displayType?: string;
 }) {
   if (!node)
     return (
@@ -38,7 +40,7 @@ export function EditorProperties({
     <aside className="editor-properties" aria-label="ジョブのプロパティ">
       <div className="editor-properties-title">
         <h3>プロパティ</h3>
-        <span className="outline-pill">{node.type}</span>
+        <span className="outline-pill">{displayType ?? node.type}</span>
       </div>
       <label>
         {isNetwork(node.type) ? "子ネット名" : "ジョブ名"}

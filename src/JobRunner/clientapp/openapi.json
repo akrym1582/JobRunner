@@ -799,6 +799,13 @@
               "$ref": "#/components/schemas/EditorGroupChange"
             },
             "nullable": true
+          },
+          "networkChanges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorNetworkChange"
+            },
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -930,6 +937,26 @@
             "items": {
               "$ref": "#/components/schemas/EditorEdge"
             }
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorNetworkChange": {
+        "required": [
+          "id"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "parentPath": {
+            "type": "string",
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false

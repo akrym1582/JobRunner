@@ -7,15 +7,15 @@ export const isNetwork = (type: string) => ["n", "rn"].includes(type);
 export const canEdit = (type: string, version: number) =>
   isJob(type) ||
   (version >= 2 && isJudgment(type)) ||
-  (version >= 3 && version <= 7 && isNetwork(type));
+  (version >= 3 && version <= 8 && isNetwork(type));
 
 export function upgradeDraft(
   draft: EditorDraft,
   baseline: EditorDraft,
 ): EditorDraft {
   if (
-    ![1, 2, 3, 4, 5, 6].includes(draft.editorVersion ?? 1) ||
-    ![4, 5, 6, 7].includes(baseline.editorVersion ?? 0) ||
+    ![1, 2, 3, 4, 5, 6, 7].includes(draft.editorVersion ?? 1) ||
+    ![4, 5, 6, 7, 8].includes(baseline.editorVersion ?? 0) ||
     (draft.editorVersion ?? 1) >= baseline.editorVersion! ||
     ((baseline.editorVersion ?? 0) >= 5 && !baseline.execution) ||
     !baseline.roots ||
@@ -25,7 +25,9 @@ export function upgradeDraft(
     ((draft.editorVersion ?? 1) >= 4 &&
       (!draft.schedules || !draft.calendars)) ||
     ((draft.editorVersion ?? 1) >= 5 && !draft.execution) ||
-    (draft.editorVersion === 6 && (!draft.newGroups || !draft.newFiles)) ||
+    ((draft.editorVersion ?? 1) >= 6 &&
+      (!draft.newGroups || !draft.newFiles)) ||
+    (draft.editorVersion === 7 && !draft.groupChanges) ||
     draft.definitionHash !== baseline.definitionHash
   )
     throw new Error("下書きの形式または元版が一致しません。");
@@ -70,7 +72,9 @@ export function upgradeDraft(
       }),
     })),
   };
-  if (baseline.editorVersion === 7) upgraded.groupChanges = [];
+  if ((baseline.editorVersion ?? 0) >= 7 && (draft.editorVersion ?? 1) < 7)
+    upgraded.groupChanges = [];
+  if (baseline.editorVersion === 8) upgraded.networkChanges = [];
   if ((baseline.editorVersion ?? 0) >= 6 && (draft.editorVersion ?? 1) < 6) {
     upgraded.newGroups = [];
     upgraded.newFiles = [];

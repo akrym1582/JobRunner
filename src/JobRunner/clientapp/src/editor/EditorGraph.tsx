@@ -6,6 +6,7 @@ import { snap } from "./model";
 
 export function EditorGraph({
   network,
+  typeOf = (n) => n.type,
   selected,
   connecting,
   onSelect,
@@ -13,6 +14,7 @@ export function EditorGraph({
   onOpen,
 }: {
   network: EditorNetwork;
+  typeOf?: (node: EditorNode) => string;
   selected: string;
   connecting: boolean;
   onSelect: (id: string) => void;
@@ -66,6 +68,10 @@ export function EditorGraph({
     () => new Map(network.nodes.map((node) => [node.id, node])),
     [network.nodes],
   );
+  const nodeType = (id: string) => {
+    const node = nodesById.get(id);
+    return node ? typeOf(node) : "";
+  };
   function point(clientX: number, clientY: number) {
     const matrix = svg.current?.getScreenCTM();
     return matrix
@@ -140,7 +146,7 @@ export function EditorGraph({
                     network.edges[index].conditional
                       ? "condition"
                       : ["rj", "rp", "rn", "rjdj"].includes(
-                            nodesById.get(network.edges[index].to)?.type ?? "",
+                            nodeType(network.edges[index].to),
                           )
                         ? "recovery"
                         : "normal"
@@ -161,8 +167,7 @@ export function EditorGraph({
                         network.edges[index].conditional
                           ? "#b47a10"
                           : ["rj", "rp", "rn", "rjdj"].includes(
-                                nodesById.get(network.edges[index].to)?.type ??
-                                  "",
+                                nodeType(network.edges[index].to),
                               )
                             ? "#d45c6a"
                             : "#6f829a"
@@ -239,7 +244,7 @@ export function EditorGraph({
                       textAnchor="middle"
                       className="editor-node-type"
                     >
-                      {node.type.toUpperCase()}
+                      {typeOf(node).toUpperCase()}
                     </text>
                     <text x="54" y="31" className="editor-node-name">
                       {node.name.length > 9
