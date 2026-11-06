@@ -25,6 +25,7 @@ public static class Program
         {
             options.SupportNonNullableReferenceTypes();
             options.SchemaFilter<Controllers.Ui.RequiredProperties>();
+            options.OperationFilter<Controllers.Ui.EditorDownloadSchema>();
             options.DocInclusionPredicate((_, api) =>
             api.RelativePath?.StartsWith("api/jobrunner/ui", StringComparison.Ordinal) == true || api.RelativePath?.StartsWith("api/jobrunner/operations", StringComparison.Ordinal) == true);
         });

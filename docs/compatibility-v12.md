@@ -6,7 +6,7 @@
 
 | 対象 | 公式根拠・入力 | 評価規則と制約 | 状態 | テストID |
 | --- | --- | --- | --- | --- |
-| 階層・引用文字列 | 5.1.1、5.2.5 `unit`、`#"`、`##` | 単純名、階層、行番号、繰り返し属性、文字列内区切り・空白を保持 | 実装済み・仕様テスト済み | DefinitionTests.PreservesQuotedCharactersAndHierarchy、KeepsWhitespaceInsideQuotedValue |
+| 階層・引用文字列 | 5.1.1、5.2.6 `unit`、`#"`、`##` | 単純名、階層、行番号、繰り返し属性、文字列内区切り・空白を保持 | 実装済み・仕様テスト済み | DefinitionTests.PreservesQuotedCharactersAndHierarchy、KeepsWhitespaceInsideQuotedValue |
 | コメント | 5.1.1 `/* */` | 入れ子、未閉鎖、属性と同じ行を拒否 | 実装済み・仕様テスト済み | DefinitionTests.RejectsMalformedAndCyclicDefinitions |
 | 所有者・許可ヘッダー | 5.1.1 | 4桁8進モード、所有者、資源グループを保持。所有者実行はLocalUsersで現OSユーザーへ明示対応。OSユーザー切り替えなし | 一部実装・仕様テスト済み | DefinitionTests |
 | 入力絶対名 | 5.1.1 | 配置基点の曖昧な変換をしない | 未実装・拒否 | パーサーで位置付きエラー |
@@ -21,7 +21,7 @@
 | 相対日、月区分、基準日、起算、時間間隔 | `+sd/sdd/md/cftd`、独自間隔登録 | 相対業務月、起算、固定開始からの一定間隔を実装。実機比較未実施 | 一部実装・限定ケース検証 | ExtendedScheduleTests、BranchAndIntervalTests |
 | ネスト | 5.2.4、設計ガイド3.5.3 | 上位ルール・同一業務日から最早候補を一つ採用 | 一部実装・限定ケース検証 | NestedScheduleTests |
 | Linux上のPCジョブ | ユーザー指定の独自拡張 | ty=pjをLinuxでも受理。teは/bin/sh、sc/prmはローカル実行ファイルと引数。Windowsコマンドの変換はしない | 実装済み・Linux統合テスト済み | PcJobTests |
-| ローカル実行・終了判定 | 5.2.5 pp.1064–1067 `te/sc/prm/wkp/env/etm/jd/wth/tho` | シェル/実行ファイル分離、両出力収集、コード分類 | 実装済み・仕様テスト済み（Linux teとコード判定） | ExecutionTests.ClassifiesActualExitCodes、LogStorageFailureStopsProducer |
+| ローカル実行・終了判定 | 5.2.6 pp.1064–1067 `te/sc/prm/wkp/env/etm/jd/wth/tho` | シェル/実行ファイル分離、両出力収集、コード分類 | 実装済み・仕様テスト済み（Linux teとコード判定） | ExecutionTests.ClassifiesActualExitCodes、LogStorageFailureStopsProducer |
 | 自動確定登録・補充・解除維持 | 計画16章（JobRunner独自運用） | 採用IDと基準日固定、決定的な世代キー、カーソル補充、解除行保持 | 実装済み・障害テスト済み | RecoveryTests、ExecutionControlTests、ConfirmedGenerationTests、ReviewRegressionTests。DefinitionMonitorTestsで監視設定の部分生成・長期停止復旧も確認 |
 | 即時登録・保留解除 | 独自管理API。JP1互換DTOではない | 操作IDで重複防止、親・先行成功後に開始 | 実装済み・仕様テスト済み | IntegrationTests.RunsRealProcessesThroughStandbyApiAndRecovers |
 | 計画登録 | ユーザー指定による範囲変更 | 要求はRejected | 対象外 | 確定登録と既存の即時登録を提供 |
@@ -37,7 +37,7 @@
 | 別形式Schedule/Calendar | 実出力例未入手 | 独自JSONをJP1形式として受理しない | 調査中・未実装 | 匿名化したV12出力と形式根拠が必要 |
 | 認証・Agent通信 | 計画2章 | 実装しない | 対象外 | プロジェクト依存関係を確認 |
 
-原文は明示文字コードと取得バイト列で保存します。UTF-8はテスト済み、Shift_JIS等は復号機能のみで実データ比較は未検証です。未知属性は保持した後で有効化を拒否します。表示属性`cm/sz/el`は保持しますが実行に使いません。
+原文は明示文字コードと取得バイト列で保存します。UTF-8、UTF-16のBOM、Shift_JISはテスト用原文で読み書き検証済みです。実データ・実JP1での比較は未検証です。未知属性は保持した後で有効化を拒否します。表示属性`cm/sz/el`は保持しますが実行に使いません。
 
 Web UIの図は`el`の座標と`ar`の接続を使用します。座標の対応範囲は[Web UI仕様](spec/scheduler/web-ui/spec.md)を参照してください。V12 5.2.2の座標範囲を検証しますが、JP1 Viewのグリッド補正・画面再現の互換性は提供しません。座標不足は図の表示エラーとなり、定義の実行には影響しません。
 
@@ -64,3 +64,11 @@ V11の19 API一覧との突合結果、追加API、対象外と残る差異は[W
 ## カレンダー境界の検証範囲
 
 `CalendarBoundaryTests`で、基準06:00を参照・継承した24/48時間制、基準時刻の直前/一致/直後、相対時刻、年跨ぎの休日振替・猶予と起算、当月/翌月の業務月末を確認する。同時刻ルールの重複排除は監視設定の採用ルールとともに、件数/日数方式・長期停止からの復旧で確認する。29〜31日と第5曜日の基準日、24時間制の24時以降、夏時間の曖昧・欠落時刻は拒否を維持する。実JP1との比較を済ませた意味ではない。
+
+## 原文を保持する定義編集
+
+Web UIの下書き編集・プレビュー・ダウンロードAPIはJobRunner独自仕様です。V12 3021-3-D28-20の本文を2026-11-06に確認し、5.1.1のunit/コメント、5.2.2のel/sz、5.2.4のar、5.2.6のジョブ属性と引用文字列のキャスト（`#"`、`##`）を使用しています。原文の構文位置を使って編集箇所だけ置換し、既存の取り込み検証を再利用します。保存モデルや採用の処理は変更しません。
+
+追加・ドラッグ時はH=80+160x、V=48+96y（100列・100行以内）へ配置し、必要ならszを拡張します。既存の非グリッド座標は変更するまで維持します。既存の`sz`の`x`表記も読み、拡張時は`*`で記述します。名前変更時はar/elも更新します。構文の区切り文字を含む新規名・変更名は初版では拒否します。
+
+DefinitionEditorTestsとDefinitionEditorApiTestsで無変更バイト一致、UTF-8/UTF-16のBOM、CRLF、Shift_JIS、引用符・#・日本語、原文欠落、複数入力、接続制約、運用データ不変を検証します。これはテスト用定義での文書仕様検証であり、実JP1への投入・JP1 Viewでの表示比較は未実施です。

@@ -30,6 +30,56 @@ export type Edge = {
   kind: string;
 }
 
+export type EditorDocument = {
+  draft: EditorDraft;
+  sources: EditorSource[];
+}
+
+export type EditorDraft = {
+  definitionHash: string;
+  networks: EditorNetwork[];
+}
+
+export type EditorEdge = {
+  from: string;
+  to: string;
+  conditional: boolean;
+}
+
+export type EditorNetwork = {
+  path: string;
+  nodes: EditorNode[];
+  edges: EditorEdge[];
+}
+
+export type EditorNode = {
+  id: string;
+  name: string;
+  type: string;
+
+  attributes: {
+    [key: string]: string[];
+  };
+
+  x: number | null;
+  y: number | null;
+}
+
+export type EditorPreview = {
+  valid: boolean;
+  errors: string[];
+  layoutErrors: string[];
+  sources: EditorSource[];
+}
+
+export type EditorSource = {
+  fileName: string;
+  encoding: string;
+  targetPath: string;
+  text: string;
+  changed: boolean;
+}
+
 export type ExecutionPage = {
   items: Occurrence[];
   total: number;

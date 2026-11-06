@@ -37,6 +37,84 @@
         }
       }
     },
+    "/api/jobrunner/ui/definition-editor": {
+      "get": {
+        "tags": [
+          "JobRunner"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorDocument"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobrunner/ui/definition-editor/preview": {
+      "post": {
+        "tags": [
+          "JobRunner"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorPreview"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobrunner/ui/definition-editor/export": {
+      "post": {
+        "tags": [
+          "JobRunner"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobrunner/ui/jobnets": {
       "get": {
         "tags": [
@@ -449,6 +527,193 @@
           },
           "kind": {
             "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorDocument": {
+        "required": [
+          "draft",
+          "sources"
+        ],
+        "type": "object",
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/EditorDraft"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorSource"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorDraft": {
+        "required": [
+          "definitionHash",
+          "networks"
+        ],
+        "type": "object",
+        "properties": {
+          "definitionHash": {
+            "type": "string"
+          },
+          "networks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorNetwork"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorEdge": {
+        "required": [
+          "conditional",
+          "from",
+          "to"
+        ],
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "conditional": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorNetwork": {
+        "required": [
+          "edges",
+          "nodes",
+          "path"
+        ],
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorNode"
+            }
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorEdge"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorNode": {
+        "required": [
+          "attributes",
+          "id",
+          "name",
+          "type",
+          "x",
+          "y"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "attributes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "x": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "y": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorPreview": {
+        "required": [
+          "errors",
+          "layoutErrors",
+          "sources",
+          "valid"
+        ],
+        "type": "object",
+        "properties": {
+          "valid": {
+            "type": "boolean"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "layoutErrors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorSource"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorSource": {
+        "required": [
+          "changed",
+          "encoding",
+          "fileName",
+          "targetPath",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "fileName": {
+            "type": "string"
+          },
+          "encoding": {
+            "type": "string"
+          },
+          "targetPath": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "changed": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false

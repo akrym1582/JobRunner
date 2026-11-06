@@ -1,8 +1,10 @@
-import type { Graph } from "./api/@types";
 export const NODE_WIDTH = 190,
   NODE_HEIGHT = 88;
 type Point = { x: number; y: number };
-export function fixedLayout(data: Pick<Graph, "nodes" | "edges">) {
+export function fixedLayout(data: {
+  nodes: { path: string; x: number; y: number }[];
+  edges: { id: string; from: string; to: string; kind?: string }[];
+}) {
   // JP1のピクセル座標の相対位置を維持し、表示用カードに合わせて一律拡大します。
   const raw = data.nodes.map((n) => {
     if (!Number.isFinite(n.x) || !Number.isFinite(n.y))

@@ -1,0 +1,588 @@
+import { useEffect, useRef, useState } from "react";
+import useAspidaSWR from "@aspida/swr";
+import {
+  CheckCircle2,
+  Download,
+  FileCode2,
+  GitBranch,
+  Link2,
+  Plus,
+  Redo2,
+  RotateCcw,
+  Undo2,
+  X,
+} from "lucide-react";
+import type {
+  EditorDocument,
+  EditorDraft,
+  EditorNetwork,
+  EditorPreview,
+} from "../api/@types";
+import { client, errorMessage } from "../client";
+import { EditorGraph } from "./EditorGraph";
+import { EditorProperties } from "./EditorProperties";
+import {
+  change,
+  isJob,
+  newJob,
+  redo,
+  removeNode,
+  replaceNetwork,
+  replaceNode,
+  undo,
+  type History,
+} from "./model";
+import { readDraft, writeDraft } from "./storage";
+import "./editor.css";
+
+export function DefinitionEditor({
+  activeHash,
+  path,
+  onNavigate,
+}: {
+  activeHash?: string;
+  path: string;
+  onNavigate: (path: string) => void;
+}) {
+  const source = useAspidaSWR(client.ui.definition_editor, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+  });
+  const [base, setBase] = useState<EditorDocument>();
+  const [history, setHistory] = useState<History>();
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const [saveAllowed, setSaveAllowed] = useState(true);
+  const [selected, setSelected] = useState("");
+  const [kind, setKind] = useState("j");
+  const [connecting, setConnecting] = useState(false);
+  const [connectFrom, setConnectFrom] = useState("");
+  const [conditional, setConditional] = useState(false);
+  const [preview, setPreview] = useState<EditorPreview>();
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewFile, setPreviewFile] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const revision = useRef(0);
+  const draft = history?.present;
+  const network =
+    draft?.networks.find((n) => n.path === path) ?? draft?.networks[0];
+  const node = network?.nodes.find((n) => n.id === selected);
+  const changed =
+    !!draft && JSON.stringify(base?.draft) !== JSON.stringify(draft);
+
+  useEffect(() => {
+    let current = true;
+    void readDraft()
+      .then((saved) => {
+        if (!current) return;
+        if (saved) {
+          setBase(saved.base);
+          setHistory({ past: [], present: saved.draft, future: [] });
+        }
+        setLoaded(true);
+      })
+      .catch((e) => {
+        if (!current) return;
+        setSaveError(`下書きを復元できません: ${String(e)}`);
+        setSaveAllowed(false);
+        setLoaded(true);
+      });
+    return () => {
+      current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (loaded && !base && source.data) {
+      setBase(source.data);
+      setHistory({ past: [], present: source.data.draft, future: [] });
+    }
+  }, [loaded, base, source.data]);
+  useEffect(() => {
+    let current = true;
+    if (source.error)
+      void errorMessage(source.error).then((text) => {
+        if (current) setLoadError(text);
+      });
+    else setLoadError("");
+    return () => {
+      current = false;
+    };
+  }, [source.error]);
+  useEffect(() => {
+    if (!base || !draft || !saveAllowed) return;
+    let current = true;
+    setSaving("下書きを保存中…");
+    void writeDraft({ version: 1, base, draft })
+      .then(() => {
+        if (current) {
+          setSaving("ブラウザーに保存済み");
+          setSaveError("");
+        }
+      })
+      .catch((e) => {
+        if (current) {
+          setSaving("");
+          setSaveError(`自動保存できません: ${String(e)}`);
+        }
+      });
+    return () => {
+      current = false;
+    };
+  }, [base, draft, saveAllowed]);
+  useEffect(() => {
+    setSelected("");
+    setConnectFrom("");
+  }, [network?.path]);
+
+  function update(next: EditorDraft) {
+    revision.current++;
+    setPreview(undefined);
+    setMessage("");
+    setHistory((h) => (h ? change(h, next) : h));
+  }
+  function edit(next: EditorNetwork) {
+    if (draft) update(replaceNetwork(draft, next));
+  }
+  function travel(direction: "undo" | "redo") {
+    revision.current++;
+    setPreview(undefined);
+    setMessage("");
+    setConnectFrom("");
+    setHistory((h) => (h ? (direction === "undo" ? undo(h) : redo(h)) : h));
+  }
+  function select(id: string) {
+    if (!network) return;
+    setSelected(id);
+    if (!connecting) return;
+    if (!connectFrom) {
+      setConnectFrom(id);
+      return;
+    }
+    if (connectFrom === id) {
+      setMessage("別の接続先を選択してください。");
+      return;
+    }
+    if (network.edges.some((e) => e.from === connectFrom && e.to === id)) {
+      setMessage("この接続は既に存在します。");
+      return;
+    }
+    edit({
+      ...network,
+      edges: [...network.edges, { from: connectFrom, to: id, conditional }],
+    });
+    setConnectFrom("");
+    setConnecting(false);
+  }
+  async function validate() {
+    if (!draft) return;
+    const current = revision.current;
+    setBusy(true);
+    setMessage("");
+    try {
+      const result = await client.ui.definition_editor.preview.$post({
+        body: draft,
+      });
+      if (current === revision.current) {
+        setPreview(result);
+        setShowPreview(true);
+        setPreviewFile(0);
+      }
+    } catch (e) {
+      const detail = await errorMessage(e);
+      if (current === revision.current) setMessage(detail);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function download() {
+    if (!draft || !base) return;
+    const current = revision.current;
+    setBusy(true);
+    setMessage("");
+    try {
+      const blob = await client.ui.definition_editor.export.$post({
+        body: draft,
+      });
+      if (current !== revision.current) {
+        setMessage(
+          "編集内容が変わりました。再度検証してダウンロードしてください。",
+        );
+        return;
+      }
+      const url = URL.createObjectURL(blob),
+        link = document.createElement("a");
+      link.href = url;
+      link.download =
+        base.sources.length === 1
+          ? base.sources[0].fileName.split("/").at(-1)!
+          : "jobrunner-definitions.zip";
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setMessage("定義をダウンロードしました。");
+    } catch (e) {
+      const detail = await errorMessage(e);
+      if (current === revision.current) setMessage(detail);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function discard() {
+    if (
+      !window.confirm(
+        "保存した下書きを破棄し、現在の採用定義からやり直しますか？",
+      )
+    )
+      return;
+    setBusy(true);
+    try {
+      const current = await source.mutate();
+      if (!current) throw new Error("現在の定義を取得できません。");
+      revision.current++;
+      setBase(current);
+      setHistory({ past: [], present: current.draft, future: [] });
+      setPreview(undefined);
+      setShowPreview(false);
+      setSaveAllowed(true);
+      setSelected("");
+    } catch (e) {
+      setMessage(await errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="definition-editor">
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">DEFINITION WORKSPACE</span>
+          <h2>
+            定義編集 <span className="outline-pill">下書き</span>
+          </h2>
+          <p>ジョブと接続を編集して、JP1形式でダウンロード</p>
+        </div>
+        <span
+          className={`editor-save ${saveError ? "error" : ""}`}
+          role="status"
+        >
+          {saveError ? "自動保存エラー" : saving}
+        </span>
+      </div>
+      {loadError && (
+        <div className="alert" role="alert">
+          {loadError}
+          <button onClick={() => void source.mutate()}>定義を再取得</button>
+        </div>
+      )}
+      {saveError && (
+        <div className="alert" role="alert">
+          {saveError}
+          <button
+            onClick={() => {
+              if (base && draft) {
+                setSaveAllowed(true);
+                void writeDraft({ version: 1, base, draft })
+                  .then(() => {
+                    setSaveError("");
+                    setSaving("ブラウザーに保存済み");
+                  })
+                  .catch((e) => setSaveError(String(e)));
+              }
+            }}
+          >
+            保存を再試行
+          </button>
+        </div>
+      )}
+      {draft && activeHash && draft.definitionHash !== activeHash && (
+        <div className="notice" role="status">
+          採用定義が更新されています。この下書きは開始時の版{" "}
+          {draft.definitionHash.slice(0, 12)} に固定しています。
+        </div>
+      )}
+      <div className="editor-scope-note">
+        <FileCode2 size={16} />
+        この下書きは実行中の定義や予定に反映されません。ダウンロード後、既存の取込・採用手順で適用します。
+      </div>
+      {message && (
+        <div className="notice" role="status">
+          {message}
+        </div>
+      )}
+      {draft && network && history ? (
+        <>
+          <div className="editor-toolbar">
+            <div>
+              <button
+                aria-label="元に戻す"
+                disabled={!history.past.length}
+                onClick={() => travel("undo")}
+              >
+                <Undo2 size={17} />
+              </button>
+              <button
+                aria-label="やり直す"
+                disabled={!history.future.length}
+                onClick={() => travel("redo")}
+              >
+                <Redo2 size={17} />
+              </button>
+              <span className="editor-toolbar-separator" />
+              <select
+                aria-label="追加するジョブ種別"
+                value={kind}
+                onChange={(e) => setKind(e.target.value)}
+              >
+                <option value="j">UNIXジョブ</option>
+                <option value="pj">PCジョブ</option>
+                <option value="rj">リカバリー UNIX</option>
+                <option value="rp">リカバリー PC</option>
+              </select>
+              <button
+                onClick={() => {
+                  try {
+                    const added = newJob(network, kind);
+                    edit({ ...network, nodes: [...network.nodes, added] });
+                    setSelected(added.id);
+                  } catch (e) {
+                    setMessage(String(e));
+                  }
+                }}
+              >
+                <Plus size={16} />
+                ジョブ追加
+              </button>
+              <button
+                aria-pressed={connecting}
+                onClick={() => {
+                  setConnecting(!connecting);
+                  setConnectFrom("");
+                }}
+              >
+                <Link2 size={16} />
+                接続
+              </button>
+              {connecting && (
+                <select
+                  aria-label="接続種別"
+                  value={conditional ? "condition" : "normal"}
+                  onChange={(e) =>
+                    setConditional(e.target.value === "condition")
+                  }
+                >
+                  <option value="normal">通常順序</option>
+                  <option value="condition">条件成立</option>
+                </select>
+              )}
+            </div>
+            <div>
+              <button disabled={busy} onClick={() => void validate()}>
+                <CheckCircle2 size={16} />
+                {busy ? "処理中…" : "検証・プレビュー"}
+              </button>
+              <button
+                className="primary"
+                disabled={busy || !preview?.valid}
+                onClick={() => void download()}
+              >
+                <Download size={16} />
+                ダウンロード
+              </button>
+            </div>
+          </div>
+          <div className="editor-network-bar">
+            <GitBranch size={16} />
+            <label>
+              編集ネット
+              <select
+                aria-label="編集ネット"
+                value={network.path}
+                onChange={(e) => onNavigate(e.target.value)}
+              >
+                {draft.networks.map((n) => (
+                  <option key={n.path} value={n.path}>
+                    {n.path}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <span>{changed ? "変更あり" : "変更なし"}</span>
+            {connecting && (
+              <strong>
+                {connectFrom
+                  ? `${network.nodes.find((n) => n.id === connectFrom)?.name} → 接続先を選択`
+                  : "接続元を選択"}
+              </strong>
+            )}
+          </div>
+          <div className="editor-workspace">
+            <EditorGraph
+              key={network.path}
+              network={network}
+              selected={selected}
+              connecting={connecting}
+              onSelect={select}
+              onMove={(node, x, y) =>
+                edit(replaceNode(network, { ...node, x, y }))
+              }
+              onOpen={(id) => {
+                if (draft.networks.some((n) => n.path === id)) onNavigate(id);
+              }}
+            />
+            <EditorProperties
+              node={node}
+              onChange={(next) => edit(replaceNode(network, next))}
+              onOpen={() => onNavigate(selected)}
+              onDelete={() => {
+                if (!node || !isJob(node.type)) return;
+                const edges = network.edges.filter(
+                  (e) => e.from === node.id || e.to === node.id,
+                );
+                if (
+                  window.confirm(
+                    `「${node.name}」と関連する接続 ${edges.length} 件を削除しますか？`,
+                  )
+                ) {
+                  edit(removeNode(network, node.id));
+                  setSelected("");
+                }
+              }}
+            />
+          </div>
+          <div className="editor-lists">
+            <section>
+              <h3>
+                ユニット一覧 <span>{network.nodes.length}</span>
+              </h3>
+              <div className="editor-unit-list">
+                {network.nodes.map((n) => (
+                  <button
+                    key={n.id}
+                    aria-pressed={selected === n.id}
+                    onClick={() => select(n.id)}
+                  >
+                    <span className="outline-pill">{n.type}</span>
+                    {n.name}
+                    <small>
+                      {n.x ?? "—"}, {n.y ?? "—"}
+                    </small>
+                  </button>
+                ))}
+              </div>
+            </section>
+            <section>
+              <h3>
+                接続一覧 <span>{network.edges.length}</span>
+              </h3>
+              <div className="editor-connection-list">
+                {network.edges.map((edge, index) => (
+                  <div key={`${edge.from}:${edge.to}:${index}`}>
+                    <span>
+                      {network.nodes.find((n) => n.id === edge.from)?.name}{" "}
+                      <span className="editor-muted">→</span>{" "}
+                      {network.nodes.find((n) => n.id === edge.to)?.name}
+                    </span>
+                    <small>{edge.conditional ? "条件成立" : "通常順序"}</small>
+                    <button
+                      aria-label={`接続 ${index + 1} を削除`}
+                      onClick={() =>
+                        edit({
+                          ...network,
+                          edges: network.edges.filter((_, i) => i !== index),
+                        })
+                      }
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+                {!network.edges.length && (
+                  <p className="editor-muted">接続はありません。</p>
+                )}
+              </div>
+            </section>
+          </div>
+          {preview && (
+            <section className="editor-preview" aria-label="検証結果">
+              <div className="editor-preview-title">
+                <h3>
+                  {preview.valid
+                    ? "検証OK — ダウンロードできます"
+                    : "検証エラー — 修正してください"}
+                </h3>
+                <button onClick={() => setShowPreview(!showPreview)}>
+                  {showPreview ? "原文を閉じる" : "原文を確認"}
+                </button>
+              </div>
+              {preview.errors.map((error) => (
+                <div key={error} role="alert" className="alert">
+                  {error}
+                </div>
+              ))}
+              {preview.layoutErrors.length > 0 && (
+                <div className="notice">
+                  表示座標の診断（実行定義の検証とは別）
+                  <ul>
+                    {preview.layoutErrors.map((error) => (
+                      <li key={error}>{error}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {showPreview && preview.sources.length > 0 && (
+                <>
+                  <label className="editor-file-select">
+                    原文ファイル
+                    <select
+                      value={Math.min(previewFile, preview.sources.length - 1)}
+                      onChange={(e) => setPreviewFile(Number(e.target.value))}
+                    >
+                      {preview.sources.map((file, i) => (
+                        <option key={file.fileName + file.targetPath} value={i}>
+                          {file.fileName} · {file.encoding}{" "}
+                          {file.changed ? "（変更あり）" : "（変更なし）"}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="editor-diff">
+                    <div>
+                      <h4>変更前</h4>
+                      <pre aria-label="変更前の原文">
+                        {base?.sources[previewFile]?.text}
+                      </pre>
+                    </div>
+                    <div>
+                      <h4>変更後</h4>
+                      <pre aria-label="変更後の原文">
+                        {preview.sources[previewFile]?.text}
+                      </pre>
+                    </div>
+                  </div>
+                </>
+              )}
+            </section>
+          )}
+          <div className="editor-footer">
+            <span>
+              基点版 {draft.definitionHash.slice(0, 12)} ·{" "}
+              {base?.sources.length} ファイル · このブラウザーに下書きを保存
+            </span>
+            <button disabled={busy} onClick={() => void discard()}>
+              <RotateCcw size={14} />
+              下書きを破棄
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="empty">
+          {draft
+            ? "編集できるジョブネットがありません。"
+            : "定義と保存済みの下書きを読み込んでいます…"}
+        </div>
+      )}
+    </div>
+  );
+}
