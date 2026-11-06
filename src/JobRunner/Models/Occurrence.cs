@@ -142,4 +142,16 @@ public sealed class Occurrence
     /// <summary>Gets or sets. 一時変更前の保留属性です。</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public bool? BeforeChangeHoldOverride { get; set; }
+
+    /// <summary>Gets or sets. ルートの中断要求。稼働中試行の回収後に中断を確定します。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public bool? InterruptRequested { get; set; }
+
+    /// <summary>Gets or sets. 元試行を変更せず保持する手動の終了コードです。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public int? ManualExitCode { get; set; }
+
+    /// <summary>Gets or sets. この世代に一時設定した遅延監視です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public DelayMonitorSettings? DelayMonitor { get; set; }
 }

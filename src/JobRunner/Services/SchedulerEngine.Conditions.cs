@@ -158,19 +158,19 @@ public sealed partial class SchedulerEngine
                 var predecessor = all.Single(v => v.RootId == occurrence.RootId && v.UnitPath == edge.From);
                 var attemptRow = await storage.GetAsync("attempt:" + predecessor.AttemptId, token);
                 var attempt = attemptRow is null ? null : StorageRepository.Read<JobAttempt>(attemptRow);
-                if (attempt is null || attempt.OutputError is not null)
+                if ((attempt is null || attempt.OutputError is not null) && (kind.StartsWith('v') || kind.StartsWith('s') || predecessor.ManualExitCode is null))
                 {
                     throw new FormatException("判定に必要な先行試行または出力がありません。");
                 }
 
                 if (kind.StartsWith('v') || kind.StartsWith('s'))
                 {
-                    string? value = attempt.OutputVariables?.GetValueOrDefault(unit.Get("ejv").Trim('?'));
+                    string? value = attempt!.OutputVariables?.GetValueOrDefault(unit.Get("ejv").Trim('?'));
                     result = EvaluateVariable(unit, value);
                 }
                 else
                 {
-                    int code = attempt.ExitCode ?? throw new FormatException("先行試行の終了コードがありません。");
+                    int code = predecessor.ManualExitCode ?? attempt?.ExitCode ?? throw new FormatException("先行試行の終了コードがありません。");
                     result = EvaluateCondition(unit, unchecked((uint)code));
                 }
             }

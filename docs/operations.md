@@ -206,7 +206,7 @@ Windows専用のコマンド構文・パス・exe/batをLinux用に変換する�
 
 ### 保存形式の更新と切り戻し
 
-現行版は稼働系取得時に採用情報のFormatVersionを1/2から3へ更新する。採用ID、既存世代IDと入力ハッシュは維持する。不変の旧activation.jsonとactivation-v2.jsonは上書きせず、activation-v3.jsonを保存する。形式3を理解できない旧実行器は再選出時の検査で停止する。
+現行版は稼働系取得時に採用情報のFormatVersionを1/2/3から4へ更新する。採用ID、既存世代IDと入力ハッシュは維持する。不変の旧activation.json、activation-v2.json、activation-v3.jsonは上書きせず、activation-v4.jsonを保存する。形式4を理解できない旧実行器は再選出時の検査で停止する。
 
 導入時は旧バージョンのAPIと実行器をすべて停止してから新版を起動する。旧APIは新しい要求フィールドを理解できないため、バージョン混在のローリング更新は行わない。旧バイナリへ戻す場合はバイナリだけを戻さず、停止した状態で導入前のTable/管理Blob一式を復元し、導入後の業務実行結果を照合する。形式番号だけを書き戻して新形式の登録を旧実行器に読ませてはいけない。
 
@@ -219,3 +219,7 @@ Windows専用のコマンド構文・パス・exe/batをLinux用に変換する�
 - 予定操作は不変の変更計画とTableの条件付き更新で再開します。参照APIがJOBRUNNER_MUTATION_IN_PROGRESSを返した場合は再取得してください。
 - 専用の変数出力ファイルは試行終了後に回収・削除します。値は試行履歴に保持されます。再実行は新しい出力を使い、AJSVARやコマンド内マクロ置換は行いません。
 - APIのエラー本文のmessageIDがJOBRUNNERで始まる場合は独自契約です。HTTPタイムアウトは処理取消を意味しません。同じX-JobRunner-Request-Idで結果を再確認してください。
+
+## Web API一覧から追加した運用
+
+[Web API照合表](jp1-webapi-matrix.md)に全19 APIの対応範囲を記載しています。Interruptは稼働中のプロセスを停止せず後続を抑止します。ChangeStatusは元試行を保持した手動結果であり、Unknownには従来のResolveを使います。ChangeDelayMonitorは監視状態の評価であり、タイムアウトや外部通知ではありません。保存形式4への更新は全API・実行器を停止して実施してください。

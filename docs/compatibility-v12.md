@@ -45,7 +45,7 @@
 
 | 領域 | 対応する範囲 | 対象外・差異 |
 | --- | --- | --- |
-| 参照 | 現在の採用領域のGET statuses一覧、unitName:execIDの単体。階層、定義/状態、名前比較EQ/BW/EW/NE/CO/NC、種別、NO/STATUS/RESULT/PERIOD/EXECID、個別の対応状態 | 旧採用領域の検索、正規表現、集約状態GRP_*、Agent/リリース/遅延監視検索、searchConnectInfo=YES。1000件超は独自エラーで拒否（JP1のall=falseによる一部返却とは異なる） |
+| 参照 | 現在の採用領域のGET statuses一覧、unitName:execIDの単体。階層、定義/状態、名前比較EQ/BW/EW/NE/CO/NC、種別、NO/STATUS/RESULT/PERIOD/EXECID、個別の対応状態 | 旧採用領域の検索、正規表現、集約状態GRP_*、Agent/リリース検索、searchConnectInfo=YES。1000件超は独自エラーで拒否（JP1のall=falseによる一部返却とは異なる） |
 | 世代選択 | STATUSはVIEWSTATUSRANGE=allの実行中→再実行待ち→次回予定。RESULTは最新終了。PERIODはルートの実行期間との重なり | today設定、夏時間の曖昧・欠落時刻のJP1補正。旧データの欠落した実開始日時は精密な期間互換対象外 |
 | 状態 | TIMEWAIT/TERMWAIT/EXECWAIT/HOLDING/RUNNING/WACONT/ABCONT/NORMAL/NORMALFALSE/WARNING/ABNORMAL/FAIL/KILL/INTERRUPT/UNKNOWN/UNEXEC/BYPASS、未登録NOENTRY・未計画NOPLAN | Agentキュー、閉塞、順序不正、イベント/監視・起動条件の状態。履歴退避状態は業務結果へ戻して表示 |
 | 入力エラーID | KNAK3201（必須）、3202（バイト長）、3203（数値範囲）、3204（禁止文字）、3206（形式）、3207（比較値不足）、3209（排他）の確認済み条件 | KNAK3208（対象APIの配列上限を未確認）、全JP1エラー、本文の完全一致、複数違反の報告順、付加情報コードの全面互換。対応IDは各検証箇所に限定 |
@@ -54,3 +54,7 @@
 `UNKNOWN`の表示は「終了状態不明」です。API定数表の「終了状態不正」という表記とは差がありますが、[状態取得失敗時の説明](https://itpfdoc.hitachi.co.jp/manuals/3021/30213L4700/AJSK0045.HTM)とV12導入ガイドのunknownに対応付けます。確認前に自動再実行・リカバリー起動はしません。強制終了はプロセス終了を確認できたタイムアウトの場合だけKILLとし、手動Stop等で結果が未確定ならUNKNOWNを維持します。
 
 変数受渡しはJP1のAJSVAR互換ではありません。`JOBRUNNER_OUTPUT_FILE`へUTF-8のJSONオブジェクト（例: `{"AJS2RESULT":"7"}`）を出力し、`ejv=?AJS2RESULT?`で参照します。最大32変数、各値255バイト、ファイル128KiB。未定義/空文字は有無判定で値なし、必要な数値・値がない比較は判定エラーです。ファイル判定は実行ホストの絶対パスのみです。
+
+## 公式Web API一覧からの追加対応
+
+V11の19 API一覧との突合結果、追加API、対象外と残る差異は[Web API照合表](jp1-webapi-matrix.md)を参照してください。中断、遅延監視変更、ジョブ状態変更、実行結果詳細、JobRunnerの製品情報を追加しました。遅延監視の設定変更・状態表示・検索は対応し、Agent/リリース/定義からの監視属性取込は引き続き対象外です。

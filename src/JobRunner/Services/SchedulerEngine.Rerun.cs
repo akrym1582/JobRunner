@@ -107,6 +107,9 @@ public sealed partial class SchedulerEngine
 
             value.State = (units[path].Get("ha", "n") == "y" || (path == target.UnitPath && rerunOptions.Contains("HOLD"))) ? "Held" : "Waiting";
             value.HoldOverride = path == target.UnitPath && rerunOptions.Contains("HOLD") ? true : null;
+            value.ManualExitCode = null;
+            value.InterruptRequested = null;
+            value.StatusDetail = null;
             value.AttemptId = null;
             value.ConditionMatched = null;
             value.StandaloneRerun = method == "ONLY" && path == target.UnitPath ? true : null;
@@ -125,6 +128,7 @@ public sealed partial class SchedulerEngine
                 if (!selected.Contains(parent))
                 {
                     ancestor.Value.State = ancestor.Value.Id == target.Id && rerunOptions.Contains("HOLD") ? "Held" : "Running";
+                    ancestor.Value.InterruptRequested = null;
                     ancestor.Value.Started = true;
                     ancestor.Value.FinishedAt = null;
                     changed.Add(parent);

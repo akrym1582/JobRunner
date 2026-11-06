@@ -57,7 +57,7 @@ public static class Jp1Status
             "Unknown" => "UNKNOWN",
             "Interrupted" => "INTERRUPT",
             "Cancelled" or "Superseded" => "BYPASS",
-            "NotScheduled" => value.ScheduleExcluded == true ? "BYPASS" : "UNEXEC",
+            "NotScheduled" => value.ScheduleExcluded == true || value.StatusDetail == "BYPASS" ? "BYPASS" : "UNEXEC",
             "Skipped" => "UNEXEC",
             _ => throw new InvalidDataException("表示できない実行状態です。"),
         };

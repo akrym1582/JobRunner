@@ -73,10 +73,22 @@ public static partial class Jp1Endpoints
 
             string raw = context.Features.Get<IHttpRequestFeature>()?.RawTarget ?? context.Request.Path.Value!;
             string path = Uri.UnescapeDataString(raw.Split('?')[0]);
+            const string detailsSuffix = "/actions/execResultDetails/invoke";
+            bool details = path.EndsWith(detailsSuffix, StringComparison.Ordinal);
+            if (details)
+            {
+                path = path[..^detailsSuffix.Length];
+            }
+
             const string prefix = "/ajs/api/v1/objects/statuses";
             bool single = path.Length > prefix.Length + 1;
+            if (details && !single)
+            {
+                return Error(context, 404, "ユニット完全名と実行IDが必要です。");
+            }
+
             string? resource = single ? path[(prefix.Length + 1)..] : null;
-            var allowed = single ? new[] { "manager", "serviceName", "searchConnectInfo" }
+            var allowed = details ? new[] { "manager", "serviceName" } : single ? new[] { "manager", "serviceName", "searchConnectInfo" }
                 : new[] { "mode", "manager", "serviceName", "location", "searchLowerUnits", "searchTarget", "unitName", "unitNameMatchMethods", "unitType", "generation", "execID", "periodBegin", "periodEnd", "status", "delayStatus", "holdPlan", "execHost", "execHostMatchMethods", "releaseID", "releaseInfoSearchMethods" };
             if (query.EnumerateObject().Any(p => !allowed.Contains(p.Name, StringComparer.Ordinal)))
             {
@@ -113,7 +125,8 @@ public static partial class Jp1Endpoints
             string filter = single || definitionOnly ? "NO" : Choice(query, "status", "NO", "NO", "UNREGISTERED", "NOPLAN", "UNEXEC", "BYPASS", "TIMEWAIT", "TERMWAIT", "EXECWAIT", "HOLDING", "RUNNING", "WACONT", "ABCONT", "ABNORMAL", "INTERRUPT", "KILL", "FAIL", "UNKNOWN", "WARNING", "NORMAL", "NORMALFALSE");
             string generation = single ? "EXECID" : definitionOnly || filter == "UNREGISTERED" ? "NO" : Choice(query, "generation", "STATUS", "NO", "STATUS", "RESULT", "PERIOD", "EXECID");
             bool ignoreExecution = definitionOnly || filter == "UNREGISTERED";
-            foreach (string key in new[] { "delayStatus", "holdPlan", "execHostMatchMethods", "releaseInfoSearchMethods" })
+            string delayFilter = single || ignoreExecution ? "NO" : Choice(query, "delayStatus", "NO", "NO", "START", "END", "YES");
+            foreach (string key in new[] { "holdPlan", "execHostMatchMethods", "releaseInfoSearchMethods" })
             {
                 bool ignored = key == "releaseInfoSearchMethods" ? type == "GROUP" : ignoreExecution || (key == "execHostMatchMethods" && type is "ROOT" or "NET");
                 if (!ignored && query.TryGetProperty(key, out var field) && field.GetString() != "NO")
@@ -249,10 +262,34 @@ public static partial class Jp1Endpoints
 
                     var root = candidate is null ? null : occurrences.Single(o => o.Id == candidate.RootId);
                     var attempt = candidate?.AttemptId is string attemptId ? attempts.GetValueOrDefault(attemptId) : null;
+                    if (details && candidate is not null)
+                    {
+                        return await ExecutionDetailsAsync(context, candidate, attempt, storage);
+                    }
+
+                    var delay = candidate is null ? (Start: false, End: false) : DelayMonitoring.Evaluate(candidate, occurrences, options, now);
+                    var nestedDelays = candidate is null ? [] : occurrences.Where(o => o.RootId == candidate.RootId && o.UnitPath.StartsWith(candidate.UnitPath + "/", StringComparison.Ordinal)).Select(o => DelayMonitoring.Evaluate(o, occurrences, options, now)).ToList();
+                    bool startDelayed = delay.Start || nestedDelays.Any(d => d.Start);
+                    bool endDelayed = delay.End || nestedDelays.Any(d => d.End);
+                    if ((delayFilter == "START" && !startDelayed) || (delayFilter == "END" && !endDelayed) || (delayFilter == "YES" && !startDelayed && !endDelayed))
+                    {
+                        continue;
+                    }
+
+                    var monitor = candidate?.DelayMonitor;
+                    var startLimit = candidate is null ? null : DelayMonitoring.Limit(candidate, monitor?.Start, monitor?.StartMinutes, occurrences, options);
+                    var endLimit = candidate is null ? null : DelayMonitoring.Limit(candidate, monitor?.End, monitor?.EndMinutes, occurrences, options);
+                    if (monitor?.Duration == true && (candidate?.RestartedAt ?? candidate?.StartedAt) is DateTimeOffset began)
+                    {
+                        var durationLimit = began.AddMinutes(monitor.DurationMinutes!.Value);
+                        endLimit = endLimit is null || durationLimit < endLimit ? durationLimit : endLimit;
+                    }
+
+                    string noDelay = candidate is null ? "NONE" : fixedUnit.IsNetwork() ? "NO" : "UNSUPPORTED";
                     selected.Add(new
                     {
                         definition = new { unitName = unit.Path, simpleUnitName = simple, rootJobnetName = unit.Type == "g" ? string.Empty : rootPath, unitComment = fixedUnit.Get("cm"), unitType = fixedUnit.Type == "g" ? "GROUP" : fixedUnit.IsNetwork() ? isRoot ? "ROOTNET" : "NET" : fixedUnit.IsJudgment() ? "JDJOB" : fixedUnit.Type is "pj" or "rp" ? "PJOB" : "JOB", owner = fixedUnit.OwnerName ?? string.Empty, jp1ResourceGroup = fixedUnit.ResourceGroup ?? string.Empty, unitID = -1, execAgent = fixedUnit.Get("ex"), execFileName = fixedUnit.Get("sc"), parameters = fixedUnit.Get("prm"), customJobType = string.Empty, registerStatus = registered ? "YES" : "NO", recoveryUnit = fixedUnit.IsRecovery(), wait = false, jobnetReleaseUnit = false },
-                        unitStatus = new { unitName = unit.Path, simpleUnitName = simple, execID = root?.Jp1ExecutionId ?? string.Empty, status, schStartTime = Stamp(candidate?.Due, options), startTime = Stamp(candidate?.StartedAt ?? attempt?.StartedAt, options), reStartTime = Stamp(candidate?.RestartedAt, options), endTime = Stamp(candidate?.FinishedAt, options), retCode = attempt?.ExitCode is int exitCode ? unchecked((uint)exitCode).ToString(CultureInfo.InvariantCulture) : string.Empty, startDelayStatus = "UNSUPPORTED", endDelayStatus = "UNSUPPORTED", nestStartDelayStatus = "UNSUPPORTED", nestEndDelayStatus = "UNSUPPORTED", holdAttr = candidate is null ? "NONE" : candidate.HoldOverride is bool holding ? holding ? "HOLD" : "RELEASE" : fixedUnit.Get("ha", "n") == "y" ? "YES" : "NO", changeType = candidate is null ? "NONE" : candidate.ScheduleChangeId is null ? "NO" : candidate.State == "Cancelled" ? "CANCEL" : "TIME", execHost = string.Empty },
+                        unitStatus = new { unitName = unit.Path, simpleUnitName = simple, execID = root?.Jp1ExecutionId ?? string.Empty, status, schStartTime = Stamp(candidate?.Due, options), startTime = Stamp(candidate?.StartedAt ?? attempt?.StartedAt, options), reStartTime = Stamp(candidate?.RestartedAt, options), endTime = Stamp(candidate?.FinishedAt, options), retCode = (candidate?.ManualExitCode ?? attempt?.ExitCode) is int exitCode ? unchecked((uint)exitCode).ToString(CultureInfo.InvariantCulture) : string.Empty, startDelayStatus = delay.Start ? "YES" : noDelay, endDelayStatus = delay.End ? "YES" : noDelay, nestStartDelayStatus = nestedDelays.Any(d => d.Start) ? "YES" : noDelay, nestEndDelayStatus = nestedDelays.Any(d => d.End) ? "YES" : noDelay, startDelayTime = Stamp(startLimit, options), endDelayTime = Stamp(endLimit, options), delayedStart = candidate is null ? "NONE" : monitor?.Start ?? (fixedUnit.IsNetwork() ? "NOT" : "UNSUPPORTED"), delayedStartTime = MonitorTime(monitor?.StartMinutes), delayedEnd = candidate is null ? "NONE" : monitor?.End ?? (fixedUnit.IsNetwork() ? "NOT" : "UNSUPPORTED"), delayedEndTime = MonitorTime(monitor?.EndMinutes), monitoringJobnet = candidate is null ? "NONE" : !fixedUnit.IsNetwork() ? "UNSUPPORTED" : monitor?.Duration == true ? "TIME_REQUIRED_FOR_EXECUTION_YES" : "TIME_REQUIRED_FOR_EXECUTION_NO", timeRequiredForExecution = MonitorTime(monitor?.DurationMinutes), holdAttr = candidate is null ? "NONE" : candidate.HoldOverride is bool holding ? holding ? "HOLD" : "RELEASE" : fixedUnit.Get("ha", "n") == "y" ? "YES" : "NO", changeType = candidate is null ? "NONE" : candidate.ScheduleChangeId is null ? "NO" : candidate.State == "Cancelled" ? "CANCEL" : "TIME", execHost = string.Empty },
                         release = (object?)null,
                     });
                     if (selected.Count > 1000)
@@ -273,7 +310,7 @@ public static partial class Jp1Endpoints
         {
             return Error(context, 412, "保存先にアクセスできません。", code: "JOBRUNNER_STORAGE_UNAVAILABLE");
         }
-        catch (InvalidDataException)
+        catch (Exception ex) when (ex is InvalidDataException or FormatException or ArgumentOutOfRangeException)
         {
             return Error(context, 500, "保存状態または定義が不正です。", code: "JOBRUNNER_INVALID_STATE");
         }

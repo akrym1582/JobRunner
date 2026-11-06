@@ -16,6 +16,7 @@ public sealed class DefinitionVersionTests
     [Theory]
     [InlineData(1)]
     [InlineData(2)]
+    [InlineData(3)]
     public async Task UpgradesLegacyActivationWithoutReplacingNamespace(int format)
     {
         await using var scenario = new EngineScenario();
@@ -29,7 +30,7 @@ public sealed class DefinitionVersionTests
         var before = (await scenario.OccurrencesAsync()).Select(o => o.Id).Order().ToList();
         await scenario.RestartAsync();
         var upgraded = StorageRepository.Read<Activation>((await storage.GetAsync("definition-active", CancellationToken.None))!);
-        Assert.Equal(3, upgraded.FormatVersion);
+        Assert.Equal(4, upgraded.FormatVersion);
         Assert.Equal(legacy.Id, upgraded.Id);
         Assert.Equal(before, (await scenario.OccurrencesAsync()).Select(o => o.Id).Order().ToList());
     }

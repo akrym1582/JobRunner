@@ -13,11 +13,13 @@ namespace JobRunner.Controllers.Jp1;
 /// <summary>確認済みのV12 HTTP契約を、稼働系の共通操作キューへ変換します。</summary>
 public static partial class Jp1Endpoints
 {
-    /// <summary>即時登録と保留変更を公開します。未対応操作を成功扱いしません。</summary>
+    /// <summary>対応する参照と操作を公開し、未対応要求は明示的に拒否します。</summary>
     /// <param name="app">既存のAPIホストです。</param>
     public static void Map(WebApplication app)
     {
         app.MapPost("/ajs/api/v1/objects/{**tail}", HandleAsync);
+        app.MapGet("/ajs/api/v1/version", ReadSystemAsync);
+        app.MapGet("/ajs/api/v1/protocolVersion", ReadSystemAsync);
         app.MapGet("/ajs/api/v1/objects/statuses/{**tail}", ReadAsync);
         app.MapGet("/ajs/api/v1/objects/statuses", ReadAsync);
     }
@@ -70,7 +72,7 @@ public static partial class Jp1Endpoints
             bool fixedRegistration = path.StartsWith(prefix + "definitions/", StringComparison.Ordinal) && path.EndsWith(fixedSuffix, StringComparison.Ordinal);
             bool unregister = path.StartsWith(prefix + "definitions/", StringComparison.Ordinal) && action == "cancelRegistration";
             bool hold = path.StartsWith(prefix + "statuses/", StringComparison.Ordinal) && path.EndsWith(holdSuffix, StringComparison.Ordinal);
-            bool statusOperation = path.StartsWith(prefix + "statuses/", StringComparison.Ordinal) && action is "cancelExecSchedule" or "restoreChangedSchedule" or "kill" or "rerun" or "changeStartTime" or "execImmediate";
+            bool statusOperation = path.StartsWith(prefix + "statuses/", StringComparison.Ordinal) && action is "cancelExecSchedule" or "restoreChangedSchedule" or "kill" or "rerun" or "changeStartTime" or "execImmediate" or "interrupt" or "changeStatus" or "changeDelayMonitor";
             if (!register && !fixedRegistration && !hold && !unregister && !statusOperation)
             {
                 return Error(context, 404, "このAPIは未対応です。");
@@ -105,6 +107,8 @@ public static partial class Jp1Endpoints
             {
                 allowed = action switch
                 {
+                    "changeStatus" => ["manager", "serviceName", "newStatus", "newReturnCode"],
+                    "changeDelayMonitor" => ["manager", "serviceName", "delayedStart", "delayedStartTime", "delayedEnd", "delayedEndTime", "monitoringJobnet", "timeRequiredForExecution"],
                     "rerun" => ["manager", "serviceName", "rerunMethod", "rerunOptions"],
                     "changeStartTime" => ["manager", "serviceName", "kindTime", "absoluteTime", "relativeSign", "relativeDay", "relativeTime", "changeLower", "pushedAhead"],
                     "cancelRegistration" => ["manager", "serviceName", "dateType", "begin", "end"],
@@ -240,6 +244,14 @@ public static partial class Jp1Endpoints
                 }
             }
 
+            string? newStatus = action == "changeStatus" && Present(parameters, "newStatus") ? Choice(parameters, "newStatus", null, "NORMAL", "FAIL", "WARNING", "ABNORMAL", "BYPASS", "RETURNCODE") : null;
+            int? newReturnCode = action == "changeStatus" && Present(parameters, "newReturnCode") ? ReturnCode(parameters) : null;
+            if (action == "changeStatus" && ((newStatus is null && newReturnCode is null) || (newStatus == "RETURNCODE" && newReturnCode is null)))
+            {
+                throw new Jp1ParameterException("newReturnCode", 3201, "変更後の状態または終了コードが必要です。");
+            }
+
+            var delayMonitor = action == "changeDelayMonitor" ? ReadDelayMonitor(parameters) : null;
             string requestId = context.Request.Headers["X-JobRunner-Request-Id"].ToString();
             if (requestId.Length > 100)
             {
@@ -266,6 +278,11 @@ public static partial class Jp1Endpoints
                 hash = StorageRepository.Hash(JsonSerializer.Serialize(new { BaseHash = hash, changeLower, pushedAhead, relativeMinutes, dateType, cancelBegin, cancelEnd }));
             }
 
+            if (newStatus is not null || newReturnCode is not null || delayMonitor is not null)
+            {
+                hash = StorageRepository.Hash(JsonSerializer.Serialize(new { BaseHash = hash, newStatus, newReturnCode, delayMonitor }));
+            }
+
             context.Response.Headers["X-JobRunner-Operation-Id"] = id;
             var existing = await storage.GetAsync(key, context.RequestAborted);
             if (existing is not null)
@@ -286,6 +303,7 @@ public static partial class Jp1Endpoints
 
             var active = StorageRepository.Read<Activation>(activeRow);
             string target;
+            Occurrence? statusTarget = null;
             if (register || fixedRegistration || unregister)
             {
                 var bundle = await definitions.ReadAsync(active.DefinitionHash, context.RequestAborted);
@@ -314,6 +332,7 @@ public static partial class Jp1Endpoints
                 }
 
                 target = occurrence.Id;
+                statusTarget = occurrence;
             }
 
             var operation = new Operation
@@ -321,10 +340,15 @@ public static partial class Jp1Endpoints
                 Id = id,
                 RequestHash = hash,
                 StateNamespace = active.Id,
-                Kind = register || fixedRegistration ? "Register" : unregister ? "UnregisterRoot" : hold ? holdAttr == "SET" ? "Hold" : "Release" : action switch { "cancelExecSchedule" => "Cancel", "restoreChangedSchedule" => "Restore", "kill" => "Stop", "rerun" => "Rerun", "changeStartTime" => "Move", _ => "RunNow" },
+                Kind = register || fixedRegistration ? "Register" : unregister ? "UnregisterRoot" : hold ? holdAttr == "SET" ? "Hold" : "Release" : action switch { "cancelExecSchedule" => "Cancel", "restoreChangedSchedule" => "Restore", "kill" => "Stop", "interrupt" => "Interrupt", "changeStatus" => "ChangeStatus", "changeDelayMonitor" => "ChangeDelayMonitor", "rerun" => "Rerun", "changeStartTime" => "Move", _ => "RunNow" },
                 Target = target,
                 RegistrationKind = fixedRegistration ? "Confirmed" : "Immediate",
                 FutureGenerations = futureGenerations,
+                NewStatus = newStatus,
+                NewReturnCode = newReturnCode,
+                DelayMonitor = delayMonitor,
+                ExpectedState = action == "changeStatus" ? statusTarget!.State : null,
+                AttemptId = action == "changeStatus" ? statusTarget!.AttemptId : null,
                 Start = unregister ? cancelBegin : fixedFrom,
                 End = unregister ? cancelEnd : fixedUntil,
                 FixedDue = fixedDue,

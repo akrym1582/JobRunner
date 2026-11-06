@@ -252,6 +252,9 @@ public sealed partial class SchedulerEngine
             {
                 item.Value.State = (units[item.Value.UnitPath].Get("ha", "n") == "y" || (item.Value.Id == target.Id && operation.RerunOptions?.Contains("HOLD") == true)) ? "Held" : "Waiting";
                 item.Value.HoldOverride = item.Value.Id == target.Id && operation.RerunOptions?.Contains("HOLD") == true ? true : null;
+                item.Value.ManualExitCode = null;
+                item.Value.InterruptRequested = null;
+                item.Value.StatusDetail = null;
                 item.Value.AttemptId = null;
                 item.Value.BypassedPredecessors = null;
                 item.Value.StandaloneRerun = null;
@@ -273,6 +276,7 @@ public sealed partial class SchedulerEngine
                 var ancestor = StorageRepository.Read<Occurrence>(row);
                 if (ancestor.RootId == target.RootId && ancestor.State is "Failed" or "Interrupted" && target.UnitPath.StartsWith(ancestor.UnitPath + "/", StringComparison.Ordinal))
                 {
+                    ancestor.InterruptRequested = null;
                     ancestor.State = "Running";
                     ancestor.FinishedAt = null;
                     values.Add((row, ancestor));
