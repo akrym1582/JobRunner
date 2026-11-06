@@ -510,3 +510,155 @@ test("破棄も保存版を比較し、読み直した後は通常どおり破�
     other.getByRole("textbox", { name: "コマンド", exact: true }),
   ).toHaveValue(original);
 });
+
+async function failInitialDraftRead(page: Page) {
+  await page.addInitScript(() => {
+    const transaction = IDBDatabase.prototype.transaction;
+    // StrictModeの二重マウントも含め、初期読込の間だけ障害を注入します。
+    const state = window as unknown as { draftReadUnavailable: boolean };
+    state.draftReadUnavailable = true;
+    IDBDatabase.prototype.transaction = function (...args) {
+      if (
+        state.draftReadUnavailable &&
+        this.name === "jobrunner-definition-editor" &&
+        args[1] === "readonly"
+      ) {
+        throw new DOMException("temporary read failure", "UnknownError");
+      }
+      return transaction.apply(this, args);
+    };
+  });
+}
+
+test("初回の下書き読込だけ失敗しても空のDBへ現在の編集を保存できる", async ({
+  page,
+  context,
+}) => {
+  await failInitialDraftRead(page);
+  await openEditor(page);
+  await expect(page.getByRole("alert")).toContainText("temporary read failure");
+  await page.evaluate(() => {
+    (
+      window as unknown as { draftReadUnavailable: boolean }
+    ).draftReadUnavailable = false;
+  });
+  await page
+    .getByRole("button", { name: "編集 在庫チェック", exact: true })
+    .click();
+  await page
+    .getByRole("textbox", { name: "コマンド", exact: true })
+    .fill("printf recovered-empty");
+  page.once("dialog", (dialog) => dialog.accept());
+  await page
+    .getByRole("button", { name: "保存済み下書きを読み直す", exact: true })
+    .click();
+  await expect(
+    page.getByText("ブラウザーに保存済み", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(
+    page.getByRole("textbox", { name: "コマンド", exact: true }),
+  ).toHaveValue("printf recovered-empty");
+  await page
+    .getByRole("textbox", { name: "コマンド", exact: true })
+    .fill("printf resumed-edit");
+  await expect(
+    page.getByText("ブラウザーに保存済み", { exact: true }),
+  ).toBeVisible();
+  const other = await context.newPage();
+  await openEditor(other);
+  await other
+    .getByRole("button", { name: "編集 在庫チェック", exact: true })
+    .click();
+  await expect(
+    other.getByRole("textbox", { name: "コマンド", exact: true }),
+  ).toHaveValue("printf resumed-edit");
+});
+
+test("空のDBを確認した直後の別タブ保存も復旧処理で上書きしない", async ({
+  page,
+  context,
+}) => {
+  await failInitialDraftRead(page);
+  await openEditor(page);
+  await expect(page.getByRole("alert")).toContainText("temporary read failure");
+  await page.evaluate(() => {
+    (
+      window as unknown as { draftReadUnavailable: boolean }
+    ).draftReadUnavailable = false;
+  });
+  await page
+    .getByRole("button", { name: "編集 在庫チェック", exact: true })
+    .click();
+  await page
+    .getByRole("textbox", { name: "コマンド", exact: true })
+    .fill("printf local-recovery");
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let arrived!: () => void;
+  const received = new Promise<void>((resolve) => {
+    arrived = resolve;
+  });
+  await page.exposeFunction("completeDraftRead", async () => {
+    arrived();
+    await gate;
+  });
+  await page.evaluate(() => {
+    const complete = Object.getOwnPropertyDescriptor(
+      IDBTransaction.prototype,
+      "oncomplete",
+    )!;
+    let pause = true;
+    Object.defineProperty(IDBTransaction.prototype, "oncomplete", {
+      ...complete,
+      set(handler: ((event: Event) => void) | null) {
+        const tx = this as IDBTransaction;
+        if (
+          pause &&
+          tx.mode === "readonly" &&
+          tx.db.name === "jobrunner-definition-editor"
+        ) {
+          pause = false;
+          // 読取トランザクションの完了後、呼出元に空の結果を渡す直前で待機します。
+          complete.set!.call(tx, async (event: Event) => {
+            await (
+              window as unknown as { completeDraftRead: () => Promise<void> }
+            ).completeDraftRead();
+            handler?.call(tx, event);
+          });
+        } else complete.set!.call(tx, handler);
+      },
+    });
+  });
+  page.once("dialog", (dialog) => dialog.accept());
+  await page
+    .getByRole("button", { name: "保存済み下書きを読み直す", exact: true })
+    .click();
+  await received;
+  const other = await context.newPage();
+  await openEditor(other);
+  await other
+    .getByRole("button", { name: "編集 在庫チェック", exact: true })
+    .click();
+  await other
+    .getByRole("textbox", { name: "コマンド", exact: true })
+    .fill("printf saved-in-other-tab");
+  await expect(
+    other.getByText("ブラウザーに保存済み", { exact: true }),
+  ).toBeVisible();
+  release();
+  await expect(page.getByRole("alert")).toContainText("別のタブ");
+  await expect(
+    page.getByRole("textbox", { name: "コマンド", exact: true }),
+  ).toHaveValue("printf local-recovery");
+  await other.reload();
+  await other.getByRole("button", { name: "定義編集", exact: true }).click();
+  await other
+    .getByRole("button", { name: "編集 在庫チェック", exact: true })
+    .click();
+  await expect(
+    other.getByRole("textbox", { name: "コマンド", exact: true }),
+  ).toHaveValue("printf saved-in-other-tab");
+});

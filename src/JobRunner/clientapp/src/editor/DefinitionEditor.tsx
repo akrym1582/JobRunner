@@ -306,7 +306,7 @@ export function DefinitionEditor({
   async function reloadSaved() {
     if (
       !window.confirm(
-        "このタブの編集を破棄して、保存済み下書きを読み直しますか？必要な編集は先にダウンロードしてください。",
+        "保存済み下書きでこのタブの編集を置き換えますか？保存済み下書きがない場合は、現在の編集を保存します。必要な編集は先にダウンロードしてください。",
       )
     )
       return;
@@ -319,7 +319,27 @@ export function DefinitionEditor({
         setMessage("読み直し中に編集されたため、現在の編集を保持しました。");
         return;
       }
-      if (!saved) throw new Error("保存済み下書きがありません。");
+      if (!saved) {
+        if (!base || !draft)
+          throw new Error("編集する定義を取得できていません。");
+        // 空の確認後に別タブが保存する可能性もあるため、復旧時も版を比較します。
+        savedRevision.current = null;
+        savedContent.current = "";
+        conflict.current = false;
+        setConflicted(false);
+        await persist({ version: 1, base, draft });
+        setSaveAllowed(true);
+        setSaveError("");
+        setSaving(
+          started === revision.current
+            ? "ブラウザーに保存済み"
+            : "下書きを保存中…",
+        );
+        setMessage(
+          "保存済み下書きがないため、現在の編集の保存を再開しました。",
+        );
+        return;
+      }
       savedRevision.current = saved.revision ?? null;
       savedContent.current = JSON.stringify({
         version: 1,
