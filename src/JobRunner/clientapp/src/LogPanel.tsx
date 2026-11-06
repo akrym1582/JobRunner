@@ -1,10 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import useAspidaSWR from "@aspida/swr";
 import { Maximize, Minimize, Terminal, X } from "lucide-react";
-import type { JobAttempt, LogChunk, Occurrence } from "./api/@types";
+import type {
+  AttemptPage,
+  JobAttempt,
+  LogChunk,
+  Occurrence,
+} from "./api/@types";
 import { client, errorMessage } from "./client";
 import { formatDate, label } from "./status";
 import { isLiveAttempt, MAX_LOG_CHUNKS, mergeChunks } from "./log-model";
+
+// 親画面の再描画でSWRの5秒タイマーがリセットされないよう、関数の参照を固定します。
+const attemptRefreshInterval = (data: AttemptPage | undefined) =>
+  data?.archived ? 0 : 5000;
 
 type Target = { rootId: string; occurrenceId: string };
 export function LogPanel({
@@ -27,7 +36,7 @@ export function LogPanel({
   const [generation, setGeneration] = useState(0);
   const attempts = useAspidaSWR(client.ui.attempts, {
     query: target,
-    refreshInterval: (data) => (data?.archived ? 0 : 5000),
+    refreshInterval: attemptRefreshInterval,
   });
   const items = attempts.data?.items ?? [];
   const attempt = items.find((item) => item.id === selected);
