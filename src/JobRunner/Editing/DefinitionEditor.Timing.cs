@@ -20,15 +20,17 @@ public static partial class DefinitionEditor
     /// <returns>ルートの候補です。ネストを独立ルートとして計算しません。</returns>
     public static EditorSchedulePreview PreviewSchedule(DefinitionBundle compiled, EditorScheduleRequest request, RunnerOptions options)
     {
-        if (request.Draft.EditorVersion is not (4 or 5 or 6) || request.Anchor.Year is < 1994 or > 2036 || request.From.Year is < 1994 or > 2036
+        if (request.Draft.EditorVersion is not (4 or 5 or 6 or 7) || request.Anchor.Year is < 1994 or > 2036 || request.From.Year is < 1994 or > 2036
             || request.Until > new DateOnly(2037, 1, 1) || request.Until <= request.From || request.Until.DayNumber - request.From.DayNumber > 366)
         {
-            throw new ArgumentException("下書き試算は版4/5、1994〜2036年の業務日、終了を含まない1〜366日で指定してください。");
+            throw new ArgumentException("下書き試算は版4以降、1994〜2036年の業務日、終了を含まない1〜366日で指定してください。");
         }
 
         var paths = TimingPaths(request.Draft);
         var all = compiled.Units.Flatten().ToDictionary(u => u.Path, StringComparer.Ordinal);
-        if (!paths.TryGetValue(request.NetworkId, out string? path) || !all.TryGetValue(path, out var root)
+        var changes = (request.Draft.EditorVersion == 7 ? request.Draft.GroupChanges ?? [] : []).ToDictionary(c => c.Id, StringComparer.Ordinal);
+        string? path = paths.TryGetValue(request.NetworkId, out string? originalPath) ? MapGroupPath(originalPath, changes) : null;
+        if (path is null || !all.TryGetValue(path, out var root)
             || !root.IsNetwork() || (all.TryGetValue(ScheduleCalculator.Parent(path), out var parent) && parent.IsNetwork()))
         {
             throw new ArgumentException("下書き試算はルートネットだけが対象です。ネストには上位世代の条件が必要です。");

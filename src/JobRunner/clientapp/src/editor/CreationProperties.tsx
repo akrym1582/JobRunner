@@ -4,6 +4,7 @@ import type {
   EditorDraft,
   EditorFileCreation,
 } from "../api/@types";
+import { groupPath, originalGroupPath } from "./group-paths";
 import { client } from "../client";
 import { createFile, createGroup, creationDocument } from "./creations";
 
@@ -31,7 +32,7 @@ export function CreationProperties({
   });
   const document = base && draft ? creationDocument(base, draft) : undefined;
   const containers = document?.containers ?? [];
-  const enabled = draft?.editorVersion === 6;
+  const enabled = [6, 7].includes(draft?.editorVersion ?? 0);
   return (
     <section
       className="editor-network-tools"
@@ -40,7 +41,7 @@ export function CreationProperties({
       <details>
         <summary>グループ・Unitファイルを作成</summary>
         <p>
-          追加内容はブラウザーの下書きだけに保存します。実行中の定義や予定は変わりません。グループの改名・削除・移動は未対応です。作成は元に戻せます。
+          追加内容はブラウザーの下書きだけに保存します。実行中の定義や予定は変わりません。グループの移動は未対応です。作成は元に戻せます。
         </p>
         <fieldset disabled={disabled}>
           <div className="editor-network-fields">
@@ -53,7 +54,8 @@ export function CreationProperties({
               >
                 {containers.map((c, i) => (
                   <option key={i} value={i}>
-                    {document!.sources[c.sourceIndex].fileName} · {c.parentPath}
+                    {document!.sources[c.sourceIndex].fileName} ·{" "}
+                    {groupPath(draft!, c.parentPath)}
                   </option>
                 ))}
               </select>
@@ -127,7 +129,14 @@ export function CreationProperties({
             </label>
             <button
               disabled={!enabled || !draft?.localSources}
-              onClick={() => void onAdd(createFile(draft!, file))}
+              onClick={() =>
+                void onAdd(
+                  createFile(draft!, {
+                    ...file,
+                    targetPath: originalGroupPath(draft!, file.targetPath),
+                  }),
+                )
+              }
             >
               下書きにファイルを追加
             </button>

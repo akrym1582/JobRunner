@@ -1,5 +1,7 @@
 import type { EditorDraft } from "../api/@types";
 
+import { groupPath } from "./group-paths";
+
 export function executionTargets(draft: EditorDraft) {
   const names = new Map<string, string>();
   const networks = new Map(draft.networks.map((n) => [n.path, n]));
@@ -39,5 +41,7 @@ export function executionTargets(draft: EditorDraft) {
     ...(draft.execution ?? [])
       .filter((e) => !known.has(e.id))
       .map((e) => ({ id: e.id, name: e.id, type: e.type ?? "unit" })),
-  ];
+  ]
+    .filter((t) => groupPath(draft, t.name) !== null)
+    .map((t) => ({ ...t, name: groupPath(draft, t.name)! }));
 }

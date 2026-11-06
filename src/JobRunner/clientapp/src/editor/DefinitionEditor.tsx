@@ -24,6 +24,7 @@ import { EditorProperties } from "./EditorProperties";
 import { ExecutionProperties } from "./ExecutionProperties";
 import { TimingProperties } from "./TimingProperties";
 import { LocalDefinitionInput } from "./LocalDefinitionInput";
+import { GroupProperties } from "./GroupProperties";
 import { CreationProperties } from "./CreationProperties";
 import { creationDocument } from "./creations";
 import { NetworkProperties } from "./NetworkProperties";
@@ -49,7 +50,7 @@ import {
 import "./editor.css";
 
 async function upgradeSaved(saved: SavedDraft): Promise<SavedDraft> {
-  if (saved.draft.editorVersion === 6) return saved;
+  if (saved.draft.editorVersion === 7) return saved;
   const base = saved.draft.localSources
     ? await client.ui.definition_editor.local.$post({
         body: { sources: saved.draft.localSources },
@@ -337,7 +338,10 @@ export function DefinitionEditor({
       setBusy(false);
     }
   }
-  async function addDraft(next: EditorDraft) {
+  async function addDraft(
+    next: EditorDraft,
+    successMessage = "下書きに追加しました。採用・登録はしていません。",
+  ) {
     const started = revision.current;
     setBusy(true);
     setMessage("");
@@ -353,7 +357,7 @@ export function DefinitionEditor({
       }
       if (!result.valid) throw new Error(result.errors.join("\n"));
       update(next);
-      setMessage("下書きに追加しました。採用・登録はしていません。");
+      setMessage(successMessage);
     } catch (error) {
       const detail = await errorMessage(error);
       if (started === revision.current) setMessage(detail);
@@ -550,6 +554,16 @@ export function DefinitionEditor({
       )}
       {draft && network && history ? (
         <>
+          <GroupProperties
+            draft={draft}
+            disabled={busy || !saveAllowed}
+            onApply={(next) =>
+              addDraft(
+                next,
+                "グループの変更を下書きへ反映しました。採用・登録はしていません。",
+              )
+            }
+          />
           {base && (
             <NetworkProperties
               base={creationDocument(base, draft)}

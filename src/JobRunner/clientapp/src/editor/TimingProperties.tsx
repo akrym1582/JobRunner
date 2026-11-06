@@ -1,3 +1,4 @@
+import { groupPath, originalGroupPath } from "./group-paths";
 import { useState } from "react";
 import type { EditorDocument, EditorDraft } from "../api/@types";
 import { DraftSchedulePreview } from "./DraftSchedulePreview";
@@ -166,10 +167,12 @@ export function TimingProperties({
   onChange: (draft: EditorDraft) => void;
 }) {
   const [calendarId, setCalendarId] = useState("");
-  if (![4, 5, 6].includes(draft.editorVersion ?? 1)) return null;
+  if (![4, 5, 6, 7].includes(draft.editorVersion ?? 1)) return null;
   const schedule = draft.schedules?.find((s) => s.id === current);
+  const visibleCalendars =
+    draft.calendars?.filter((c) => groupPath(draft, c.id) !== null) ?? [];
   const calendar =
-    draft.calendars?.find((c) => c.id === calendarId) ?? draft.calendars?.[0];
+    visibleCalendars.find((c) => c.id === calendarId) ?? visibleCalendars[0];
   return (
     <details className="editor-timing">
       <summary>スケジュール・カレンダー</summary>
@@ -190,12 +193,35 @@ export function TimingProperties({
           <h3>現在のネットのスケジュール</h3>
           <TimingFields
             fields={schedules}
-            attributes={schedule.attributes}
+            attributes={{
+              ...schedule.attributes,
+              ...(schedule.attributes.jc
+                ? {
+                    jc: schedule.attributes.jc.map(
+                      (p) => groupPath(draft, p) ?? p,
+                    ),
+                  }
+                : {}),
+            }}
             onChange={(attributes) =>
               onChange({
                 ...draft,
                 schedules: draft.schedules!.map((s) =>
-                  s.id === current ? { ...s, attributes } : s,
+                  s.id === current
+                    ? {
+                        ...s,
+                        attributes: {
+                          ...attributes,
+                          ...(attributes.jc
+                            ? {
+                                jc: attributes.jc.map((p) =>
+                                  originalGroupPath(draft, p),
+                                ),
+                              }
+                            : {}),
+                        },
+                      }
+                    : s,
                 ),
               })
             }
@@ -214,9 +240,9 @@ export function TimingProperties({
                 value={calendar.id}
                 onChange={(event) => setCalendarId(event.target.value)}
               >
-                {draft.calendars!.map((c) => (
+                {visibleCalendars.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.id}
+                    {groupPath(draft, c.id)}
                   </option>
                 ))}
               </select>
@@ -238,9 +264,7 @@ export function TimingProperties({
             />
           </>
         ) : (
-          <p>
-            編集可能なグループはありません。グループの新規作成は未対応です。
-          </p>
+          <p>編集可能なグループはありません。グループ作成後に編集できます。</p>
         )}
       </section>
     </details>

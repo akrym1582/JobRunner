@@ -1,4 +1,5 @@
 import type { EditorDraft, EditorNode } from "../api/@types";
+import { groupPath } from "./group-paths";
 import { isNetwork, removeNode, replaceNode } from "./model";
 
 export function networkNode(draft: EditorDraft, id: string) {
@@ -20,7 +21,12 @@ export function networkNames(draft: EditorDraft) {
   for (const root of draft.roots ?? [])
     visit(
       root.node.id,
-      root.parentPath.replace(/\/$/, "") + "/" + root.node.name,
+      (groupPath(draft, root.parentPath) ?? root.parentPath).replace(
+        /\/$/,
+        "",
+      ) +
+        "/" +
+        root.node.name,
     );
   return names;
 }

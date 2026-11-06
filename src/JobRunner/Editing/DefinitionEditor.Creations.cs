@@ -86,6 +86,22 @@ public static partial class DefinitionEditor
             groupPaths.Add(path);
         }
 
+        // 新規配置先の未定義祖先は、読込と同じ属性のない仮想グループです。
+        // 既存ネットやジョブを親グループとして読み替えることはしません。
+        foreach (var file in files)
+        {
+            for (string path = file.TargetPath; path != "/"; path = Scheduling.ScheduleCalculator.Parent(path))
+            {
+                if (allPaths.Contains(path) && !groupPaths.Contains(path))
+                {
+                    throw new ArgumentException($"{path}: 新規ファイルの配置先と祖先はグループでなければなりません。");
+                }
+
+                allPaths.Add(path);
+                groupPaths.Add(path);
+            }
+        }
+
         var documents = sources.Select(s => new Document(s)).ToList();
         foreach (var addition in additions)
         {
@@ -123,8 +139,24 @@ public static partial class DefinitionEditor
         augmented.Units.AddRange(sources.SelectMany(s => Jp1DefinitionParser.Parse(Decode(s).TrimStart('\uFEFF'), s.Mapping)));
         var present = bundle.Sources.SelectMany(s => new Document(s).Syntax.Keys).ToHashSet(StringComparer.Ordinal);
         augmented.Units.AddRange(bundle.Units.Where(u => !present.Contains(u.Path)));
+        CompleteEditorParents(augmented);
         var rendered = Render(augmented, draft with { EditorVersion = 5 });
         EditorLocalFiles.ValidateSources(rendered);
         return rendered;
+    }
+
+    private static void CompleteEditorParents(DefinitionBundle bundle)
+    {
+        var paths = bundle.Units.Flatten().Select(u => u.Path).ToHashSet(StringComparer.Ordinal);
+        foreach (var source in bundle.Sources)
+        {
+            for (string path = source.Mapping.TargetPath; path != "/"; path = Scheduling.ScheduleCalculator.Parent(path))
+            {
+                if (paths.Add(path))
+                {
+                    bundle.Units.Add(new UnitDefinition { Path = path, Name = path[(path.LastIndexOf('/') + 1)..], Type = "g", Attributes = new() { ["ty"] = ["g"] } });
+                }
+            }
+        }
     }
 }

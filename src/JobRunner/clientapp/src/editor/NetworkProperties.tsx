@@ -1,3 +1,4 @@
+import { groupPath } from "./group-paths";
 import { useState } from "react";
 import type { EditorDocument, EditorDraft } from "../api/@types";
 import {
@@ -40,7 +41,8 @@ export function NetworkProperties({
             >
               {containers.map((c, i) => (
                 <option key={i} value={i}>
-                  {base.sources[c.sourceIndex].fileName} · {c.parentPath} ·{" "}
+                  {base.sources[c.sourceIndex].fileName} ·{" "}
+                  {groupPath(draft, c.parentPath)} ·{" "}
                   {base.sources[c.sourceIndex].encoding}
                 </option>
               ))}

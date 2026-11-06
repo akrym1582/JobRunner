@@ -7,15 +7,15 @@ export const isNetwork = (type: string) => ["n", "rn"].includes(type);
 export const canEdit = (type: string, version: number) =>
   isJob(type) ||
   (version >= 2 && isJudgment(type)) ||
-  (version >= 3 && version <= 6 && isNetwork(type));
+  (version >= 3 && version <= 7 && isNetwork(type));
 
 export function upgradeDraft(
   draft: EditorDraft,
   baseline: EditorDraft,
 ): EditorDraft {
   if (
-    ![1, 2, 3, 4, 5].includes(draft.editorVersion ?? 1) ||
-    ![4, 5, 6].includes(baseline.editorVersion ?? 0) ||
+    ![1, 2, 3, 4, 5, 6].includes(draft.editorVersion ?? 1) ||
+    ![4, 5, 6, 7].includes(baseline.editorVersion ?? 0) ||
     (draft.editorVersion ?? 1) >= baseline.editorVersion! ||
     ((baseline.editorVersion ?? 0) >= 5 && !baseline.execution) ||
     !baseline.roots ||
@@ -24,7 +24,8 @@ export function upgradeDraft(
     ((draft.editorVersion ?? 1) >= 3 && !draft.roots) ||
     ((draft.editorVersion ?? 1) >= 4 &&
       (!draft.schedules || !draft.calendars)) ||
-    (draft.editorVersion === 5 && !draft.execution) ||
+    ((draft.editorVersion ?? 1) >= 5 && !draft.execution) ||
+    (draft.editorVersion === 6 && (!draft.newGroups || !draft.newFiles)) ||
     draft.definitionHash !== baseline.definitionHash
   )
     throw new Error("下書きの形式または元版が一致しません。");
@@ -69,7 +70,8 @@ export function upgradeDraft(
       }),
     })),
   };
-  if (baseline.editorVersion === 6) {
+  if (baseline.editorVersion === 7) upgraded.groupChanges = [];
+  if ((baseline.editorVersion ?? 0) >= 6 && (draft.editorVersion ?? 1) < 6) {
     upgraded.newGroups = [];
     upgraded.newFiles = [];
   }
@@ -85,7 +87,7 @@ export function upgradeDraft(
       ...upgraded,
       execution: fixed,
     }).map((target) => {
-      if (draft.editorVersion === 5) {
+      if ((draft.editorVersion ?? 1) >= 5) {
         const saved = draft.execution!.find((e) => e.id === target.id);
         if (!saved) throw new Error("保存済み実行属性の対象が一致しません。");
         return { ...structuredClone(saved), type: target.type };

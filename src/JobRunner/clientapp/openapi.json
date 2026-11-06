@@ -792,6 +792,13 @@
               "$ref": "#/components/schemas/EditorFileCreation"
             },
             "nullable": true
+          },
+          "groupChanges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorGroupChange"
+            },
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -840,6 +847,25 @@
           },
           "groupName": {
             "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorGroupChange": {
+        "required": [
+          "id"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "delete": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false

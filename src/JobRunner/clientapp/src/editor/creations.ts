@@ -4,6 +4,8 @@ import type {
   EditorFileCreation,
   EditorGroupCreation,
 } from "../api/@types";
+import { groupPath } from "./group-paths";
+
 const fullPath = (parent: string, name: string) =>
   `${parent.replace(/\/$/, "")}/${name}`;
 function addGroupAttributes(draft: EditorDraft, path: string): EditorDraft {
@@ -61,5 +63,11 @@ export function creationDocument(
       parentPath: fullPath(g.parentPath, g.name),
     })),
   ];
-  return { ...base, sources, containers };
+  return {
+    ...base,
+    sources,
+    containers: containers.filter(
+      (c) => groupPath(draft, c.parentPath) !== null,
+    ),
+  };
 }

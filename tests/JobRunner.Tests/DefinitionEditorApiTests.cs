@@ -86,9 +86,9 @@ public sealed class DefinitionEditorApiTests
             Assert.Equal(HttpStatusCode.OK, opened.StatusCode);
             var fresh = (await opened.Content.ReadFromJsonAsync<EditorDocument>())!;
             Assert.Empty(fresh.Draft.Networks);
-            fresh.Draft.NewFiles!.Add(new("next.ajs", "/fresh", "utf-16", true, "next"));
-            fresh.Draft.NewGroups!.Add(new(1, "/fresh/next", "child"));
-            foreach (string path in new[] { "/fresh/next", "/fresh/next/child" })
+            fresh.Draft.NewFiles!.Add(new("next.ajs", "/newarea/nested", "utf-16", true, "next"));
+            fresh.Draft.NewGroups!.Add(new(1, "/newarea/nested/next", "child"));
+            foreach (string path in new[] { "/newarea/nested/next", "/newarea/nested/next/child" })
             {
                 fresh.Draft.Calendars!.Add(new(path, []));
                 fresh.Draft.Execution!.Add(new(path, []));
@@ -99,12 +99,29 @@ public sealed class DefinitionEditorApiTests
             download = await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/export", fresh.Draft);
             Assert.Equal(HttpStatusCode.OK, download.StatusCode);
             restored = await (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/local", new EditorLocalRequest(ZipBase64: Convert.ToBase64String(await download.Content.ReadAsByteArrayAsync())))).Content.ReadFromJsonAsync<EditorDocument>();
-            Assert.Contains(restored!.Draft.Calendars!, c => c.Id == "/fresh/next/child");
+            Assert.Contains(restored!.Draft.Calendars!, c => c.Id == "/newarea/nested/next/child");
             Assert.Equal(fresh.Draft.LocalSources![0].Base64, restored.Draft.LocalSources!.Single(s => s.Mapping.BlobPath == "fresh.ajs").Base64);
             var standalone = new SourceEvidence { Mapping = new() { BlobPath = "standalone.ajs" }, Base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes("unit=solo;{ty=j;te=\"true\";}")) };
             var single = (await (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/local", new EditorLocalRequest([standalone]))).Content.ReadFromJsonAsync<EditorDocument>())!;
             download = await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/export", single.Draft);
             Assert.Equal(Convert.FromBase64String(standalone.Base64), await download.Content.ReadAsByteArrayAsync());
+            var groupedSource = new SourceEvidence { Mapping = new() { BlobPath = "groups.ajs" }, Base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes("unit=g;{ty=g;cl=su;unit=net;{ty=n;sd=0,ud;}}unit=keep;{ty=g;}unit=ref;{ty=n;sd=0,ud;jc=\"/g\";}")) };
+            var grouped = (await (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/local", new EditorLocalRequest([groupedSource]))).Content.ReadFromJsonAsync<EditorDocument>())!;
+            grouped.Draft.GroupChanges!.Add(new("/g", "renamed"));
+            trial = await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/schedules", new EditorScheduleRequest(grouped.Draft, "/g/net", new(2026, 1, 1), new(2026, 1, 1), new(2026, 1, 2)));
+            Assert.Equal(HttpStatusCode.OK, trial.StatusCode);
+            download = await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/export", grouped.Draft);
+            Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+            var groupOutput = new SourceEvidence { Mapping = groupedSource.Mapping, Base64 = Convert.ToBase64String(await download.Content.ReadAsByteArrayAsync()) };
+            var groupImport = (await (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/local", new EditorLocalRequest([groupOutput]))).Content.ReadFromJsonAsync<EditorDocument>())!;
+            Assert.Equal("/renamed", groupImport.Draft.Schedules!.Single(s => s.Id == "/ref").Attributes["jc"][0]);
+            grouped.Draft.GroupChanges.Clear();
+            grouped.Draft.GroupChanges.Add(new("/g", Delete: true));
+            Assert.Equal(HttpStatusCode.BadRequest, (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/export", grouped.Draft)).StatusCode);
+            grouped.Draft.Schedules!.Single(s => s.Id == "/ref").Attributes["jc"] = ["/keep"];
+            download = await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/export", grouped.Draft);
+            Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+            Assert.DoesNotContain("unit=g", await download.Content.ReadAsStringAsync(), StringComparison.Ordinal);
             using var oversized = new StringContent(new string(' ', (12 * 1024 * 1024) + 1), Encoding.UTF8, "application/json");
             using var oversizedRequest = new HttpRequestMessage(HttpMethod.Post, "/api/jobrunner/ui/definition-editor/local") { Content = oversized };
             oversizedRequest.Headers.ExpectContinue = true;
@@ -150,7 +167,7 @@ public sealed class DefinitionEditorApiTests
             var originalBundle = await new DefinitionService(scope.Repository, scope.Options).ReadSourcesAsync(document.Draft.DefinitionHash, CancellationToken.None);
             var before = await OperationalStateAsync(scope.Repository);
             var exact = await app.Client.GetFromJsonAsync<EditorDocument>("/api/jobrunner/ui/definition-editor?definitionHash=" + document.Draft.DefinitionHash);
-            Assert.Equal(6, exact!.Draft.EditorVersion);
+            Assert.Equal(7, exact!.Draft.EditorVersion);
             Assert.Equal("7", exact.Draft.Networks[0].Nodes.Single(n => n.Type == "jdj").Attributes["ejc"][0]);
             var legacy = DefinitionEditor.Project(originalBundle, 1) with { EditorVersion = null };
             var legacyPreview = await (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/preview", new { legacy.DefinitionHash, legacy.Networks })).Content.ReadFromJsonAsync<EditorPreview>();

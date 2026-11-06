@@ -34,7 +34,8 @@ public static partial class DefinitionEditor
         editorVersion >= 4 ? ProjectTiming(bundle, false) : null,
         Execution: editorVersion >= 5 ? ProjectExecution(bundle) : null,
         NewGroups: editorVersion >= 6 ? [] : null,
-        NewFiles: editorVersion >= 6 ? [] : null);
+        NewFiles: editorVersion >= 6 ? [] : null,
+        GroupChanges: editorVersion >= 7 ? [] : null);
 
     /// <summary>元の文字コードで原文を表示します。</summary>
     /// <param name="sources">対象原文です。</param>
@@ -54,6 +55,11 @@ public static partial class DefinitionEditor
         }
 
         int editorVersion = draft.EditorVersion ?? 1;
+        if (editorVersion == 7)
+        {
+            return RenderGroups(bundle, draft);
+        }
+
         if (editorVersion == 6)
         {
             return RenderCreations(bundle, draft);

@@ -71,6 +71,7 @@ export type EditorDraft = {
   execution?: EditorAttributes[] | null | undefined;
   newGroups?: EditorGroupCreation[] | null | undefined;
   newFiles?: EditorFileCreation[] | null | undefined;
+  groupChanges?: EditorGroupChange[] | null | undefined;
 }
 
 export type EditorEdge = {
@@ -85,6 +86,12 @@ export type EditorFileCreation = {
   encoding: string;
   bom: boolean;
   groupName: string;
+}
+
+export type EditorGroupChange = {
+  id: string;
+  name?: string | null | undefined;
+  delete?: boolean | undefined;
 }
 
 export type EditorGroupCreation = {

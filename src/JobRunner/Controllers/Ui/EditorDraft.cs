@@ -13,4 +13,5 @@ namespace JobRunner.Controllers.Ui;
 /// <param name="Execution">版5の実行属性です。原文のあるグループと全ノードの安定IDを使用します。</param>
 /// <param name="NewGroups">版6の追加グループです。</param>
 /// <param name="NewFiles">版6の追加ローカルファイルです。</param>
-public sealed record EditorDraft(string DefinitionHash, List<EditorNetwork> Networks, int? EditorVersion = null, List<EditorRoot>? Roots = null, List<EditorAttributes>? Schedules = null, List<EditorAttributes>? Calendars = null, List<SourceEvidence>? LocalSources = null, List<EditorAttributes>? Execution = null, List<EditorGroupCreation>? NewGroups = null, List<EditorFileCreation>? NewFiles = null);
+/// <param name="GroupChanges">版7のグループ改名・削除です。</param>
+public sealed record EditorDraft(string DefinitionHash, List<EditorNetwork> Networks, int? EditorVersion = null, List<EditorRoot>? Roots = null, List<EditorAttributes>? Schedules = null, List<EditorAttributes>? Calendars = null, List<SourceEvidence>? LocalSources = null, List<EditorAttributes>? Execution = null, List<EditorGroupCreation>? NewGroups = null, List<EditorFileCreation>? NewFiles = null, List<EditorGroupChange>? GroupChanges = null);

@@ -26,6 +26,13 @@ public sealed class RequiredProperties : ISchemaFilter
                 schema.Required.Remove("execution");
                 schema.Required.Remove("newGroups");
                 schema.Required.Remove("newFiles");
+                schema.Required.Remove("groupChanges");
+            }
+
+            if (context.Type == typeof(EditorGroupChange))
+            {
+                schema.Required.Remove("name");
+                schema.Required.Remove("delete");
             }
 
             if (context.Type == typeof(EditorAttributes))

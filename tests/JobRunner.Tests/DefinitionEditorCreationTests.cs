@@ -150,6 +150,41 @@ public sealed class DefinitionEditorCreationTests
         Assert.Throws<ArgumentException>(() => DefinitionEditor.Render(bundle, draft));
     }
 
+    /// <summary>新規ファイルの未定義配置先は読込と同じ仮想親として扱います。</summary>
+    [Fact]
+    public void AddsFileAtNewVirtualParents()
+    {
+        var service = Service();
+        var bundle = service.Validate([DefinitionEditor.CreateFile(new("base.ajs", "/", "utf-8", true, "base"))]);
+        var draft = DefinitionEditor.Project(bundle, 6) with { LocalSources = bundle.Sources };
+        draft.NewFiles!.Add(new("extra.ajs", "/newarea/nested", "utf-8", false, "extra"));
+        draft.Calendars!.Add(new("/newarea/nested/extra", []));
+        draft.Execution!.Add(new("/newarea/nested/extra", []));
+        var rendered = DefinitionEditor.Render(bundle, draft);
+        Assert.Equal(bundle.Sources[0].Base64, rendered[0].Base64);
+        var imported = service.Validate(rendered);
+        Assert.Contains(imported.Units, u => u.Path == "/newarea" && u.Type == "g");
+        Assert.Contains(imported.Units, u => u.Path == "/newarea/nested" && u.Type == "g");
+        Assert.DoesNotContain(DefinitionEditor.Project(imported, 6).Calendars!, c => c.Id == "/newarea/nested");
+        Assert.Equal("/newarea/nested", rendered[1].Mapping.TargetPath);
+    }
+
+    /// <summary>未定義配置先を補う際も既存ネット・ジョブを親グループへ読み替えません。</summary>
+    /// <param name="target">新規ファイルの配置先です。</param>
+    [Theory]
+    [InlineData("/base/net")]
+    [InlineData("/base/net/unknown")]
+    [InlineData("/base/job/unknown")]
+    public void RejectsNonGroupAncestorsOfNewFile(string target)
+    {
+        var source = DefinitionEditor.CreateFile(new("base.ajs", "/", "utf-8", false, "base"));
+        source.Base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes("unit=base;{ty=g;unit=net;{ty=n;sd=0,ud;}unit=job;{ty=j;te=\"true\";}}"));
+        var bundle = Service().Validate([source]);
+        var draft = DefinitionEditor.Project(bundle, 7) with { LocalSources = bundle.Sources };
+        draft.NewFiles!.Add(new("extra.ajs", target, "utf-8", false, "extra"));
+        Assert.Contains("祖先", Assert.Throws<ArgumentException>(() => DefinitionEditor.Render(bundle, draft)).Message, StringComparison.Ordinal);
+    }
+
     private static void Add(EditorDraft draft, EditorGroupCreation group)
     {
         draft.NewGroups!.Add(group);
