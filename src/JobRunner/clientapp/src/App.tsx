@@ -16,10 +16,13 @@ import {
   Settings2,
   X,
 } from "lucide-react";
-import type { Operation } from "./api/@types";
+import type { Occurrence, Operation } from "./api/@types";
 import { client, errorMessage } from "./client";
 import { Graph } from "./Graph";
 import { Monthly } from "./Monthly";
+import { LogPanel } from "./LogPanel";
+import { StatusFilter } from "./StatusFilter";
+import { GraphJobs } from "./GraphJobs";
 import { formatDate, label, tone } from "./status";
 
 function initialOperation(): Operation | null {
@@ -35,6 +38,9 @@ export function App() {
   const [network, setNetwork] = useState("");
   const [rootId, setRootId] = useState("");
   const [selected, setSelected] = useState("");
+  const [statuses, setStatuses] = useState<string[]>([]);
+  const [focus, setFocus] = useState<{ path: string; revision: number }>();
+  const [logTarget, setLogTarget] = useState<Occurrence>();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [from, setFrom] = useState("");
@@ -313,11 +319,18 @@ export function App() {
               </button>
             </div>
           )}
+          <StatusFilter
+            selected={statuses}
+            onChange={setStatuses}
+            disabled={view === "graph" && !graph.data?.root}
+          />
           {view === "monthly" ? (
             <Monthly
               key={rootPath}
               rootPath={rootPath}
               zone={zone}
+              statuses={statuses}
+              onLog={setLogTarget}
               onOpen={(entry) => {
                 setNetwork(entry.networkPath);
                 setRootId(entry.execution.rootId || "");
@@ -357,6 +370,8 @@ export function App() {
                     <Graph
                       data={graph.data}
                       selected={selected}
+                      statuses={graph.data.root ? statuses : []}
+                      focus={focus}
                       onSelect={setSelected}
                     />
                   ) : (
@@ -418,6 +433,16 @@ export function App() {
                               "—"}
                           </dd>
                         </dl>
+                        {!selectedNode.isNetwork && selectedNode.execution && (
+                          <button
+                            className="primary"
+                            onClick={() =>
+                              setLogTarget(selectedNode.execution!)
+                            }
+                          >
+                            ログを見る
+                          </button>
+                        )}
                         {selectedNode.isNetwork && (
                           <button
                             className="primary"
@@ -451,6 +476,20 @@ export function App() {
                   </aside>
                 </div>
               </section>
+              {graph.data && !graph.error && (
+                <GraphJobs
+                  key={`${path}:${rootId}:${statuses.join(",")}`}
+                  nodes={graph.data.nodes}
+                  statuses={graph.data.root ? statuses : []}
+                  zone={zone}
+                  selected={selected}
+                  onLog={setLogTarget}
+                  onSelect={(value) => {
+                    setSelected(value);
+                    setFocus({ path: value, revision: Date.now() });
+                  }}
+                />
+              )}
               <section className="schedule-panel">
                 <div className="schedule-heading">
                   <div>
@@ -602,6 +641,14 @@ export function App() {
                 </div>
               </section>
             </>
+          )}
+          {logTarget && (
+            <LogPanel
+              key={`${logTarget.rootId}:${logTarget.id}`}
+              execution={logTarget}
+              zone={zone}
+              onClose={() => setLogTarget(undefined)}
+            />
           )}
           <footer className="page-footer">
             JobRunner <span>ジョブネット運用コンソール</span>

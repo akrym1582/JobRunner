@@ -1099,3 +1099,264 @@ td {
   font-size: 10px;
   padding: 4px 7px;
 }
+
+/* 状態の判定は図と一覧で共有し、接続線とログの選択は保持します。 */
+.status-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  padding: 10px 0 16px;
+  min-width: 0;
+}
+.status-filter legend {
+  font-size: 12px;
+  color: #62748b;
+  padding: 0;
+}
+.status-filter small,
+.status-filter > span {
+  font-size: 11px;
+}
+.status-filter:disabled {
+  opacity: 0.5;
+}
+.status-filter:disabled details {
+  pointer-events: none;
+}
+.status-filter details {
+  position: relative;
+}
+.status-filter summary {
+  cursor: pointer;
+  font-size: 12px;
+  padding: 8px 12px;
+  border: 1px solid #dce3ed;
+  border-radius: 6px;
+  background: white;
+}
+.status-filter button[aria-pressed="true"] {
+  color: #1765c0;
+  background: #edf5ff;
+  border-color: #aacbf0;
+}
+.status-options {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 15;
+  min-width: 360px;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  background: white;
+  border: 1px solid #dce3ed;
+  box-shadow: 0 6px 18px #19395a22;
+  border-radius: 8px;
+}
+.status-options label {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.job-node.dimmed {
+  opacity: 0.25;
+}
+.job-node.dimmed:focus,
+.job-node.dimmed.selected {
+  opacity: 0.65;
+}
+.graph-jobs {
+  margin-top: 18px;
+}
+.graph-jobs .selected-row {
+  background: #eff6ff;
+}
+.log-panel {
+  margin-top: 22px;
+  border: 1px solid #cbd7e6;
+  border-radius: 10px;
+  background: white;
+  box-shadow: 0 5px 20px #1434560d;
+  overflow: hidden;
+  outline: none;
+}
+.log-panel:focus-visible {
+  outline: 2px solid #3184d3;
+}
+.log-panel.expanded {
+  position: fixed;
+  inset: 20px;
+  z-index: 50;
+  overflow: auto;
+  box-shadow: 0 0 0 30px #0c203c99;
+}
+.log-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #e4eaf1;
+}
+.log-heading > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.log-heading h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.log-heading span {
+  font-size: 12px;
+  color: #58708b;
+}
+.log-target {
+  padding: 0 18px;
+  margin: 10px 0;
+  color: #61768d;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.log-target span {
+  margin-left: 16px;
+}
+.log-attempt {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  padding: 6px 18px 14px;
+  font-size: 11px;
+  color: #47607b;
+}
+.log-attempt label {
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 360px;
+}
+.log-attempt select {
+  min-width: 0;
+  flex: 1;
+  width: 0;
+  padding: 8px;
+  border: 1px solid #cdd9e7;
+  border-radius: 6px;
+  background: white;
+  font-size: 11px;
+}
+.log-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 0 18px;
+  border-bottom: 1px solid #dbe3ee;
+}
+.log-tabs button {
+  border: 0;
+  border-radius: 0;
+  padding: 10px 12px;
+  border-bottom: 2px solid transparent;
+}
+.log-tabs button[aria-selected="true"] {
+  border-bottom-color: #277cd6;
+  color: #1765b5;
+  background: #eff6ff;
+}
+.log-tabs small {
+  margin-left: 5px;
+  font-size: 10px;
+  opacity: 0.7;
+}
+.log-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 18px;
+  font-size: 11px;
+}
+.log-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.log-search {
+  margin-left: auto;
+}
+.log-search input {
+  border: 1px solid #d2dce9;
+  border-radius: 5px;
+  padding: 6px;
+  max-width: 180px;
+}
+.log-range {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 8px 18px;
+  font-size: 10px;
+  color: #657e98;
+  background: #f4f7fb;
+}
+.log-warning {
+  padding: 8px 18px;
+  margin: 0;
+  background: #fff8e8;
+  color: #846421;
+  font-size: 11px;
+}
+.log-console {
+  margin: 0;
+  padding: 18px;
+  height: 300px;
+  min-height: 160px;
+  overflow: auto;
+  background: #122138;
+  color: #e5edf8;
+  font:
+    12px/1.8 ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
+  white-space: pre;
+  overflow-anchor: none;
+  tab-size: 4;
+}
+.log-console.wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.log-console mark {
+  color: #16283d;
+  background: #f9d573;
+  border-radius: 2px;
+}
+.expanded .log-console {
+  height: calc(100vh - 350px);
+}
+.log-copy {
+  margin: 0;
+  padding: 8px 18px;
+  font-size: 11px;
+  color: #1d6b53;
+}
+.log-panel .notice,
+.log-panel .alert {
+  margin: 10px 18px;
+}
+@media (max-width: 700px) {
+  .status-options {
+    min-width: 260px;
+  }
+  .log-panel.expanded {
+    inset: 8px;
+  }
+  .log-search {
+    margin-left: 0;
+  }
+}

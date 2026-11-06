@@ -62,3 +62,6 @@ playwright-report/
 *.tsbuildinfo
 
 test-results/
+
+# Swagger-generated log endpoint source is not a runtime log directory.
+!src/JobRunner/clientapp/src/api/api/jobrunner/ui/logs/

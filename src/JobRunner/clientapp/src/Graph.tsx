@@ -2,15 +2,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Maximize, Minus, Plus } from "lucide-react";
 import type { Graph as GraphData } from "./api/@types";
 import { label, tone } from "./status";
-import { fixedLayout } from "./layout";
+import { fixedLayout, NODE_WIDTH, NODE_HEIGHT } from "./layout";
+import { matchesStatus } from "./filter-model";
 
 export function Graph({
   data,
   selected,
   onSelect,
+  statuses,
+  focus,
 }: {
   data: GraphData;
   selected: string;
+  statuses: string[];
+  focus?: { path: string; revision: number };
   onSelect: (id: string) => void;
 }) {
   const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
@@ -51,6 +56,17 @@ export function Graph({
       scale,
     });
   }, [layout]);
+  useEffect(() => {
+    if (!focus || !svg.current) return;
+    const node = layout?.children.find((child) => child.id === focus.path);
+    if (!node) return;
+    const size = svg.current.getBoundingClientRect();
+    setCamera((camera) => ({
+      ...camera,
+      x: size.width / 2 - (node.x + NODE_WIDTH / 2) * camera.scale,
+      y: size.height / 2 - (node.y + NODE_HEIGHT / 2) * camera.scale,
+    }));
+  }, [focus, layout]);
   function fit() {
     if (!layout || !svg.current) return;
     const size = svg.current.getBoundingClientRect();
@@ -203,7 +219,7 @@ export function Graph({
                 aria-label={`${info.name} ${label(info.status)}`}
                 aria-pressed={selected === info.path}
                 key={node.id}
-                className={`job-node ${color} ${selected === info.path ? "selected" : ""}`}
+                className={`job-node ${matchesStatus(info.status, statuses) ? "" : "dimmed"} ${color} ${selected === info.path ? "selected" : ""}`}
                 transform={`translate(${node.x},${node.y})`}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={() => onSelect(info.path)}
