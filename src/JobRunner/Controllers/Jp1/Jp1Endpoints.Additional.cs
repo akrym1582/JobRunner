@@ -12,8 +12,10 @@ public static partial class Jp1Endpoints
 {
     /// <summary>保存した分数を48時間表現へ戻します。</summary>
     /// <param name="minutes">時刻または分数です。</param>
+    /// <param name="mode">絶対時刻か相対分かを区別する方式です。</param>
     /// <returns>未指定は空文字です。</returns>
-    private static string MonitorTime(int? minutes) => minutes is int value ? $"{value / 60:D2}:{value % 60:D2}" : string.Empty;
+    private static string MonitorTime(int? minutes, string? mode) => minutes is not int value || mode is null or "NOT" ? string.Empty
+        : mode == "ABSOLUTE" ? $"{value / 60:D2}:{value % 60:D2}" : value.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>nullと省略を変更なしとして扱います。</summary>
     /// <param name="values">引数です。</param>

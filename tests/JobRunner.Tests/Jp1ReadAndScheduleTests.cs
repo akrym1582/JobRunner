@@ -89,10 +89,10 @@ public sealed class Jp1ReadAndScheduleTests
         }
     }
 
-    /// <summary>定義だけの検索でも結果上限を黙って切り捨てません。</summary>
+    /// <summary>定義検索の上限は部分返却と完全性で表し、検索後に判定します。</summary>
     /// <returns>1000件境界と無関係な世代引数の無視を確認します。</returns>
     [Fact]
-    public async Task DefinitionSearchRejectsMoreThanOneThousandResults()
+    public async Task DefinitionSearchReturnsStablePartialResults()
     {
         await using var scope = new StorageScope();
         scope.Options.SchedulerId = "AJSROOT1";
@@ -110,11 +110,27 @@ public sealed class Jp1ReadAndScheduleTests
             await WaitReadyAsync(app);
             string query = "/ajs/api/v1/objects/statuses?mode=search&manager=localhost&serviceName=AJSROOT1&location=%2Fnet&searchTarget=DEFINITION&generation=ignored";
             using var over = await app.Client.GetAsync(query);
-            Assert.Equal(HttpStatusCode.BadRequest, over.StatusCode);
-            Assert.Equal("JOBRUNNER_RESULT_LIMIT", (await over.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("messageID").GetString());
+            Assert.Equal(HttpStatusCode.OK, over.StatusCode);
+            var partial = await over.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.False(partial.GetProperty("all").GetBoolean());
+            var names = partial.GetProperty("statuses").EnumerateArray().Select(v => v.GetProperty("definition").GetProperty("simpleUnitName").GetString()).ToArray();
+            Assert.Equal(Enumerable.Range(0, 1001).Select(i => "j" + i).Order(StringComparer.Ordinal).Take(1000), names);
+            var repeated = await app.Client.GetFromJsonAsync<JsonElement>(query);
+            Assert.Equal(partial.ToString(), repeated.ToString());
+            var fewer = await app.Client.GetFromJsonAsync<JsonElement>(query + "&unitNameMatchMethods=NC&unitName=j100");
+            Assert.Equal(999, fewer.GetProperty("statuses").GetArrayLength());
+            Assert.True(fewer.GetProperty("all").GetBoolean());
+            var empty = await app.Client.GetFromJsonAsync<JsonElement>(query + "&unitNameMatchMethods=RE&unitName=missing*");
+            Assert.Equal(0, empty.GetProperty("statuses").GetArrayLength());
+            Assert.True(empty.GetProperty("all").GetBoolean());
+            var wildcard = await app.Client.GetFromJsonAsync<JsonElement>(query + "&unitNameMatchMethods=RE&unitName=j%3F");
+            Assert.Equal(10, wildcard.GetProperty("statuses").GetArrayLength());
             var exact = await app.Client.GetFromJsonAsync<JsonElement>(query + "&unitNameMatchMethods=NE&unitName=j1000");
             Assert.Equal(1000, exact.GetProperty("statuses").GetArrayLength());
             Assert.True(exact.GetProperty("all").GetBoolean());
+            using var invalidPattern = await app.Client.GetAsync(query + "&unitNameMatchMethods=RE&unitName=missing%5C");
+            Assert.Equal(HttpStatusCode.BadRequest, invalidPattern.StatusCode);
+            Assert.Equal("KNAK3206-E", (await invalidPattern.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("messageID").GetString());
         }
         finally
         {

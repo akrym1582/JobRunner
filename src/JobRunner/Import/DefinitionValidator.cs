@@ -15,7 +15,7 @@ public static partial class DefinitionValidator
     private static readonly HashSet<string> Group = ["op", "cl", "stt", "sdd", "md"];
 
     /// <summary>予定と通常接続の実装に対応するネット属性です。</summary>
-    private static readonly HashSet<string> Network = ["sd", "st", "cy", "sh", "shd", "ed", "ar", "ha", "jc", "mp", "cftd", "ln", "de"];
+    private static readonly HashSet<string> Network = ["sd", "st", "cy", "sh", "shd", "ed", "ar", "ha", "jc", "mp", "cftd", "ln", "de", "sy", "ey", "fd"];
 
     /// <summary>ローカル実行器が解釈するコマンドと終了判定の属性です。</summary>
     private static readonly HashSet<string> Job = ["te", "sc", "prm", "wkp", "env", "etm", "jd", "wth", "tho", "ha"];
@@ -24,7 +24,7 @@ public static partial class DefinitionValidator
     private static readonly HashSet<string> Judgment = ["ej", "ejc", "ejl", "ejh", "ejm", "eju", "ejf", "ejv", "ejt", "eji", "ejs", "ejg", "ha"];
 
     /// <summary>繰り返しが意味を持つ属性。その他は二重指定を拒否します。</summary>
-    private static readonly HashSet<string> Repeated = ["sd", "st", "cy", "sh", "shd", "ar", "op", "cl", "env", "el", "cftd", "ln"];
+    private static readonly HashSet<string> Repeated = ["sd", "st", "cy", "sh", "shd", "ar", "op", "cl", "env", "el", "cftd", "ln", "sy", "ey"];
 
     /// <summary>全ファイルを統合してから参照と属性の整合性を検証します。</summary>
     /// <param name="units">配置済みの最上位ユニットです。</param>
@@ -93,6 +93,7 @@ public static partial class DefinitionValidator
             if (unit.IsNetwork())
             {
                 ValidateSchedule(unit, options);
+                DefinitionDelayMonitor.Validate(unit);
             }
 
             foreach (var entry in unit.Attributes.GetValueOrDefault("op") ?? [])
@@ -124,6 +125,12 @@ public static partial class DefinitionValidator
         foreach (var unit in all.Values)
         {
             string parentPath = ScheduleCalculator.Parent(unit.Path);
+            if (unit.IsNetwork() && (!all.TryGetValue(parentPath, out var monitorParent) || !monitorParent.IsNetwork())
+                && new[] { "sy", "ey" }.SelectMany(key => unit.Attributes.GetValueOrDefault(key) ?? []).Any(raw => ScheduleCalculator.SplitRule(raw).Value.StartsWith('M') || ScheduleCalculator.SplitRule(raw).Value.StartsWith('U')))
+            {
+                throw Error(unit, "ルートネットのM/U遅延監視は未対応です。");
+            }
+
             if (all.TryGetValue(parentPath, out var parent) && parent.Type is not ("g" or "n" or "rn"))
             {
                 throw Error(unit, "配置先の親がグループまたはネットではありません。");

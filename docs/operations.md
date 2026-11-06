@@ -206,7 +206,7 @@ Windows専用のコマンド構文・パス・exe/batをLinux用に変換する�
 
 ### 保存形式の更新と切り戻し
 
-現行版は稼働系取得時に採用情報のFormatVersionを1/2/3から4へ更新する。採用ID、既存世代IDと入力ハッシュは維持する。不変の旧activation.json、activation-v2.json、activation-v3.jsonは上書きせず、activation-v4.jsonを保存する。形式4を理解できない旧実行器は再選出時の検査で停止する。
+現行版は稼働系取得時に採用情報のFormatVersionを1/2/3/4から5へ更新する。採用ID、既存世代IDと入力ハッシュは維持する。不変の旧activation.json、activation-v2.json、activation-v3.json、activation-v4.jsonは上書きせず、activation-v5.jsonを保存する。形式5を理解できない旧実行器は再選出時の検査で停止する。
 
 導入時は旧バージョンのAPIと実行器をすべて停止してから新版を起動する。旧APIは新しい要求フィールドを理解できないため、バージョン混在のローリング更新は行わない。旧バイナリへ戻す場合はバイナリだけを戻さず、停止した状態で導入前のTable/管理Blob一式を復元し、導入後の業務実行結果を照合する。形式番号だけを書き戻して新形式の登録を旧実行器に読ませてはいけない。
 
@@ -222,4 +222,11 @@ Windows専用のコマンド構文・パス・exe/batをLinux用に変換する�
 
 ## Web API一覧から追加した運用
 
-[Web API照合表](jp1-webapi-matrix.md)に全19 APIの対応範囲を記載しています。Interruptは稼働中のプロセスを停止せず後続を抑止します。ChangeStatusは元試行を保持した手動結果であり、Unknownには従来のResolveを使います。ChangeDelayMonitorは監視状態の評価であり、タイムアウトや外部通知ではありません。保存形式4への更新は全API・実行器を停止して実施してください。
+[Web API照合表](jp1-webapi-matrix.md)に全19 APIの対応範囲を記載しています。Interruptは稼働中のプロセスを停止せず後続を抑止します。ChangeStatusは元試行を保持した手動結果であり、Unknownには従来のResolveを使います。ChangeDelayMonitorは監視状態の評価であり、タイムアウトや外部通知ではありません。保存形式5への更新は全API・実行器を停止して実施してください。
+
+
+### 定義監視と参照の変更点
+
+ネットの`sy=[N,]hh:mm|M/U/C分数`、`ey`と`fd=分数`を読み込み、採用ルールの監視設定を世代へ固定する。M=ROOT、U=TOP、C=OWN。M/Uのルート指定と一般ジョブのfdは未対応。補充用定義更新は既存世代やAPIで変更した設定に遡及しない。再実行・MOVE/ADD・復元では世代の設定を保持する。外部通知やプロセス強制終了を行う機能ではない。
+
+statuses一覧は1000件超でもHTTP 200で返り、`all=false`なら検索条件を絞って再取得する。GETの相対監視時間・所要時間は分数文字列へ変更するため、従来hh:mmを期待していた呼出元は更新する。POSTの監視変更は従来のhh:mm入力を維持する。REはJP1のワイルドカードであり、正規表現のグループや文字クラスは扱わない。

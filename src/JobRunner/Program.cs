@@ -60,9 +60,12 @@ public static class Program
             comparedWithJp1 = false,
             supportedJp1Actions = new[] { "registerImmediateExec", "registerFixedExec", "changeHold", "cancelRegistration", "changeStartTime", "execImmediate", "cancelExecSchedule", "restoreChangedSchedule", "kill", "rerun", "interrupt", "changeStatus", "changeDelayMonitor" },
             supportedJp1Reads = new[] { "statuses (search)", "statuses/unitName:execID", "execResultDetails", "version (JobRunner)" },
+            supportedJp1Search = new[] { "unitName RE (*, ?, escape)", "GRP_WAIT/RUN/ABNORMAL/NORMAL", "maximum 1000; partial all=false" },
+            supportedDefinitionMonitoring = new[] { "network sy/ey by rule", "network fd", "generation-specific API override" },
+            storageFormat = 5,
             supportedJp1ErrorIds = new[] { "KNAK3201-E", "KNAK3202-E", "KNAK3203-E", "KNAK3204-E", "KNAK3206-E", "KNAK3207-E", "KNAK3209-E" },
             compatibilityDetails = "docs/compatibility-v12.md。各APIの対応引数・状態・エラー条件に限定します。変数受渡しは専用JSON方式です。",
-            unsupported = new[] { "列挙外のJP1 HTTP操作・全エラーID/全状態表現の互換", "別形式Schedule/Calendar", "イベント", "待ち合わせ", "AJSVAR", "JP1 ManagerのprotocolVersion", "認証・Agent通信", "24時間制の24時以降", "欠落月の基準日境界", "OSユーザー切り替え" },
+            unsupported = new[] { "列挙外のJP1 HTTP操作・全エラーID/全状態表現の互換", "別形式Schedule/Calendar", "イベント", "待ち合わせ", "AJSVAR", "JP1 ManagerのprotocolVersion", "認証・Agent通信", "24時間制の24時以降", "欠落月の基準日境界", "一般ジョブのfd・監視の外部通知", "OSユーザー切り替え" },
         });
         app.MapPost("/api/jobrunner/definitions/validate", (List<SourceEvidence> sources, DefinitionService definitions) => definitions.Validate(sources));
         app.MapPost("/api/jobrunner/definitions/import", async (List<SourceEvidence> sources, DefinitionService definitions, CancellationToken token) =>

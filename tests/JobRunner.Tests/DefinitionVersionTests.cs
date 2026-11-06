@@ -17,6 +17,7 @@ public sealed class DefinitionVersionTests
     [InlineData(1)]
     [InlineData(2)]
     [InlineData(3)]
+    [InlineData(4)]
     public async Task UpgradesLegacyActivationWithoutReplacingNamespace(int format)
     {
         await using var scenario = new EngineScenario();
@@ -30,7 +31,7 @@ public sealed class DefinitionVersionTests
         var before = (await scenario.OccurrencesAsync()).Select(o => o.Id).Order().ToList();
         await scenario.RestartAsync();
         var upgraded = StorageRepository.Read<Activation>((await storage.GetAsync("definition-active", CancellationToken.None))!);
-        Assert.Equal(4, upgraded.FormatVersion);
+        Assert.Equal(5, upgraded.FormatVersion);
         Assert.Equal(legacy.Id, upgraded.Id);
         Assert.Equal(before, (await scenario.OccurrencesAsync()).Select(o => o.Id).Order().ToList());
     }
@@ -45,11 +46,11 @@ public sealed class DefinitionVersionTests
     {
         await using var scenario = new EngineScenario();
         scenario.Scope.Options.ConfirmedFutureGenerations = 1;
-        await scenario.StartAsync("unit=net;{ty=n;sd=2026/11/5;st=10:00;cy=(1,d);sh=no;unit=old;{ty=j;te=\"true\";}}");
+        await scenario.StartAsync("unit=net;{ty=n;sd=2026/11/5;st=10:00;cy=(1,d);sh=no;sy=C5;fd=7;unit=old;{ty=j;te=\"true\";}}");
         var root = Assert.Single(await scenario.OccurrencesAsync(), o => o.Id == o.RootId);
         var storage = scenario.Scope.Repository;
         var service = new DefinitionService(storage, scenario.Scope.Options);
-        var definition = service.Validate([new SourceEvidence { Mapping = new DefinitionSource { BlobPath = "input/new" }, Base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes("unit=net;{ty=n;sd=2026/11/5;st=10:00;cy=(1,d);sh=no;unit=new;{ty=j;te=\"true\";}}")) }]);
+        var definition = service.Validate([new SourceEvidence { Mapping = new DefinitionSource { BlobPath = "input/new" }, Base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes("unit=net;{ty=n;sd=2026/11/5;st=10:00;cy=(1,d);sh=no;sy=C20;fd=30;unit=new;{ty=j;te=\"true\";}}")) }]);
         await service.SaveAsync(definition, CancellationToken.None);
         await scenario.EnqueueAsync(new Operation { Id = "update", Kind = "UpdateRegistrationDefinition", Target = root.RegistrationId, ExpectedDefinitionHash = root.DefinitionHash, DefinitionHash = definition.Hash });
         await scenario.Engine.TickAsync(CancellationToken.None);
@@ -72,6 +73,11 @@ public sealed class DefinitionVersionTests
         await scenario.AdvanceUntilAsync(rows => rows.Any(o => o.Id == root.Id && o.State == "Succeeded"));
         var next = Assert.Single(await scenario.OccurrencesAsync(), o => o.Id == o.RootId && o.Id != root.Id);
         Assert.Equal(definition.Hash, next.DefinitionHash);
+        Assert.Equal(20, next.DelayMonitor!.StartMinutes);
+        Assert.Equal(30, next.DelayMonitor.DurationMinutes);
+        var previous = (await scenario.OccurrencesAsync()).Single(o => o.Id == root.Id);
+        Assert.Equal(5, previous.DelayMonitor!.StartMinutes);
+        Assert.Equal(7, previous.DelayMonitor.DurationMinutes);
         Assert.Single(await scenario.OccurrencesAsync(), o => o.RootId == next.Id && o.UnitPath == "/net/new");
         await scenario.EnqueueAsync(new Operation { Id = "stale", Kind = "UpdateRegistrationDefinition", Target = root.RegistrationId, ExpectedDefinitionHash = root.DefinitionHash, DefinitionHash = definition.Hash });
         await scenario.Engine.TickAsync(CancellationToken.None);
