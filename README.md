@@ -4,7 +4,21 @@
 
 **実装計画全体は未完了です。** 現在の実装・テスト済み範囲と未達項目は [検証結果](docs/verification-results.md)、JP1仕様との対応は [互換表](docs/compatibility-v12.md) を参照してください。完全互換や業務処理のexactly-onceは保証しません。
 
-## ビルドと全テスト
+## 画面でできること
+
+ジョブネットの依存関係と実行状態をSVGで表示します。ジョブを選ぶと予定・開始・終了日時や終了コードを確認でき、子ネットへ移動できます。状態は5秒ごとに更新します。
+
+![ジョブネット監視：依存関係、ユニット詳細、実行予定・履歴](docs/spec/scheduler/web-ui/images/execution-status.png)
+
+マンスリースケジュールでは、階層と日付を並べて生成済みの確定予定・実績を確認できます。日付セルを選ぶと同日の実行回が下の一覧に表示され、そこから実行状況の図を開けます。
+
+![マンスリースケジュール：階層別の予定と実行回の詳細](docs/spec/scheduler/web-ui/images/monthly-schedule.png)
+
+ルート実行回を選ぶと、開始前の日時変更・予定取消・変更解除を行えます。定義編集と未生成の将来予定の予測は対象外です。画面は認証なしで利用できます。
+
+[Web UIの起動手順](#web-ui) / [予定変更などの画面画像](docs/spec/scheduler/web-ui/spec.md#画面イメージ) / [UIの検証記録](docs/spec/scheduler/web-ui/verification.md)
+
+## バックエンドのビルドとテスト
 
 .NET 10 SDK、Node.js 22、npm、Python 3、curlがあるLinux環境で実行します。Node.jsはUIの開発・ビルドとAzuriteのテストに使用します。本番アプリの実行依存ではありません。
 
@@ -13,6 +27,8 @@
 ```
 
 Azurite 3.35.0を一時領域へ導入し、Blob/Tableの起動確認、Releaseビルド、StyleCop解析、xUnit、テスト検出数の確認まで実行します。10000〜10002番ポートは空けてください。実Azureの契約・資格情報は不要です。統合テストはアプリを実OSプロセスとして2つ起動し、リース失効を待つため約1分以上かかります。Azurite未起動時のテストスキップはありません。
+
+Web UIの型検査・単体試験・Playwrightの手順は[Web UI](#web-ui)を参照してください。CIでは両方を実行します。
 
 既存Azuriteへ接続してテストする場合:
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import useAspidaSWR from "@aspida/swr";
 import {
   CalendarDays,
@@ -9,6 +9,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { client } from "./client";
+import { monthCells } from "./monthly-model";
 import type { MonthlyEntry } from "./api/@types";
 import { formatDate, label, tone } from "./status";
 export function monthInZone(zone: string) {
@@ -46,25 +47,26 @@ export function Monthly({
     onSuccess: () => setUpdated(new Date().toLocaleTimeString("ja-JP")),
   });
   const days = Array.from({ length: monthDays(month) }, (_, i) => i + 1);
-  const rows = schedule.data?.units ?? [];
-  const entries = schedule.data?.entries ?? [];
-  const cells = new Map<string, MonthlyEntry[]>();
-  for (const entry of entries) {
-    const key = entry.execution.unitPath + "|" + entry.calendarDate;
-    const cell = cells.get(key) || [];
-    cell.push(entry);
-    cells.set(key, cell);
-  }
-  const visible = rows.filter(
-    (row) =>
-      ![...collapsed].some((parent) => row.path.startsWith(parent + "/")),
+  const rows = useMemo(
+    () => schedule.data?.units ?? [],
+    [schedule.data?.units],
+  );
+  const entries = useMemo(
+    () => schedule.data?.entries ?? [],
+    [schedule.data?.entries],
+  );
+  const cells = useMemo(() => monthCells(entries, zone), [entries, zone]);
+  const parents = useMemo(() => new Set(rows.map((row) => row.parent)), [rows]);
+  const visible = useMemo(
+    () =>
+      rows.filter(
+        (row) =>
+          ![...collapsed].some((parent) => row.path.startsWith(parent + "/")),
+      ),
+    [rows, collapsed],
   );
   const details = selection
-    ? entries.filter(
-        (e) =>
-          e.execution.unitPath === selection.path &&
-          e.calendarDate === selection.day,
-      )
+    ? (cells.get(selection.path + "|" + selection.day)?.entries ?? [])
     : entries;
   const todayParts = new Intl.DateTimeFormat("en-CA", {
     timeZone: zone,
@@ -195,7 +197,7 @@ export function Monthly({
                         14,
                   }}
                 >
-                  {rows.some((child) => child.parent === row.path) ? (
+                  {parents.has(row.path) ? (
                     <button
                       className="tree-toggle"
                       aria-label={`${row.name}を${collapsed.has(row.path) ? "展開" : "折りたたむ"}`}
@@ -213,43 +215,28 @@ export function Monthly({
                 </th>
                 {days.map((day) => {
                   const date = `${month}-${String(day).padStart(2, "0")}`;
-                  const values = cells.get(row.path + "|" + date) || [];
-                  const status =
-                    values.find((e) => tone(e.status) === "danger")?.status ||
-                    values.find((e) => tone(e.status) === "warning")?.status ||
-                    values.find((e) => tone(e.status) === "running")?.status ||
-                    values[0]?.status ||
-                    "";
-                  const started = values.some(
-                    (e) => e.execution.started || e.execution.startedAt,
-                  );
+                  const cell = cells.get(row.path + "|" + date);
+                  const count = cell?.entries.length ?? 0;
                   return (
                     <td
                       key={day}
                       className={`${date === today ? "today" : ""} ${selection?.path === row.path && selection.day === date ? "selected-cell" : ""}`}
                     >
                       <button
-                        aria-label={`${row.name} ${date} ${values.length}件`}
-                        title={
-                          values
-                            .map(
-                              (e) =>
-                                `${formatDate(e.execution.due, zone)} ${label(e.status)}`,
-                            )
-                            .join("\n") || "保存済みの予定・実績なし"
-                        }
+                        aria-label={`${row.name} ${date} ${count}件`}
+                        title={cell?.title || "保存済みの予定・実績なし"}
                         className="day-cell"
                         onClick={() => {
                           setSelection({ path: row.path, day: date });
                           setDetailPage(0);
                         }}
                       >
-                        {values.length > 0 && (
+                        {cell && (
                           <>
                             <i
-                              className={`schedule-mark ${tone(status)} ${started ? "actual" : "planned"}`}
+                              className={`schedule-mark ${tone(cell.status)} ${cell.started ? "actual" : "planned"}`}
                             />
-                            {values.length > 1 && <sup>{values.length}</sup>}
+                            {count > 1 && <sup>{count}</sup>}
                           </>
                         )}
                       </button>

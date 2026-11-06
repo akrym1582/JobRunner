@@ -31,5 +31,6 @@ jobs:
           path: |
             tests/JobRunner.Tests/TestResults/*.trx
             tests/JobRunner.Tests/TestResults/scale.json
+            tests/JobRunner.Tests/TestResults/ui-projection.json
             src/JobRunner/clientapp/playwright-report/
             src/JobRunner/clientapp/test-results/

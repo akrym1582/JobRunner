@@ -16,6 +16,34 @@ public static class Jp1Status
     public static string Map(Occurrence value, Dictionary<string, UnitDefinition> units, IEnumerable<Occurrence> all, DateTimeOffset now)
     {
         var siblings = all.Where(o => o.RootId == value.RootId).ToDictionary(o => o.UnitPath, StringComparer.Ordinal);
+        return Map(value, units, siblings, (parent, path) => DefinitionValidator.Edges(units[parent]).Where(e => e.To == path), now);
+    }
+
+    /// <summary>一回の応答で実行回と接続の索引を共有し、ジョブ数に比例する辞書の再構築を防ぎます。</summary>
+    /// <param name="units">対象世代に固定された定義です。</param>
+    /// <param name="all">応答中に変更しない世代の一覧です。</param>
+    /// <param name="now">全ユニットに共通する表示時刻です。</param>
+    /// <returns>要求内だけで再利用する状態変換です。</returns>
+    public static Func<Occurrence, string> CreateMapper(Dictionary<string, UnitDefinition> units, IEnumerable<Occurrence> all, DateTimeOffset now)
+    {
+        var roots = all.GroupBy(o => o.RootId).ToDictionary(g => g.Key, g => g.ToDictionary(o => o.UnitPath, StringComparer.Ordinal), StringComparer.Ordinal);
+        var edges = new Dictionary<string, ILookup<string, (string From, string To, bool Conditional)>>(StringComparer.Ordinal);
+        IEnumerable<(string From, string To, bool Conditional)> Incoming(string parent, string path)
+        {
+            if (!edges.TryGetValue(parent, out var incoming))
+            {
+                incoming = DefinitionValidator.Edges(units[parent]).ToLookup(e => e.To, StringComparer.Ordinal);
+                edges.Add(parent, incoming);
+            }
+
+            return incoming[path];
+        }
+
+        return value => Map(value, units, roots.GetValueOrDefault(value.RootId) ?? [], Incoming, now);
+    }
+
+    private static string Map(Occurrence value, Dictionary<string, UnitDefinition> units, Dictionary<string, Occurrence> siblings, Func<string, string, IEnumerable<(string From, string To, bool Conditional)>> incoming, DateTimeOffset now)
+    {
         if (value.State == "Waiting")
         {
             string parent = ScheduleCalculator.Parent(value.UnitPath);
@@ -26,7 +54,7 @@ public static class Jp1Status
                     return "UNEXEC";
                 }
 
-                if (parentValue.State != "Running" || DefinitionValidator.Edges(units[parent]).Where(e => e.To == value.UnitPath).Any(e =>
+                if (parentValue.State != "Running" || incoming(parent, value.UnitPath).Any(e =>
                     !siblings.TryGetValue(e.From, out var from) || (units[value.UnitPath].IsRecovery()
                         ? units[e.From].IsRecovery() ? from.State != "Succeeded" : from.State is not ("Failed" or "TimedOut" or "Interrupted")
                         : from.State is not ("Succeeded" or "Warning" or "NotScheduled") || (e.Conditional && from.ConditionMatched != true))))

@@ -13,4 +13,10 @@ describe("状態と日時", () => {
     );
     expect(formatDate(null, "Asia/Tokyo")).toBe("—");
   });
+  it("書式を再利用してもタイムゾーンを混ぜない", () => {
+    const date = "2030-06-30T15:00:00Z";
+    expect(formatDate(date, "Asia/Tokyo")).toBe("2030/07/01 00:00:00");
+    expect(formatDate(date, "UTC")).toBe("2030/06/30 15:00:00");
+    expect(formatDate(date, "Asia/Tokyo")).toBe("2030/07/01 00:00:00");
+  });
 });

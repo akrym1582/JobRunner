@@ -31,13 +31,15 @@ public static partial class UiEndpoints
         var rows = current.Values.Where(u => InScope(u.Path)).ToDictionary(u => u.Path, ToUnit, StringComparer.Ordinal);
         var versions = new Dictionary<string, Dictionary<string, UnitDefinition>>(StringComparer.Ordinal) { [active.DefinitionHash] = current };
         var stored = (await storage.ListAsync("occurrence:", token)).Select(StorageRepository.Read<Occurrence>).Where(o => o.Namespace == active.Id).ToList();
-        var attempts = (await storage.ListAsync("attempt:", token)).Select(StorageRepository.Read<JobAttempt>).ToList();
+        var byRoot = stored.ToLookup(o => o.RootId, StringComparer.Ordinal);
+        Dictionary<string, JobAttempt>? liveAttempts = null;
+        var now = DateTimeOffset.UtcNow;
         var entries = new List<MonthlyEntry>();
         foreach (var root in stored.Where(o => o.Id == o.RootId && (InScope(o.RootPath) || rootPath.StartsWith(o.RootPath + "/", StringComparison.Ordinal))))
         {
             // 子ネットの独立日時・一時変更が月境界を越えるため、ルート日時だけでは絞り込みません。
-            var snapshot = await ReadRootAsync(root, storage, token, stored, attempts);
-            var values = snapshot.Occurrences;
+            (List<Occurrence> Occurrences, List<JobAttempt> Attempts)? archived = root.ArchivePath is null ? null : await ReadArchiveAsync(root, storage, token);
+            var values = archived?.Occurrences ?? byRoot[root.Id].ToList();
             var selected = values.Where(o => InScope(o.UnitPath)).Select(o => (Value: o, Date: DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(o.Due, zone).DateTime)))
                 .Where(v => v.Date >= begin && v.Date < until).ToList();
             if (selected.Count == 0)
@@ -53,6 +55,23 @@ public static partial class UiEndpoints
                 versions.Add(hash, units);
             }
 
+            Dictionary<string, JobAttempt> attempts;
+            if (archived is { } snapshot)
+            {
+                attempts = snapshot.Attempts.ToDictionary(a => a.Id, StringComparer.Ordinal);
+            }
+            else if (selected.Any(v => v.Value.AttemptId is not null))
+            {
+                // 空の月と退避済みの世代には、現在の試行Tableを読みません。
+                liveAttempts ??= (await storage.ListAsync("attempt:", token)).Select(StorageRepository.Read<JobAttempt>).ToDictionary(a => a.Id, StringComparer.Ordinal);
+                attempts = liveAttempts;
+            }
+            else
+            {
+                attempts = [];
+            }
+
+            var status = Jp1Status.CreateMapper(units, values, now);
             foreach (var (value, date) in selected)
             {
                 var unit = units[value.UnitPath];
@@ -66,8 +85,8 @@ public static partial class UiEndpoints
                     parent = ScheduleCalculator.Parent(parent);
                 }
 
-                var attempt = snapshot.Attempts.FirstOrDefault(a => a.Id == value.AttemptId);
-                entries.Add(new MonthlyEntry(value, Jp1Status.Map(value, units, values, DateTimeOffset.UtcNow), savedRoot.Jp1ExecutionId ?? root.Id, unit.IsNetwork() ? unit.Path : ScheduleCalculator.Parent(unit.Path), date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), unit.Get("cm"), value.ManualExitCode ?? attempt?.ExitCode));
+                var attempt = value.AttemptId is string attemptId ? attempts.GetValueOrDefault(attemptId) : null;
+                entries.Add(new MonthlyEntry(value, status(value), savedRoot.Jp1ExecutionId ?? root.Id, unit.IsNetwork() ? unit.Path : ScheduleCalculator.Parent(unit.Path), date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), unit.Get("cm"), value.ManualExitCode ?? attempt?.ExitCode));
             }
         }
 

@@ -18,6 +18,14 @@ export function Graph({
   const drag = useRef<
     { x: number; y: number; cx: number; cy: number } | undefined
   >(undefined);
+  const nodesByPath = useMemo(
+    () => new Map(data.nodes.map((n) => [n.path, n])),
+    [data.nodes],
+  );
+  const edgesById = useMemo(
+    () => new Map(data.edges.map((e) => [e.id, e])),
+    [data.edges],
+  );
   const structure = JSON.stringify({
     nodes: data.nodes.map((n) => ({ path: n.path, x: n.x, y: n.y })),
     edges: data.edges,
@@ -138,8 +146,7 @@ export function Graph({
           data-testid="graph-camera"
         >
           {layout?.edges?.map((edge) => {
-            const kind =
-              data.edges?.find((e) => e.id === edge.id)?.kind ?? "normal";
+            const kind = edgesById.get(edge.id)?.kind ?? "normal";
             return (
               <g key={edge.id}>
                 {edge.sections?.map((section, i) => {
@@ -186,7 +193,7 @@ export function Graph({
             );
           })}
           {layout?.children?.map((node) => {
-            const info = data.nodes?.find((n) => n.path === node.id);
+            const info = nodesByPath.get(node.id);
             if (!info) return null;
             const color = tone(info.status);
             return (

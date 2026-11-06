@@ -13,7 +13,8 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "screenshots": "SCREENSHOTS=1 playwright test"
+    "screenshots": "SCREENSHOTS=1 playwright test",
+    "benchmark:format": "node scripts/benchmark-format.mjs"
   },
   "dependencies": {
     "@aspida/fetch": "^1.14.0",

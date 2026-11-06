@@ -42,16 +42,26 @@ export const tone = (state: string) =>
         : /UNKNOWN|Unknown|WARNING|Warning|HOLDING|Held/.test(state)
           ? "warning"
           : "neutral";
+// サービスのタイムゾーンごとに書式を再利用し、大きな月間一覧でも毎セル生成しません。
+const dateFormats = new Map<string, Intl.DateTimeFormat>();
+function dateFormat(zone: string) {
+  let formatter = dateFormats.get(zone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("ja-JP", {
+      timeZone: zone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+    if (dateFormats.size >= 8)
+      dateFormats.delete(dateFormats.keys().next().value!);
+    dateFormats.set(zone, formatter);
+  }
+  return formatter;
+}
 export const formatDate = (value: string | null | undefined, zone: string) =>
-  value
-    ? new Intl.DateTimeFormat("ja-JP", {
-        timeZone: zone,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      }).format(new Date(value))
-    : "—";
+  value ? dateFormat(zone).format(new Date(value)) : "—";

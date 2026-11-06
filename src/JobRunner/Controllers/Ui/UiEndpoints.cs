@@ -87,11 +87,14 @@ public static partial class UiEndpoints
             }
 
             var positions = DefinitionLayout.Read(network);
+            var byPath = occurrences.ToDictionary(o => o.UnitPath, StringComparer.Ordinal);
+            var byAttempt = attempts.ToDictionary(a => a.Id, StringComparer.Ordinal);
+            var status = Jp1Status.CreateMapper(units, occurrences, DateTimeOffset.UtcNow);
             var nodes = network.Children.Select(unit =>
             {
-                var occurrence = occurrences.FirstOrDefault(o => o.UnitPath == unit.Path);
-                var attempt = attempts.FirstOrDefault(a => a.Id == occurrence?.AttemptId);
-                return new Node(unit.Path, unit.Name, unit.Type, unit.IsNetwork(), unit.IsRecovery(), occurrence is null ? "DEFINITION" : Jp1Status.Map(occurrence, units, occurrences, DateTimeOffset.UtcNow), occurrence, occurrence?.ManualExitCode ?? attempt?.ExitCode, positions[unit.Path].X, positions[unit.Path].Y);
+                var occurrence = byPath.GetValueOrDefault(unit.Path);
+                var attempt = occurrence?.AttemptId is string attemptId ? byAttempt.GetValueOrDefault(attemptId) : null;
+                return new Node(unit.Path, unit.Name, unit.Type, unit.IsNetwork(), unit.IsRecovery(), occurrence is null ? "DEFINITION" : status(occurrence), occurrence, occurrence?.ManualExitCode ?? attempt?.ExitCode, positions[unit.Path].X, positions[unit.Path].Y);
             }).ToList();
             var edges = DefinitionValidator.Edges(network).Select((e, i) => new Edge(i.ToString(System.Globalization.CultureInfo.InvariantCulture), e.From, e.To, e.Conditional ? "condition" : units[e.To].IsRecovery() ? "recovery" : "normal")).ToList();
             bool mutable = root is not null && !archived && occurrences.All(o => !o.Started && o.StatusDetail != "REGISTRATION_CANCELLED" && o.State is "Waiting" or "Held" or "NotScheduled" or "Cancelled");
@@ -116,23 +119,33 @@ public static partial class UiEndpoints
         return StorageRepository.Read<Activation>(row);
     }
 
-    private static async Task<(List<Occurrence> Occurrences, List<JobAttempt> Attempts)> ReadRootAsync(Occurrence root, StorageRepository storage, CancellationToken token, List<Occurrence>? cachedOccurrences = null, List<JobAttempt>? cachedAttempts = null)
+    private static async Task<(List<Occurrence> Occurrences, List<JobAttempt> Attempts)> ReadRootAsync(Occurrence root, StorageRepository storage, CancellationToken token)
     {
         if (root.ArchivePath is not null)
         {
-            var content = await storage.Container.GetBlobClient(root.ArchivePath).DownloadContentAsync(token);
-            var archive = content.Value.Content.ToObjectFromJson<HistoryArchive>() ?? throw new InvalidDataException("履歴がありません。");
-            if (archive.RootId != root.Id || archive.FormatVersion != 1)
-            {
-                throw new InvalidDataException("履歴が一致しません。");
-            }
-
-            return (archive.Rows.Where(r => r.Key.StartsWith("occurrence:", StringComparison.Ordinal)).Select(r => JsonSerializer.Deserialize<Occurrence>(r.Json)!).ToList(), archive.Rows.Where(r => r.Key.StartsWith("attempt:", StringComparison.Ordinal)).Select(r => JsonSerializer.Deserialize<JobAttempt>(r.Json)!).ToList());
+            return await ReadArchiveAsync(root, storage, token);
         }
 
-        var occurrences = (cachedOccurrences ?? (await storage.ListAsync("occurrence:", token)).Select(StorageRepository.Read<Occurrence>).ToList()).Where(o => o.RootId == root.Id).ToList();
+        var occurrences = (await storage.ListAsync("occurrence:", token)).Select(StorageRepository.Read<Occurrence>).Where(o => o.RootId == root.Id).ToList();
+        if (occurrences.All(o => o.AttemptId is null))
+        {
+            return (occurrences, []);
+        }
+
         var ids = occurrences.Select(o => o.Id).ToHashSet(StringComparer.Ordinal);
-        var attempts = (cachedAttempts ?? (await storage.ListAsync("attempt:", token)).Select(StorageRepository.Read<JobAttempt>).ToList()).Where(a => ids.Contains(a.OccurrenceId)).ToList();
+        var attempts = (await storage.ListAsync("attempt:", token)).Select(StorageRepository.Read<JobAttempt>).Where(a => ids.Contains(a.OccurrenceId)).ToList();
         return (occurrences, attempts);
+    }
+
+    private static async Task<(List<Occurrence> Occurrences, List<JobAttempt> Attempts)> ReadArchiveAsync(Occurrence root, StorageRepository storage, CancellationToken token)
+    {
+        var content = await storage.Container.GetBlobClient(root.ArchivePath).DownloadContentAsync(token);
+        var archive = content.Value.Content.ToObjectFromJson<HistoryArchive>() ?? throw new InvalidDataException("履歴がありません。");
+        if (archive.RootId != root.Id || archive.FormatVersion != 1)
+        {
+            throw new InvalidDataException("履歴が一致しません。");
+        }
+
+        return (archive.Rows.Where(r => r.Key.StartsWith("occurrence:", StringComparison.Ordinal)).Select(r => JsonSerializer.Deserialize<Occurrence>(r.Json)!).ToList(), archive.Rows.Where(r => r.Key.StartsWith("attempt:", StringComparison.Ordinal)).Select(r => JsonSerializer.Deserialize<JobAttempt>(r.Json)!).ToList());
     }
 }
