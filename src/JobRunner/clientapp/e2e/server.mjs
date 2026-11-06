@@ -86,7 +86,11 @@ unit=結果通知;{ty=j;te="printf notified";}}
 unit=座標なし;{ty=n;sd=1,en;st=1,23:59;cy=1,(1,d);unit=ジョブ;{ty=j;te="true";}}
 unit=ログ検証;{ty=n;sd=0,ud;el=出力ジョブ,j,+80 +48;el=後続ジョブ,j,+240 +48;ar=(f=出力ジョブ,t=後続ジョブ,seq);
 unit=出力ジョブ;{ty=j;te="printf '%0200000d' 0; printf '日本語 <script>alert(1)</script> 出力完了 PID=%s' $$; printf '標準エラーの診断' >&2; exit 1";}
-unit=後続ジョブ;{ty=j;te="true";}}`;
+unit=後続ジョブ;{ty=j;te="true";}}
+unit=判定検証;{ty=n;sd=0,ud;sz=4*1;el=先行,j,+80 +48;el=既存判定,jdj,+240 +48;el=従属,j,+400 +48;ar=(f=先行,t=既存判定);ar=(f=既存判定,t=従属,con);
+unit=先行;{ty=j;te="true";wth=0;}
+unit=既存判定,0000,owner,group;{ty=jdj;cm="残す判定";ej=ri;ejl=1;ejh=9;ejm=gt;eju=le;ha=n;}
+unit=従属;{ty=j;te="true";}}`;
 await source
   .getBlockBlobClient("jobs")
   .upload(definition, Buffer.byteLength(definition));

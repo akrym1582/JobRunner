@@ -23,13 +23,14 @@ import { EditorGraph } from "./EditorGraph";
 import { EditorProperties } from "./EditorProperties";
 import {
   change,
-  isJob,
+  canEdit,
   newJob,
   redo,
   removeNode,
   replaceNetwork,
   replaceNode,
   undo,
+  upgradeDraft,
   type History,
 } from "./model";
 import {
@@ -39,6 +40,14 @@ import {
   type SavedDraft,
 } from "./storage";
 import "./editor.css";
+
+async function upgradeSaved(saved: SavedDraft): Promise<SavedDraft> {
+  if (saved.draft.editorVersion === 2) return saved;
+  const base = await client.ui.definition_editor.$get({
+    query: { definitionHash: saved.draft.definitionHash },
+  });
+  return { ...saved, base, draft: upgradeDraft(saved.draft, base.draft) };
+}
 
 export function DefinitionEditor({
   activeHash,
@@ -113,7 +122,7 @@ export function DefinitionEditor({
   useEffect(() => {
     let current = true;
     void readDraft()
-      .then((saved) => {
+      .then(async (saved) => {
         if (!current) return;
         if (saved) {
           savedRevision.current = saved.revision ?? null;
@@ -122,8 +131,19 @@ export function DefinitionEditor({
             base: saved.base,
             draft: saved.draft,
           });
-          setBase(saved.base);
-          setHistory({ past: [], present: saved.draft, future: [] });
+          let restored = saved;
+          try {
+            restored = await upgradeSaved(saved);
+          } catch (error) {
+            if (!current) return;
+            setSaveAllowed(false);
+            setSaveError(
+              `旧下書きの判定属性を読み込めません。編集内容は保持しています: ${String(error)}`,
+            );
+          }
+          if (!current) return;
+          setBase(restored.base);
+          setHistory({ past: [], present: restored.draft, future: [] });
         }
         setLoaded(true);
       })
@@ -314,7 +334,8 @@ export function DefinitionEditor({
     setBusy(true);
     try {
       await saveQueue.current;
-      const saved = await readDraft();
+      const stored = await readDraft();
+      const saved = stored ? await upgradeSaved(stored) : undefined;
       if (started !== revision.current) {
         setMessage("読み直し中に編集されたため、現在の編集を保持しました。");
         return;
@@ -343,8 +364,8 @@ export function DefinitionEditor({
       savedRevision.current = saved.revision ?? null;
       savedContent.current = JSON.stringify({
         version: 1,
-        base: saved.base,
-        draft: saved.draft,
+        base: stored!.base,
+        draft: stored!.draft,
       });
       conflict.current = false;
       setConflicted(false);
@@ -455,10 +476,20 @@ export function DefinitionEditor({
                 <option value="pj">PCジョブ</option>
                 <option value="rj">リカバリー UNIX</option>
                 <option value="rp">リカバリー PC</option>
+                <option value="jdj" disabled={draft.editorVersion !== 2}>
+                  判定ジョブ
+                </option>
+                <option value="rjdj" disabled={draft.editorVersion !== 2}>
+                  リカバリー判定
+                </option>
               </select>
               <button
                 onClick={() => {
                   try {
+                    if (!canEdit(kind, draft.editorVersion ?? 1))
+                      throw new Error(
+                        "判定属性を読み直してから追加してください。",
+                      );
                     const added = newJob(network, kind);
                     edit({ ...network, nodes: [...network.nodes, added] });
                     setSelected(added.id);
@@ -549,10 +580,12 @@ export function DefinitionEditor({
             />
             <EditorProperties
               node={node}
+              editorVersion={draft.editorVersion ?? 1}
               onChange={(next) => edit(replaceNode(network, next))}
               onOpen={() => onNavigate(selected)}
               onDelete={() => {
-                if (!node || !isJob(node.type)) return;
+                if (!node || !canEdit(node.type, draft.editorVersion ?? 1))
+                  return;
                 const edges = network.edges.filter(
                   (e) => e.from === node.id || e.to === node.id,
                 );

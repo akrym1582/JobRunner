@@ -15,6 +15,12 @@ public sealed class RequiredProperties : ISchemaFilter
         if (context.Type.Namespace == typeof(Graph).Namespace)
         {
             schema.Required.UnionWith(schema.Properties.Keys);
+            if (context.Type == typeof(EditorDraft))
+            {
+                // 旧下書きの要求には版がないため、省略可能な契約を公開します。
+                schema.Required.Remove("editorVersion");
+            }
+
             foreach (var property in context.Type.GetProperties())
             {
                 string name = System.Text.Json.JsonNamingPolicy.CamelCase.ConvertName(property.Name);

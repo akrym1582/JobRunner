@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using JobRunner.Controllers.Ui;
+using JobRunner.Editing;
 using JobRunner.Models;
 using JobRunner.Services;
 using JobRunner.Storage;
@@ -33,7 +34,7 @@ public sealed class DefinitionEditorApiTests
         await scope.Repository.InitializeAsync(CancellationToken.None);
         var container = scope.Repository.Blobs.GetBlobContainerClient(containerName);
         await container.CreateAsync();
-        byte[] original = Encoding.UTF8.GetBytes("\uFEFF/* 保存された原文 */\r\nunit=net;{ty=n;sd=0,ud;el=a,j,+80 +48;unit=a;{ty=j;te=\"true\";}}\r\n");
+        byte[] original = Encoding.UTF8.GetBytes("\uFEFF/* 保存された原文 */\r\nunit=net;{ty=n;sd=0,ud;el=a,j,+80 +48;el=judge,jdj,+240 +48;ar=(f=a,t=judge);unit=a;{ty=j;te=\"true\";}unit=judge;{ty=jdj;ej=eq;ejc=7;ha=n;}}\r\n");
         await container.GetBlobClient("jobs.ajs").UploadAsync(new BinaryData(original));
         if (multiple)
         {
@@ -44,7 +45,15 @@ public sealed class DefinitionEditorApiTests
         try
         {
             var document = await WaitForEditorAsync(app);
+            var originalBundle = await new DefinitionService(scope.Repository, scope.Options).ReadSourcesAsync(document.Draft.DefinitionHash, CancellationToken.None);
             var before = await OperationalStateAsync(scope.Repository);
+            var exact = await app.Client.GetFromJsonAsync<EditorDocument>("/api/jobrunner/ui/definition-editor?definitionHash=" + document.Draft.DefinitionHash);
+            Assert.Equal(2, exact!.Draft.EditorVersion);
+            Assert.Equal("7", exact.Draft.Networks[0].Nodes.Single(n => n.Type == "jdj").Attributes["ejc"][0]);
+            var legacy = DefinitionEditor.Project(originalBundle, 1) with { EditorVersion = null };
+            var legacyPreview = await (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/preview", new { legacy.DefinitionHash, legacy.Networks })).Content.ReadFromJsonAsync<EditorPreview>();
+            Assert.True(legacyPreview!.Valid);
+            Assert.Contains(legacyPreview.Sources, s => s.Text.Contains("ejc=7;", StringComparison.Ordinal));
             await container.GetBlobClient("jobs.ajs").UploadAsync(BinaryData.FromString("broken live input"), overwrite: true);
             var previewResponse = await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/preview", document.Draft);
             var preview = await previewResponse.Content.ReadFromJsonAsync<EditorPreview>();
@@ -80,6 +89,11 @@ public sealed class DefinitionEditorApiTests
 
             var net = document.Draft.Networks[0];
             net.Nodes[0].Attributes["te"] = ["echo changed"];
+            var judgment = net.Nodes.Single(n => n.Type == "jdj");
+            judgment.Attributes["ejc"] = ["4294967295"];
+            preview = await (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/preview", document.Draft)).Content.ReadFromJsonAsync<EditorPreview>();
+            Assert.True(preview!.Valid);
+            Assert.Contains(preview.Sources, s => s.Text.Contains("ejc=4294967295;ha=n;", StringComparison.Ordinal));
             response = await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/export", document.Draft);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             net.Edges.Add(new EditorEdge(net.Nodes[0].Id, net.Nodes[0].Id, false));

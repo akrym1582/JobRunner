@@ -105,14 +105,15 @@ const api = <T>({ baseURL, fetch }: AspidaClient<T>) => {
             /**
              * @returns OK
              */
-            get: (option?: { config?: T | undefined } | undefined) =>
+            get: (option?: { query?: Methods_1ky6f4t['get']['query'] | undefined, config?: T | undefined } | undefined) =>
               fetch<Methods_1ky6f4t['get']['resBody'], BasicHeaders, Methods_1ky6f4t['get']['status']>(prefix, PATH2, GET, option).json(),
             /**
              * @returns OK
              */
-            $get: (option?: { config?: T | undefined } | undefined) =>
+            $get: (option?: { query?: Methods_1ky6f4t['get']['query'] | undefined, config?: T | undefined } | undefined) =>
               fetch<Methods_1ky6f4t['get']['resBody'], BasicHeaders, Methods_1ky6f4t['get']['status']>(prefix, PATH2, GET, option).json().then(r => r.body),
-            $path: () => `${prefix}${PATH2}`,
+            $path: (option?: { method?: 'get' | undefined; query: Methods_1ky6f4t['get']['query'] } | undefined) =>
+              `${prefix}${PATH2}${option && option.query ? `?${dataToURLString(option.query)}` : ''}`,
           },
           executions: {
             /**

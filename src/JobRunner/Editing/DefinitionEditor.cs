@@ -10,18 +10,24 @@ namespace JobRunner.Editing;
 public static class DefinitionEditor
 {
     private static readonly HashSet<string> EditableKeys = ["cm", "te", "sc", "prm", "wkp", "env"];
+    private static readonly HashSet<string> JudgmentKeys = ["cm", "ej", "ejc", "ejl", "ejh", "ejm", "eju", "ejf", "ejv", "ejt", "eji", "ejs", "ejg", "ha"];
+    private static readonly HashSet<string> QuotedKeys = ["cm", "te", "sc", "prm", "wkp", "env", "ejf", "ejt"];
 
     /// <summary>原文に存在するネットと編集項目を投影します。</summary>
     /// <param name="bundle">原文検証済みの版です。</param>
+    /// <param name="editorVersion">旧要求の欠落属性を削除と解釈しないための投影版です。</param>
     /// <returns>元パスで識別する下書きです。</returns>
-    public static EditorDraft Project(DefinitionBundle bundle) => new(bundle.Hash, bundle.Units.Flatten().Where(u => u.IsNetwork()).Select(network => new EditorNetwork(
+    public static EditorDraft Project(DefinitionBundle bundle, int editorVersion = 2) => new(
+        bundle.Hash,
+        bundle.Units.Flatten().Where(u => u.IsNetwork()).Select(network => new EditorNetwork(
         network.Path,
         network.Children.Select(unit =>
         {
             var position = Position(network, unit.Name);
-            return new EditorNode(unit.Path, unit.Name, unit.Type, unit.Attributes.Where(a => EditableKeys.Contains(a.Key)).ToDictionary(a => a.Key, a => a.Value.ToList(), StringComparer.Ordinal), position?.X, position?.Y);
+            return new EditorNode(unit.Path, unit.Name, unit.Type, unit.Attributes.Where(a => Keys(unit.Type, editorVersion).Contains(a.Key)).ToDictionary(a => a.Key, a => a.Value.ToList(), StringComparer.Ordinal), position?.X, position?.Y);
         }).ToList(),
-        DefinitionValidator.Edges(network).Select(e => new EditorEdge(e.From, e.To, e.Conditional)).ToList())).ToList());
+        DefinitionValidator.Edges(network).Select(e => new EditorEdge(e.From, e.To, e.Conditional)).ToList())).ToList(),
+        editorVersion);
 
     /// <summary>元の文字コードで原文を表示します。</summary>
     /// <param name="sources">対象原文です。</param>
@@ -40,7 +46,13 @@ public static class DefinitionEditor
             throw new ArgumentException("下書きの基点版が一致しません。");
         }
 
-        var baseline = Project(bundle);
+        int editorVersion = draft.EditorVersion ?? 1;
+        if (editorVersion is not (1 or 2))
+        {
+            throw new ArgumentException("未対応の下書き形式です。");
+        }
+
+        var baseline = Project(bundle, editorVersion);
         if (!baseline.Networks.Select(n => n.Path).Order(StringComparer.Ordinal).SequenceEqual(draft.Networks.Select(n => n.Path).Order(StringComparer.Ordinal)))
         {
             throw new ArgumentException("既存ネットの追加・削除・名前変更はできません。");
@@ -64,9 +76,9 @@ public static class DefinitionEditor
             var syntax = location.Syntax;
             foreach (var old in before.Nodes.Where(n => network.Nodes.All(current => current.Id != n.Id)))
             {
-                if (!IsJob(old.Type))
+                if (!CanEdit(old.Type, editorVersion))
                 {
-                    throw new ArgumentException("削除できるのはコマンドジョブだけです。");
+                    throw new ArgumentException("この下書きでは対象の種別を削除できません。");
                 }
 
                 var deleted = locations[old.Id];
@@ -78,14 +90,14 @@ public static class DefinitionEditor
                 oldNodes.TryGetValue(node.Id, out var old);
                 if (old is null)
                 {
-                    if (!node.Id.StartsWith("new:", StringComparison.Ordinal) || !IsJob(node.Type))
+                    if (!node.Id.StartsWith("new:", StringComparison.Ordinal) || !CanEdit(node.Type, editorVersion))
                     {
-                        throw new ArgumentException("追加できるのはj/pj/rj/rpです。新規IDを指定してください。");
+                        throw new ArgumentException("編集可能なジョブ種別と新規IDを指定してください。");
                     }
                 }
-                else if (old.Type != node.Type || (!IsJob(old.Type) && (old.Name != node.Name || !SameAttributes(old.Attributes, node.Attributes))))
+                else if (old.Type != node.Type || (!CanEdit(old.Type, editorVersion) && (old.Name != node.Name || !SameAttributes(old.Attributes, node.Attributes))))
                 {
-                    throw new ArgumentException("既存の種別、ネット・判定ジョブの属性は変更できません。");
+                    throw new ArgumentException("既存の種別または編集対象外の属性は変更できません。");
                 }
 
                 if (old?.Name != node.Name && (string.IsNullOrWhiteSpace(node.Name) || node.Name != node.Name.Trim() || node.Name is "." or ".." || node.Name.Any(c => char.IsControl(c) || "/\\,;{}()=\"#".Contains(c, StringComparison.Ordinal))))
@@ -93,9 +105,24 @@ public static class DefinitionEditor
                     throw new ArgumentException("ジョブ名に空白だけの名前や構文の区切り文字は使用できません。");
                 }
 
-                if (node.Attributes.Keys.Any(k => !EditableKeys.Contains(k)) || node.Attributes.Any(a => a.Key != "env" && a.Value.Count > 1))
+                var editableKeys = Keys(node.Type, editorVersion);
+                if (node.Attributes.Keys.Any(k => !editableKeys.Contains(k)) || node.Attributes.Any(a => a.Key != "env" && a.Value.Count > 1))
                 {
                     throw new ArgumentException("編集対象外または重複した属性です。");
+                }
+
+                foreach (var attribute in node.Attributes)
+                {
+                    // 現在の方式で使わない既存値も、原文を変更しない限りそのまま保持します。
+                    if (old is not null && old.Attributes.TryGetValue(attribute.Key, out var originalValues) && originalValues.SequenceEqual(attribute.Value))
+                    {
+                        continue;
+                    }
+
+                    foreach (string value in attribute.Value)
+                    {
+                        FormatValue(attribute.Key, value);
+                    }
                 }
 
                 if (node.X is < 0 or > 16000 || node.Y is < 0 or > 10000 || node.X.HasValue != node.Y.HasValue)
@@ -105,10 +132,10 @@ public static class DefinitionEditor
 
                 if (old is null)
                 {
-                    string attributes = string.Join(document.Newline + "    ", node.Attributes.SelectMany(a => a.Value.Select(value => a.Key + "=" + Quote(value) + ";")));
+                    string attributes = string.Join(document.Newline + "    ", node.Attributes.SelectMany(a => a.Value.Select(value => a.Key + "=" + FormatValue(a.Key, value) + ";")));
                     document.Replace(syntax.End - 1, syntax.End - 1, $"{document.Newline}  unit={Quote(node.Name)}; {{{document.Newline}    ty={node.Type};{document.Newline}    {attributes}{document.Newline}  }}{document.Newline}");
                 }
-                else if (IsJob(old.Type))
+                else if (CanEdit(old.Type, editorVersion))
                 {
                     var existing = locations[old.Id];
                     if (old.Name != node.Name)
@@ -119,9 +146,9 @@ public static class DefinitionEditor
                         existing.Document.Replace(existing.Syntax.HeaderStart, existing.Syntax.HeaderEnd, Quote(node.Name) + (comma < 0 ? string.Empty : header[comma..]) + ";");
                     }
 
-                    foreach (string key in EditableKeys)
+                    foreach (string key in editableKeys)
                     {
-                        existing.Document.SetValues(existing.Syntax, key, node.Attributes.GetValueOrDefault(key) ?? [], true);
+                        existing.Document.SetValues(existing.Syntax, key, node.Attributes.GetValueOrDefault(key) ?? [], QuotedKeys.Contains(key));
                     }
                 }
             }
@@ -206,6 +233,26 @@ public static class DefinitionEditor
     }
 
     private static bool IsJob(string type) => type is "j" or "pj" or "rj" or "rp";
+
+    private static bool CanEdit(string type, int version) => IsJob(type) || (version >= 2 && type is "jdj" or "rjdj");
+
+    private static HashSet<string> Keys(string type, int version) => version >= 2 && type is "jdj" or "rjdj" ? JudgmentKeys : EditableKeys;
+
+    private static string FormatValue(string key, string value)
+    {
+        if (QuotedKeys.Contains(key))
+        {
+            return Quote(value);
+        }
+
+        // 非引用の判定値から属性・ユニットを注入できないよう、構文区切りを拒否します。
+        if (!Regex.IsMatch(value, key == "ejv" ? @"^\?AJS2[A-Z0-9.]{1,64}\?$" : "^[a-z0-9]+$", RegexOptions.CultureInvariant))
+        {
+            throw new ArgumentException($"判定属性{key}の形式が不正です。");
+        }
+
+        return value;
+    }
 
     private static bool SameAttributes(Dictionary<string, List<string>> left, Dictionary<string, List<string>> right) => left.Count == right.Count && left.All(a => right.TryGetValue(a.Key, out var values) && a.Value.SequenceEqual(values));
 

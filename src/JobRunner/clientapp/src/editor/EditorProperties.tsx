@@ -1,16 +1,19 @@
 import type { EditorNode } from "../api/@types";
-import { isJob } from "./model";
+import { canEdit, isJob, isJudgment } from "./model";
+import { JudgmentProperties } from "./JudgmentProperties";
 
 export function EditorProperties({
   node,
   onChange,
   onDelete,
   onOpen,
+  editorVersion,
 }: {
   node?: EditorNode;
   onChange: (node: EditorNode) => void;
   onDelete: () => void;
   onOpen: () => void;
+  editorVersion: number;
 }) {
   if (!node)
     return (
@@ -23,7 +26,7 @@ export function EditorProperties({
         </p>
       </aside>
     );
-  const editable = isJob(node.type);
+  const editable = canEdit(node.type, editorVersion);
   const value = (key: string) => node.attributes[key]?.[0] ?? "";
   function field(key: string, text: string) {
     const attributes = { ...node!.attributes };
@@ -54,7 +57,7 @@ export function EditorProperties({
           onChange={(e) => field("cm", e.target.value)}
         />
       </label>
-      {editable && (
+      {isJob(node.type) && (
         <>
           <label>
             実行方法
@@ -137,6 +140,9 @@ export function EditorProperties({
             />
           </label>
         </>
+      )}
+      {editable && isJudgment(node.type) && (
+        <JudgmentProperties node={node} onChange={onChange} />
       )}
       <fieldset>
         <legend>配置座標 (el)</legend>

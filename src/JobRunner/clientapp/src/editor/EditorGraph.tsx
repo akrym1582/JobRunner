@@ -249,9 +249,13 @@ export function EditorGraph({
                     <text x="54" y="51" className="editor-node-caption">
                       {node.type === "n" || node.type === "rn"
                         ? "ジョブネット"
-                        : node.type === "rj" || node.type === "rp"
-                          ? "リカバリージョブ"
-                          : "ジョブ"}
+                        : node.type === "jdj"
+                          ? "判定ジョブ"
+                          : node.type === "rjdj"
+                            ? "リカバリー判定"
+                            : node.type === "rj" || node.type === "rp"
+                              ? "リカバリージョブ"
+                              : "ジョブ"}
                     </text>
                     <text x="14" y="73" className="editor-node-caption">
                       {node.x}, {node.y}

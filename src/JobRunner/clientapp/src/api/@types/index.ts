@@ -38,6 +38,7 @@ export type EditorDocument = {
 export type EditorDraft = {
   definitionHash: string;
   networks: EditorNetwork[];
+  editorVersion?: number | null | undefined;
 }
 
 export type EditorEdge = {

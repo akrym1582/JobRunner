@@ -12,10 +12,10 @@ public static partial class UiEndpoints
 {
     private static void MapEditor(RouteGroupBuilder group)
     {
-        group.MapGet("/definition-editor", async (StorageRepository storage, DefinitionService definitions, CancellationToken token) =>
+        group.MapGet("/definition-editor", async (string? definitionHash, StorageRepository storage, DefinitionService definitions, CancellationToken token) =>
         {
-            var active = await ActiveAsync(storage, token);
-            var bundle = await definitions.ReadSourcesAsync(active.DefinitionHash, token);
+            string hash = definitionHash ?? (await ActiveAsync(storage, token)).DefinitionHash;
+            var bundle = await definitions.ReadSourcesAsync(hash, token);
             return new EditorDocument(DefinitionEditor.Project(bundle), DefinitionEditor.Describe(bundle.Sources, bundle.Sources));
         });
         group.MapPost("/definition-editor/preview", async (EditorDraft draft, DefinitionService definitions, CancellationToken token) =>

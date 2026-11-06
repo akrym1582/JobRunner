@@ -42,6 +42,15 @@
         "tags": [
           "JobRunner"
         ],
+        "parameters": [
+          {
+            "name": "definitionHash",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -565,6 +574,11 @@
             "items": {
               "$ref": "#/components/schemas/EditorNetwork"
             }
+          },
+          "editorVersion": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
           }
         },
         "additionalProperties": false
