@@ -7,22 +7,24 @@ export const isNetwork = (type: string) => ["n", "rn"].includes(type);
 export const canEdit = (type: string, version: number) =>
   isJob(type) ||
   (version >= 2 && isJudgment(type)) ||
-  (version >= 3 && version <= 5 && isNetwork(type));
+  (version >= 3 && version <= 6 && isNetwork(type));
 
 export function upgradeDraft(
   draft: EditorDraft,
   baseline: EditorDraft,
 ): EditorDraft {
   if (
-    ![1, 2, 3, 4].includes(draft.editorVersion ?? 1) ||
-    ![4, 5].includes(baseline.editorVersion ?? 0) ||
+    ![1, 2, 3, 4, 5].includes(draft.editorVersion ?? 1) ||
+    ![4, 5, 6].includes(baseline.editorVersion ?? 0) ||
     (draft.editorVersion ?? 1) >= baseline.editorVersion! ||
-    (baseline.editorVersion === 5 && !baseline.execution) ||
+    ((baseline.editorVersion ?? 0) >= 5 && !baseline.execution) ||
     !baseline.roots ||
     !baseline.schedules ||
     !baseline.calendars ||
     ((draft.editorVersion ?? 1) >= 3 && !draft.roots) ||
-    (draft.editorVersion === 4 && (!draft.schedules || !draft.calendars)) ||
+    ((draft.editorVersion ?? 1) >= 4 &&
+      (!draft.schedules || !draft.calendars)) ||
+    (draft.editorVersion === 5 && !draft.execution) ||
     draft.definitionHash !== baseline.definitionHash
   )
     throw new Error("下書きの形式または元版が一致しません。");
@@ -36,10 +38,10 @@ export function upgradeDraft(
       (draft.editorVersion ?? 1) >= 3 ? draft.roots : baseline.roots,
     ),
     calendars: structuredClone(
-      draft.editorVersion === 4 ? draft.calendars : baseline.calendars,
+      (draft.editorVersion ?? 1) >= 4 ? draft.calendars : baseline.calendars,
     ),
     schedules:
-      draft.editorVersion === 4
+      (draft.editorVersion ?? 1) >= 4
         ? structuredClone(draft.schedules)
         : draft.networks.map((network) => {
             const original = baseline.schedules?.find(
@@ -67,11 +69,27 @@ export function upgradeDraft(
       }),
     })),
   };
-  if (baseline.editorVersion === 5) {
+  if (baseline.editorVersion === 6) {
+    upgraded.newGroups = [];
+    upgraded.newFiles = [];
+  }
+  if ((baseline.editorVersion ?? 0) >= 5) {
     const originalTargets = new Map(
       executionTargets(baseline).map((t) => [t.id, t]),
     );
-    upgraded.execution = executionTargets(upgraded).map((target) => {
+    const structural = new Set(
+      executionTargets({ ...baseline, execution: [] }).map((t) => t.id),
+    );
+    const fixed = baseline.execution!.filter((e) => !structural.has(e.id));
+    upgraded.execution = executionTargets({
+      ...upgraded,
+      execution: fixed,
+    }).map((target) => {
+      if (draft.editorVersion === 5) {
+        const saved = draft.execution!.find((e) => e.id === target.id);
+        if (!saved) throw new Error("保存済み実行属性の対象が一致しません。");
+        return { ...structuredClone(saved), type: target.type };
+      }
       const original = baseline.execution!.find((e) => e.id === target.id);
       if (original) {
         if (originalTargets.get(target.id)?.type !== target.type)

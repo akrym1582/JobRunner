@@ -66,6 +66,35 @@
         }
       }
     },
+    "/api/jobrunner/ui/definition-editor/local/new": {
+      "post": {
+        "tags": [
+          "JobRunner"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorFileCreation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorDocument"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobrunner/ui/definition-editor": {
       "get": {
         "tags": [
@@ -634,6 +663,10 @@
                 "type": "string"
               }
             }
+          },
+          "type": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -745,6 +778,20 @@
               "$ref": "#/components/schemas/EditorAttributes"
             },
             "nullable": true
+          },
+          "newGroups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorGroupCreation"
+            },
+            "nullable": true
+          },
+          "newFiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorFileCreation"
+            },
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -765,6 +812,55 @@
           },
           "conditional": {
             "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorFileCreation": {
+        "required": [
+          "bom",
+          "encoding",
+          "fileName",
+          "groupName",
+          "targetPath"
+        ],
+        "type": "object",
+        "properties": {
+          "fileName": {
+            "type": "string"
+          },
+          "targetPath": {
+            "type": "string"
+          },
+          "encoding": {
+            "type": "string"
+          },
+          "bom": {
+            "type": "boolean"
+          },
+          "groupName": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorGroupCreation": {
+        "required": [
+          "name",
+          "parentPath",
+          "sourceIndex"
+        ],
+        "type": "object",
+        "properties": {
+          "sourceIndex": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "parentPath": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
           }
         },
         "additionalProperties": false

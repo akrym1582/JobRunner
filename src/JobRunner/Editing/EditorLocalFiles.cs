@@ -30,6 +30,14 @@ public static partial class EditorLocalFiles
         }
 
         var sources = request.Sources ?? ReadZip(DecodeBase64(request.ZipBase64!, TotalLimit));
+        return definitions.Validate(ValidateSources(sources));
+    }
+
+    /// <summary>解析前に入力のパス・バイト・階層制限を検証します。</summary>
+    /// <param name="sources">入力原文です。</param>
+    /// <returns>呼出元の証跡を含まない原文です。</returns>
+    internal static List<SourceEvidence> ValidateSources(List<SourceEvidence> sources)
+    {
         if (sources.Count is < 1 or > CountLimit)
         {
             throw new ArgumentException("ローカル入力は1〜32ファイルです。");
@@ -93,7 +101,7 @@ public static partial class EditorLocalFiles
             });
         }
 
-        return definitions.Validate(result);
+        return result;
     }
 
     private static byte[] DecodeBase64(string value, int limit)

@@ -90,7 +90,8 @@ export function ExecutionProperties({
   onChange: (draft: EditorDraft) => void;
 }) {
   const [selected, setSelected] = useState(current);
-  if (draft.editorVersion !== 5 || !draft.execution) return null;
+  if (![5, 6].includes(draft.editorVersion ?? 1) || !draft.execution)
+    return null;
   const targets = executionTargets(draft);
   const target = targets.find((t) => t.id === selected) ?? targets[0];
   const entry = draft.execution.find((e) => e.id === target?.id);

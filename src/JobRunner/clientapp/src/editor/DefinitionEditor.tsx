@@ -24,6 +24,8 @@ import { EditorProperties } from "./EditorProperties";
 import { ExecutionProperties } from "./ExecutionProperties";
 import { TimingProperties } from "./TimingProperties";
 import { LocalDefinitionInput } from "./LocalDefinitionInput";
+import { CreationProperties } from "./CreationProperties";
+import { creationDocument } from "./creations";
 import { NetworkProperties } from "./NetworkProperties";
 import { networkNames, removeHierarchyNode, subtreeIds } from "./hierarchy";
 import {
@@ -47,7 +49,7 @@ import {
 import "./editor.css";
 
 async function upgradeSaved(saved: SavedDraft): Promise<SavedDraft> {
-  if (saved.draft.editorVersion === 5) return saved;
+  if (saved.draft.editorVersion === 6) return saved;
   const base = saved.draft.localSources
     ? await client.ui.definition_editor.local.$post({
         body: { sources: saved.draft.localSources },
@@ -286,7 +288,7 @@ export function DefinitionEditor({
         link = document.createElement("a");
       link.href = url;
       link.download =
-        base.sources.length === 1
+        base.sources.length + (draft.newFiles?.length ?? 0) === 1
           ? base.sources[0].fileName.split("/").at(-1)!
           : "jobrunner-definitions.zip";
       link.click();
@@ -331,6 +333,30 @@ export function DefinitionEditor({
       setSelected("");
     } catch (e) {
       setMessage(await errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function addDraft(next: EditorDraft) {
+    const started = revision.current;
+    setBusy(true);
+    setMessage("");
+    try {
+      const result = await client.ui.definition_editor.preview.$post({
+        body: next,
+      });
+      if (started !== revision.current) {
+        setMessage(
+          "検証中に編集されたため、追加を中止しました。もう一度追加してください。",
+        );
+        return;
+      }
+      if (!result.valid) throw new Error(result.errors.join("\n"));
+      update(next);
+      setMessage("下書きに追加しました。採用・登録はしていません。");
+    } catch (error) {
+      const detail = await errorMessage(error);
+      if (started === revision.current) setMessage(detail);
     } finally {
       setBusy(false);
     }
@@ -505,10 +531,18 @@ export function DefinitionEditor({
       </div>
       {draft?.localSources && (
         <p role="status">
-          ローカル入力（未採用）・{draft.localSources.length}ファイル
+          ローカル入力（未採用）・
+          {draft.localSources.length + (draft.newFiles?.length ?? 0)}ファイル
         </p>
       )}
       <LocalDefinitionInput disabled={busy || !loaded} onImport={importLocal} />
+      <CreationProperties
+        base={base}
+        draft={draft}
+        disabled={busy || !loaded || !saveAllowed}
+        onAdd={addDraft}
+        onImport={importLocal}
+      />
       {message && (
         <div className="notice" role="status">
           {message}
@@ -518,7 +552,7 @@ export function DefinitionEditor({
         <>
           {base && (
             <NetworkProperties
-              base={base}
+              base={creationDocument(base, draft)}
               draft={draft}
               current={network.path}
               onChange={update}
@@ -606,7 +640,7 @@ export function DefinitionEditor({
                         ...(draft.schedules ?? []),
                         { id: added.id, attributes: {} },
                       ];
-                    if (draft.editorVersion === 5)
+                    if ((draft.editorVersion ?? 1) >= 5)
                       next.execution = [
                         ...(draft.execution ?? []),
                         { id: added.id, attributes: {} },
@@ -843,7 +877,8 @@ export function DefinitionEditor({
           <div className="editor-footer">
             <span>
               基点版 {draft.definitionHash.slice(0, 12)} ·{" "}
-              {base?.sources.length} ファイル · このブラウザーに下書きを保存
+              {(base?.sources.length ?? 0) + (draft.newFiles?.length ?? 0)}{" "}
+              ファイル · このブラウザーに下書きを保存
             </span>
             <button disabled={busy} onClick={() => void discard()}>
               <RotateCcw size={14} />

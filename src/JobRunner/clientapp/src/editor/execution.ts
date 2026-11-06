@@ -14,7 +14,7 @@ export function executionTargets(draft: EditorDraft) {
       root.node.id,
       `${root.parentPath.replace(/\/$/, "")}/${root.node.name}`,
     );
-  return [
+  const targets = [
     ...(draft.calendars ?? []).map((c) => ({
       id: c.id,
       name: c.id,
@@ -32,5 +32,12 @@ export function executionTargets(draft: EditorDraft) {
         type: node.type,
       })),
     ),
+  ];
+  const known = new Set(targets.map((t) => t.id));
+  return [
+    ...targets,
+    ...(draft.execution ?? [])
+      .filter((e) => !known.has(e.id))
+      .map((e) => ({ id: e.id, name: e.id, type: e.type ?? "unit" })),
   ];
 }

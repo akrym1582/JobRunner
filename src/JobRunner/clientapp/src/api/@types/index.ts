@@ -43,6 +43,8 @@ export type EditorAttributes = {
   attributes: {
     [key: string]: string[];
   };
+
+  type?: string | null | undefined;
 }
 
 export type EditorContainer = {
@@ -67,12 +69,28 @@ export type EditorDraft = {
   calendars?: EditorAttributes[] | null | undefined;
   localSources?: SourceEvidence[] | null | undefined;
   execution?: EditorAttributes[] | null | undefined;
+  newGroups?: EditorGroupCreation[] | null | undefined;
+  newFiles?: EditorFileCreation[] | null | undefined;
 }
 
 export type EditorEdge = {
   from: string;
   to: string;
   conditional: boolean;
+}
+
+export type EditorFileCreation = {
+  fileName: string;
+  targetPath: string;
+  encoding: string;
+  bom: boolean;
+  groupName: string;
+}
+
+export type EditorGroupCreation = {
+  sourceIndex: number;
+  parentPath: string;
+  name: string;
 }
 
 export type EditorLocalRequest = {

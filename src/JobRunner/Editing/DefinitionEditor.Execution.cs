@@ -17,7 +17,7 @@ public static partial class DefinitionEditor
     {
         var present = bundle.Sources.SelectMany(s => new Document(s).Syntax.Keys).ToHashSet(StringComparer.Ordinal);
         return bundle.Units.Flatten().Where(u => present.Contains(u.Path)).Select(u => new EditorAttributes(
-            u.Path, u.Attributes.Where(a => ExecutionKeys(u.Type).Contains(a.Key)).ToDictionary(a => a.Key, a => a.Value.ToList(), StringComparer.Ordinal))).ToList();
+            u.Path, u.Attributes.Where(a => ExecutionKeys(u.Type).Contains(a.Key)).ToDictionary(a => a.Key, a => a.Value.ToList(), StringComparer.Ordinal), u.Type)).ToList();
     }
 
     private static List<SourceEvidence> RenderExecution(DefinitionBundle bundle, EditorDraft draft)
@@ -25,7 +25,11 @@ public static partial class DefinitionEditor
         var execution = draft.Execution ?? throw new ArgumentException("実行属性の投影がありません。元版を読み直してください。");
         var nodes = (draft.Roots ?? []).Select(r => r.Node).Concat(draft.Networks.SelectMany(n => n.Nodes)).ToDictionary(n => n.Id, StringComparer.Ordinal);
         var groups = ProjectTiming(bundle, false).Select(g => g.Id).ToList();
-        if (!execution.Select(e => e.Id).Order(StringComparer.Ordinal).SequenceEqual(nodes.Keys.Concat(groups).Order(StringComparer.Ordinal)))
+        var nested = bundle.Units.Flatten().Where(u => u.IsNetwork()).SelectMany(u => u.Children).Select(u => u.Path).ToHashSet(StringComparer.Ordinal);
+
+        // ネット外の単独ジョブは構造編集の対象ではありませんが、原文と実行属性を保持します。
+        var fixedUnits = bundle.Units.Flatten().Where(u => !u.IsNetwork() && u.Type != "g" && !nested.Contains(u.Path)).Select(u => u.Path).ToList();
+        if (!execution.Select(e => e.Id).Order(StringComparer.Ordinal).SequenceEqual(nodes.Keys.Concat(groups).Concat(fixedUnits).Order(StringComparer.Ordinal)))
         {
             throw new ArgumentException("実行属性の対象が一致しないか重複しています。");
         }
@@ -41,7 +45,7 @@ public static partial class DefinitionEditor
             }
         }
 
-        foreach (string group in groups)
+        foreach (string group in groups.Concat(fixedUnits))
         {
             paths.Add(group, group);
         }

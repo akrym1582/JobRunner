@@ -90,7 +90,7 @@ export function addRoot(
         ? [...(draft.schedules ?? []), { id, attributes: { sd: ["0,ud"] } }]
         : draft.schedules,
     execution:
-      draft.editorVersion === 5
+      (draft.editorVersion ?? 1) >= 5
         ? [...(draft.execution ?? []), { id, attributes: { ha: ["y"] } }]
         : draft.execution,
   };

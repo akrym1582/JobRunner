@@ -20,7 +20,7 @@ public static partial class DefinitionEditor
     /// <returns>ルートの候補です。ネストを独立ルートとして計算しません。</returns>
     public static EditorSchedulePreview PreviewSchedule(DefinitionBundle compiled, EditorScheduleRequest request, RunnerOptions options)
     {
-        if (request.Draft.EditorVersion is not (4 or 5) || request.Anchor.Year is < 1994 or > 2036 || request.From.Year is < 1994 or > 2036
+        if (request.Draft.EditorVersion is not (4 or 5 or 6) || request.Anchor.Year is < 1994 or > 2036 || request.From.Year is < 1994 or > 2036
             || request.Until > new DateOnly(2037, 1, 1) || request.Until <= request.From || request.Until.DayNumber - request.From.DayNumber > 366)
         {
             throw new ArgumentException("下書き試算は版4/5、1994〜2036年の業務日、終了を含まない1〜366日で指定してください。");

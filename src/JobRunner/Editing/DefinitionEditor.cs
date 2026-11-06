@@ -32,13 +32,15 @@ public static partial class DefinitionEditor
         editorVersion >= 3 ? ProjectRoots(bundle) : null,
         editorVersion >= 4 ? ProjectTiming(bundle, true) : null,
         editorVersion >= 4 ? ProjectTiming(bundle, false) : null,
-        Execution: editorVersion >= 5 ? ProjectExecution(bundle) : null);
+        Execution: editorVersion >= 5 ? ProjectExecution(bundle) : null,
+        NewGroups: editorVersion >= 6 ? [] : null,
+        NewFiles: editorVersion >= 6 ? [] : null);
 
     /// <summary>元の文字コードで原文を表示します。</summary>
     /// <param name="sources">対象原文です。</param>
     /// <param name="original">変更比較の基点です。</param>
     /// <returns>読取専用の表示です。</returns>
-    public static List<EditorSource> Describe(List<SourceEvidence> sources, List<SourceEvidence> original) => sources.Select((source, index) => new EditorSource(source.Mapping.BlobPath, source.Mapping.Encoding, source.Mapping.TargetPath, Decode(source), source.Base64 != original[index].Base64)).ToList();
+    public static List<EditorSource> Describe(List<SourceEvidence> sources, List<SourceEvidence> original) => sources.Select((source, index) => new EditorSource(source.Mapping.BlobPath, source.Mapping.Encoding, source.Mapping.TargetPath, Decode(source), index >= original.Count || source.Base64 != original[index].Base64)).ToList();
 
     /// <summary>下書きを原文へ適用します。意味検証は既存DefinitionServiceで別途行います。</summary>
     /// <param name="bundle">基点版です。</param>
@@ -52,6 +54,11 @@ public static partial class DefinitionEditor
         }
 
         int editorVersion = draft.EditorVersion ?? 1;
+        if (editorVersion == 6)
+        {
+            return RenderCreations(bundle, draft);
+        }
+
         if (editorVersion == 5)
         {
             return RenderExecution(bundle, draft);

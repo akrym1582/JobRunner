@@ -13,6 +13,30 @@ public sealed class DefinitionEditorExecutionTests
 {
     private const string Text = "/* 保持 */\r\nunit=g;{ty=g;ex=\"local\";cl=su;unit=net,0000,owner,team;{ty=n;sd=0,ud;ha=y;mp=n;sy=1,09:00;ey=1,C60;fd=60;ex=\"local\";ar=(f=lead,t=judge);\r\nunit=job;{ty=j;cm=\"保持\";te=\"true\";ha=y;jd=cod;wth=1;tho=5;etm=15;ex=\"local\";}\r\nunit=sub;{ty=n;sy=1,M30;unit=recovery;{ty=rp;te=\"true\";}}unit=lead;{ty=j;te=\"true\";}unit=judge;{ty=jdj;ej=ef;ejf=\"/tmp/not-evaluated\";ha=y;}}}\r\n";
 
+    /// <summary>ネット外にある有効な単独ジョブも無変更出力と実行属性編集を妨げません。</summary>
+    /// <param name="grouped">グループの直下に配置するかどうかです。</param>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PreservesStandaloneJobs(bool grouped)
+    {
+        var (service, original) = Create();
+        string text = "/* 単独の原文 */\r\nunit=solo;{ty=j;cm=\"保持\";te=\"true\";}\r\n";
+        if (grouped)
+        {
+            text = "unit=g;{ty=g;\r\n" + text + "}";
+        }
+
+        original.Sources[0].Base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(text));
+        var bundle = service.Validate(original.Sources);
+        var draft = DefinitionEditor.Project(bundle, 5);
+        Assert.Equal(bundle.Sources[0].Base64, DefinitionEditor.Render(bundle, draft)[0].Base64);
+        Entry(draft, grouped ? "/g/solo" : "/solo")["ex"] = ["local"];
+        var rendered = DefinitionEditor.Render(bundle, draft);
+        Assert.Equal("local", service.Validate(rendered).Units.Flatten().Single(u => u.Name == "solo").Get("ex"));
+        Assert.Contains("cm=\"保持\";te=\"true\";", Encoding.UTF8.GetString(Convert.FromBase64String(rendered[0].Base64)), StringComparison.Ordinal);
+    }
+
     /// <summary>無変更のバイト一致と、旧API要求で追加属性を消さないことを確認します。</summary>
     /// <param name="version">下書きの版です。</param>
     [Theory]
