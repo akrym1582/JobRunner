@@ -14,6 +14,12 @@
 
 ![マンスリースケジュール：階層別の予定と実行回の詳細](docs/spec/scheduler/web-ui/images/monthly-schedule.png)
 
+ジョブの「ログを見る」から、標準出力・標準エラーを試行（再実行）ごとに確認できます。下部パネルは拡大でき、5秒ごとの自動追尾、停止、前のログ取得、折り返し、表示範囲内検索・コピーに対応します。大量ログは末尾から読み、画面には最大64チャンクを保持します。
+
+![実行ログ：試行の選択、標準出力・標準エラーの切り替え](docs/spec/scheduler/web-ui/images/execution-logs.png)
+
+状態を複数選択すると、図の接続を保ったままジョブ一覧を絞り込み、月間では該当ユニットと祖先を表示します。結果不明と異常終了は別々に選択できます。
+
 ルート実行回を選ぶと、開始前の日時変更・予定取消・変更解除を行えます。定義編集と未生成の将来予定の予測は対象外です。画面は認証なしで利用できます。
 
 [Web UIの起動手順](#web-ui) / [予定変更などの画面画像](docs/spec/scheduler/web-ui/spec.md#画面イメージ) / [UIの検証記録](docs/spec/scheduler/web-ui/verification.md)
@@ -78,7 +84,7 @@ dotnet run --project src/JobRunner --no-launch-profile
 
 ## Web UI
 
-`src/JobRunner/clientapp` に監視画面を同梱しています。JP1定義のel座標を使ってReactのSVGでジョブネットを表示し、状態取得にaspidaの生成クライアントと`@aspida/swr`を使用します。認証はありません。定義編集は行わず、ルート実行回の日時変更・予定取消・変更解除を提供します。
+`src/JobRunner/clientapp` に監視画面を同梱しています。JP1定義のel座標を使ってReactのSVGでジョブネットを表示し、状態取得にaspidaの生成クライアントと`@aspida/swr`を使用します。認証はありません。実行ログの参照・状態絞り込みに対応します。定義編集は行わず、ルート実行回の日時変更・予定取消・変更解除を提供します。
 
 .NET 10 SDKとNode.js 22.12以降を用意し、初回は依存関係をインストールします。Storageと入力定義の設定は上記の起動手順と共通です。
 

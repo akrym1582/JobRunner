@@ -236,10 +236,135 @@
           }
         }
       }
+    },
+    "/api/jobrunner/ui/attempts": {
+      "get": {
+        "tags": [
+          "UiEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "rootId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "occurrenceId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttemptPage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobrunner/ui/logs": {
+      "get": {
+        "tags": [
+          "UiEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "rootId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "occurrenceId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "attemptId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "stream",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogPage"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AttemptPage": {
+        "required": [
+          "archived",
+          "currentAttemptId",
+          "items",
+          "unitPath"
+        ],
+        "type": "object",
+        "properties": {
+          "unitPath": {
+            "type": "string"
+          },
+          "currentAttemptId": {
+            "type": "string",
+            "nullable": true
+          },
+          "archived": {
+            "type": "boolean"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobAttempt"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
       "Catalog": {
         "required": [
           "definitionHash",
@@ -391,6 +516,122 @@
           },
           "canRestore": {
             "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "JobAttempt": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "occurrenceId": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "epoch": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "state": {
+            "type": "string"
+          },
+          "processId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "exitCode": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "resolutionReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "logsComplete": {
+            "type": "boolean"
+          },
+          "outputVariables": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "statusDetail": {
+            "type": "string",
+            "nullable": true
+          },
+          "outputError": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "LogChunk": {
+        "required": [
+          "sequence",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LogPage": {
+        "required": [
+          "chunks",
+          "hasMore",
+          "logsComplete",
+          "nextCursor",
+          "previousCursor",
+          "state"
+        ],
+        "type": "object",
+        "properties": {
+          "chunks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogChunk"
+            }
+          },
+          "previousCursor": {
+            "type": "string",
+            "nullable": true
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "logsComplete": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string"
           }
         },
         "additionalProperties": false

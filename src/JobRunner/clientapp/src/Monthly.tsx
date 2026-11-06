@@ -10,7 +10,8 @@ import {
 } from "lucide-react";
 import { client } from "./client";
 import { monthCells } from "./monthly-model";
-import type { MonthlyEntry } from "./api/@types";
+import { filterMonth } from "./filter-model";
+import type { MonthlyEntry, Occurrence } from "./api/@types";
 import { formatDate, label, tone } from "./status";
 export function monthInZone(zone: string) {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -29,8 +30,12 @@ export function Monthly({
   rootPath,
   zone,
   onOpen,
+  onLog,
+  statuses,
 }: {
   rootPath: string;
+  statuses: string[];
+  onLog: (execution: Occurrence) => void;
   zone: string;
   onOpen: (entry: MonthlyEntry) => void;
 }) {
@@ -47,14 +52,17 @@ export function Monthly({
     onSuccess: () => setUpdated(new Date().toLocaleTimeString("ja-JP")),
   });
   const days = Array.from({ length: monthDays(month) }, (_, i) => i + 1);
-  const rows = useMemo(
-    () => schedule.data?.units ?? [],
-    [schedule.data?.units],
+  const filtered = useMemo(
+    () =>
+      filterMonth(
+        schedule.data?.units ?? [],
+        schedule.data?.entries ?? [],
+        statuses,
+      ),
+    [schedule.data, statuses],
   );
-  const entries = useMemo(
-    () => schedule.data?.entries ?? [],
-    [schedule.data?.entries],
-  );
+  const rows = filtered.units;
+  const entries = filtered.entries;
   const cells = useMemo(() => monthCells(entries, zone), [entries, zone]);
   const parents = useMemo(() => new Set(rows.map((row) => row.parent)), [rows]);
   const visible = useMemo(
@@ -68,6 +76,10 @@ export function Monthly({
   const details = selection
     ? (cells.get(selection.path + "|" + selection.day)?.entries ?? [])
     : entries;
+  const currentPage = Math.min(
+    detailPage,
+    Math.max(0, Math.ceil(details.length / 20) - 1),
+  );
   const todayParts = new Intl.DateTimeFormat("en-CA", {
     timeZone: zone,
     year: "numeric",
@@ -294,7 +306,7 @@ export function Monthly({
             </thead>
             <tbody>
               {details
-                .slice(detailPage * 20, (detailPage + 1) * 20)
+                .slice(currentPage * 20, (currentPage + 1) * 20)
                 .map((entry) => (
                   <tr key={entry.execution.id}>
                     <td>{entry.execution.unitPath?.split("/").pop()}</td>
@@ -311,31 +323,40 @@ export function Monthly({
                     <td>{formatDate(entry.execution.finishedAt, zone)}</td>
                     <td>
                       <button onClick={() => onOpen(entry)}>図を開く</button>
+                      {entry.networkPath !== entry.execution.unitPath && (
+                        <button onClick={() => onLog(entry.execution)}>
+                          ログを見る
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
             </tbody>
           </table>
           {!details.length && !schedule.isLoading && (
-            <div className="empty">保存済みの予定・実績はありません。</div>
+            <div className="empty">
+              {statuses.length
+                ? "選択した状態に該当する予定・実績はありません。"
+                : "保存済みの予定・実績はありません。"}
+            </div>
           )}
         </div>
         <div className="table-footer">
           <span>
-            表示 {Math.min(detailPage * 20 + 1, details.length)}–
-            {Math.min((detailPage + 1) * 20, details.length)} / {details.length}
-            件
+            表示 {Math.min(currentPage * 20 + 1, details.length)}–
+            {Math.min((currentPage + 1) * 20, details.length)} /{" "}
+            {details.length}件
           </span>
           <div>
             <button
-              disabled={detailPage === 0}
-              onClick={() => setDetailPage((p) => p - 1)}
+              disabled={currentPage === 0}
+              onClick={() => setDetailPage(currentPage - 1)}
             >
               前へ
             </button>
             <button
-              disabled={(detailPage + 1) * 20 >= details.length}
-              onClick={() => setDetailPage((p) => p + 1)}
+              disabled={(currentPage + 1) * 20 >= details.length}
+              onClick={() => setDetailPage(currentPage + 1)}
             >
               次へ
             </button>

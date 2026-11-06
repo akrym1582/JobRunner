@@ -83,7 +83,10 @@ unit=在庫チェック;{ty=j;te="printf checked";}
 unit=受注伝票作成;{ty=n;el=番号採番,j,+80 +48;el=帳票出力,j,+240 +48;ar=(f=番号採番,t=帳票出力,seq);unit=番号採番;{ty=j;te="printf numbered";}unit=帳票出力;{ty=j;te="printf printed";}}
 unit=発注伝票作成;{ty=rj;te="printf recovered";}
 unit=結果通知;{ty=j;te="printf notified";}}
-unit=座標なし;{ty=n;sd=1,en;st=1,23:59;cy=1,(1,d);unit=ジョブ;{ty=j;te="true";}}`;
+unit=座標なし;{ty=n;sd=1,en;st=1,23:59;cy=1,(1,d);unit=ジョブ;{ty=j;te="true";}}
+unit=ログ検証;{ty=n;sd=0,ud;el=出力ジョブ,j,+80 +48;el=後続ジョブ,j,+240 +48;ar=(f=出力ジョブ,t=後続ジョブ,seq);
+unit=出力ジョブ;{ty=j;te="printf '%0200000d' 0; printf '日本語 <script>alert(1)</script> 出力完了 PID=%s' $$; printf '標準エラーの診断' >&2; exit 1";}
+unit=後続ジョブ;{ty=j;te="true";}}`;
 await source
   .getBlockBlobClient("jobs")
   .upload(definition, Buffer.byteLength(definition));

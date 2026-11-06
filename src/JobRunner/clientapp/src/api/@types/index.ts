@@ -1,4 +1,11 @@
 /* eslint-disable */
+export type AttemptPage = {
+  unitPath: string;
+  currentAttemptId: string | null;
+  archived: boolean;
+  items: JobAttempt[];
+}
+
 export type Catalog = {
   namespace: string;
   definitionHash: string;
@@ -38,6 +45,41 @@ export type Graph = {
 
   canChange: boolean;
   canRestore: boolean;
+}
+
+export type JobAttempt = {
+  id?: string | undefined;
+  occurrenceId?: string | undefined;
+  owner?: string | undefined;
+  epoch?: number | undefined;
+  state?: string | undefined;
+  processId?: number | null | undefined;
+  exitCode?: number | null | undefined;
+  startedAt?: string | undefined;
+  finishedAt?: string | null | undefined;
+  resolutionReason?: string | null | undefined;
+  logsComplete?: boolean | undefined;
+
+  outputVariables?: {
+    [key: string]: string;
+  } | null | undefined;
+
+  statusDetail?: string | null | undefined;
+  outputError?: string | null | undefined;
+}
+
+export type LogChunk = {
+  sequence: number;
+  text: string;
+}
+
+export type LogPage = {
+  chunks: LogChunk[];
+  previousCursor: string | null;
+  nextCursor: string;
+  hasMore: boolean;
+  logsComplete: boolean;
+  state: string;
 }
 
 export type MonthlyEntry = {

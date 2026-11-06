@@ -18,6 +18,8 @@ public static partial class UiEndpoints
     {
         var group = app.MapGroup("/api/jobrunner/ui");
         group.MapGet("/monthly", ReadMonthlyAsync);
+        group.MapGet("/attempts", ReadAttemptsAsync);
+        group.MapGet("/logs", ReadLogsAsync);
         group.MapGet("/jobnets", async (StorageRepository storage, DefinitionService definitions, RunnerOptions options, SchedulerWorker worker, CancellationToken token) =>
         {
             var active = await ActiveAsync(storage, token);
