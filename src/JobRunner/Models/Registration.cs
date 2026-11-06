@@ -84,4 +84,8 @@ public sealed class Registration
     /// <summary>Gets or sets. 次の未生成予定。応答喪失時は同じ決定的なキーで再開します。</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public DateTimeOffset? NextIntervalDue { get; set; }
+
+    /// <summary>Gets or sets. 期間解除の除外範囲。補充時にも適用します。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public List<RegistrationExclusion>? Exclusions { get; set; }
 }

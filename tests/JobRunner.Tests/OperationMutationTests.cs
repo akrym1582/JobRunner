@@ -52,6 +52,46 @@ public sealed class OperationMutationTests
         Assert.Empty(await storage.ListAsync("attempt:", CancellationToken.None));
     }
 
+    /// <summary>新規行の追加を含む計画がどの境界で停止しても再開できます。</summary>
+    /// <param name="failAfter">応答を失う保存回数です。</param>
+    /// <returns>計画参照・最初のバッチ・最後のバッチ後の復旧を確認します。</returns>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public async Task CreationMutationResumesWithoutDuplicateRows(int failAfter)
+    {
+        await using var scope = new StorageScope();
+        var storage = scope.Repository;
+        await storage.InitializeAsync(CancellationToken.None);
+        await using var leader = new LeaderCoordinator(storage, TimeProvider.System);
+        Assert.True(await leader.AcquireAsync(CancellationToken.None));
+        var operation = new Operation { Id = "add-generations" };
+        await storage.Table.AddEntityAsync(storage.Entity("command:add", operation));
+        var plan = new OperationMutation
+        {
+            FormatVersion = 2,
+            OperationId = operation.Id,
+            Changes = Enumerable.Range(0, 106).Select(i => new ArchivedRow("occurrence:" + i, string.Empty, JsonSerializer.Serialize(new Occurrence { Id = i.ToString(System.Globalization.CultureInfo.InvariantCulture), State = "Held" }))).ToList(),
+        };
+        int commits = 0;
+        async Task Commit(IEnumerable<TableTransactionAction> changes, CancellationToken token)
+        {
+            await storage.FencedAsync(leader.Owner, leader.Epoch, changes, token);
+            if (++commits == failAfter)
+            {
+                throw new IOException("保存成功後の応答喪失です。");
+            }
+        }
+
+        var service = new OperationMutationService(storage, TimeProvider.System);
+        var command = (await storage.GetAsync("command:add", CancellationToken.None))!;
+        await Assert.ThrowsAsync<IOException>(() => service.ApplyAsync(command, operation, plan, Commit, leader.Ensure, _ => Task.CompletedTask, CancellationToken.None));
+        await service.ResumeAsync((await storage.GetAsync("command:add", CancellationToken.None))!, (changes, token) => storage.FencedAsync(leader.Owner, leader.Epoch, changes, token), _ => Task.CompletedTask, CancellationToken.None);
+        Assert.Equal(106, (await storage.ListAsync("occurrence:", CancellationToken.None)).Count);
+        Assert.Equal("Completed", StorageRepository.Read<Operation>((await storage.GetAsync("command:add", CancellationToken.None))!).Status);
+    }
+
     /// <summary>計画保存後に別内容へ変更された行を、再開処理が上書きしません。</summary>
     /// <returns>競合検出と元の外部変更の維持を確認します。</returns>
     [Fact]

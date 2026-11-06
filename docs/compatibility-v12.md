@@ -25,16 +25,36 @@
 | 自動確定登録・補充・解除維持 | 計画16章（JobRunner独自運用） | 採用IDと基準日固定、決定的な世代キー、カーソル補充、解除行保持 | 実装あり・追加検証未達 | RecoveryTestsで起動登録を検証。ExecutionControlTestsで解除・保留・予定変更の再起動復元も検証。補充中断は未検証 |
 | 即時登録・保留解除 | 独自管理API。JP1互換DTOではない | 操作IDで重複防止、親・先行成功後に開始 | 実装済み・仕様テスト済み | IntegrationTests.RunsRealProcessesThroughStandbyApiAndRecovers |
 | 計画登録 | ユーザー指定による範囲変更 | 要求はRejected | 対象外 | 確定登録と既存の即時登録を提供 |
-| 一時変更・再実行・停止 | 独自管理API、TOP方式は7.4.10参照 | Move/RunNow/Restore/Cancelを子孫へ適用。ネットStopはInterruptedとUnknownで結果確認を要求。TOP再実行・末端異常再実行に対応。選択再実行方式とHOLD/WARNINGも追加 | 一部実装・仕様テスト済み | ExecutionControlTests、NetworkOperationTests、OperationMutationTests |
+| 一時変更・再実行・停止 | 独自管理API、TOP方式は7.4.10参照 | Move/RunNow/Restore/Cancelを再開可能な変更計画で子孫へ適用。ネットStopはInterruptedとUnknownで結果確認を要求。TOP再実行・末端異常再実行に対応。選択再実行方式とHOLD/WARNINGも追加 | 一部実装・仕様テスト済み | ExecutionControlTests、NetworkOperationTests、OperationMutationTests |
 | 確定登録の未来世代数 | 導入ガイド4.1.1(3)、コマンド-g | 1〜99の未開始枠を維持。生成済み予定と履歴を保持。期間併用と補充用定義更新を追加 | 一部実装・仕様テスト済み | ConfirmedGenerationTests |
 | JP1確定登録HTTP | 7.1.6 | 期間・件数・日時、NEXTTIME/IMMEDIATE。日時はexecID、その他は空本文 | 一部実装・契約テスト済み | Jp1ContractTests.FixedRegistrationMaintainsRequestedFutureGenerations |
 | 結果不明の解決 | 計画7章（独自運用） | 試行ID・期待状態・理由必須。自動再実行せず後続待機 | 実装済み・仕様テスト済み | RecoveryTests.StartingAttemptBecomesUnknownWithoutRerun、IntegrationTests |
 | JP1即時登録・保留変更HTTP | 6.5.2、7.1.7、7.1.9、7.4.8 | URL/parameters/同期200/execID/SET・RELEASEを実装。未対応パラメーター拒否。エラーIDは一部独自、実JP1未比較 | 一部実装・契約テスト済み | Jp1ContractTests |
-| その他のJP1 HTTP操作 | 7.1.8、運用操作各節 | 解除・取消・復元・停止・再実行、SHIFT/MOVE絶対日時変更。未対応引数は拒否 | 一部実装 | Jp1ContractTests。全エラーID、ADD/NOTSHIFT/相対日時/期間解除は未達 |
+| その他のJP1 HTTP操作 | 7.1.8、7.1.12〜15、運用操作各節 | ADD/MOVE、SHIFT/NOTSHIFT、絶対/相対日時、取消復元、暦日/実行日期間解除を追加 | 一部実装・契約テスト対象 | Jp1ReadAndScheduleTests、CompatibilityExtensionTests、OperationMutationTests |
 | 履歴・ログ・操作保持期限 | 計画9章（独自運用） | 未指定は無効。Blob保存後に詳細削除、墓標維持。Unknown除外、ETag付き再開 | 実装済み・障害テスト済み | RetentionTests |
-| 条件分岐・異常時後続 | 5.2.8、5.2.1 | 終了コード判定jdjとcon、rj/rpを実装。ファイル・変数判定とリカバリーネットは未達 | 一部実装 | BranchAndIntervalTests |
+| 条件分岐・異常時後続 | 5.2.8、5.2.1、設計ガイド2.4.6/7.5 | 終了コード・ファイル・変数判定、rj/rp/rn/rjdj。変数受渡しは独自JSON方式 | 一部実装・限定契約 | CompatibilityExtensionTests、BranchAndIntervalTests |
 | 待ち合わせ・イベント | 今回の範囲外 | 種別・属性を拒否 | 対象外 | 今回追加しない |
 | 別形式Schedule/Calendar | 実出力例未入手 | 独自JSONをJP1形式として受理しない | 調査中・未実装 | 匿名化したV12出力と形式根拠が必要 |
 | 認証・Agent通信 | 計画2章 | 実装しない | 対象外 | プロジェクト依存関係を確認 |
 
 原文は明示文字コードと取得バイト列で保存します。UTF-8はテスト済み、Shift_JIS等は復号機能のみで実データ比較は未検証です。未知属性は保持した後で有効化を拒否します。表示属性`cm/sz/el`は保持しますが実行に使いません。
+
+## 今回のHTTP互換境界
+
+互換の対象はV12のローカルユニットと確定登録です。実JP1での比較は未実施で、以下の文書仕様と受入試験を基準とします。
+
+| 領域 | 対応する範囲 | 対象外・差異 |
+| --- | --- | --- |
+| 参照 | 現在の採用領域のGET statuses一覧、unitName:execIDの単体。階層、定義/状態、名前比較EQ/BW/EW/NE/CO/NC、種別、NO/STATUS/RESULT/PERIOD/EXECID、個別の対応状態 | 旧採用領域の検索、正規表現、集約状態GRP_*、Agent/リリース検索、searchConnectInfo=YES。1000件超は独自エラーで拒否（JP1のall=falseによる一部返却とは異なる） |
+| 世代選択 | STATUSはVIEWSTATUSRANGE=allの実行中→再実行待ち→次回予定。RESULTは最新終了。PERIODはルートの実行期間との重なり | today設定、夏時間の曖昧・欠落時刻のJP1補正。旧データの欠落した実開始日時は精密な期間互換対象外 |
+| 状態 | TIMEWAIT/TERMWAIT/EXECWAIT/HOLDING/RUNNING/WACONT/ABCONT/NORMAL/NORMALFALSE/WARNING/ABNORMAL/FAIL/KILL/INTERRUPT/UNKNOWN/UNEXEC/BYPASS、未登録NOENTRY・未計画NOPLAN | Agentキュー、閉塞、順序不正、イベント/監視・起動条件の状態。履歴退避状態は業務結果へ戻して表示 |
+| 入力エラーID | KNAK3201（必須）、3202（バイト長）、3203（数値範囲）、3204（禁止文字）、3206（形式）、3207（比較値不足）、3209（排他）の確認済み条件 | KNAK3208（対象APIの配列上限を未確認）、全JP1エラー、本文の完全一致、複数違反の報告順、付加情報コードの全面互換。対応IDは各検証箇所に限定 |
+| その他のエラー | 公式のerrorSource/message/messageID/application/extensions形状。保存障害・状態競合・未対応はJOBRUNNER由来のID | 認証/権限・リモート通信・JP1内部サービス障害の再現 |
+
+`UNKNOWN`の表示は「終了状態不明」です。API定数表の「終了状態不正」という表記とは差がありますが、[状態取得失敗時の説明](https://itpfdoc.hitachi.co.jp/manuals/3021/30213L4700/AJSK0045.HTM)とV12導入ガイドのunknownに対応付けます。確認前に自動再実行・リカバリー起動はしません。強制終了はプロセス終了を確認できたタイムアウトの場合だけKILLとし、手動Stop等で結果が未確定ならUNKNOWNを維持します。
+
+変数受渡しはJP1のAJSVAR互換ではありません。`JOBRUNNER_OUTPUT_FILE`へUTF-8のJSONオブジェクト（例: `{"AJS2RESULT":"7"}`）を出力し、`ejv=?AJS2RESULT?`で参照します。最大32変数、各値255バイト、ファイル128KiB。未定義/空文字は有無判定で値なし、必要な数値・値がない比較は判定エラーです。ファイル判定は実行ホストの絶対パスのみです。
+
+## 公式Web API一覧からの追加対応
+
+V11の19 API一覧との突合結果、追加API、対象外と残る差異は[Web API照合表](jp1-webapi-matrix.md)を参照してください。中断、遅延監視変更、ジョブ状態変更、実行結果詳細、JobRunnerの製品情報を追加しました。遅延監視の設定変更・状態表示・検索は対応し、Agent/リリース/定義からの監視属性取込は引き続き対象外です。

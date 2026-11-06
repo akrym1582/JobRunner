@@ -1,0 +1,4 @@
+interface:
+  display_name: "スケジューラーの復旧検証"
+  short_description: "永続化の中断・長期停止・再送・競合からの復旧と二重実行防止を検証する"
+  default_prompt: "$scheduler-recovery を使い、この変更の中断復旧と二重実行防止を検証してください。"

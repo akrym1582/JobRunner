@@ -42,7 +42,7 @@ public sealed class OperationMutationService(StorageRepository storage, TimeProv
         var operation = StorageRepository.Read<Operation>(row);
         var data = await storage.Container.GetBlobClient(operation.MutationPath).DownloadContentAsync(token);
         var plan = data.Value.Content.ToObjectFromJson<OperationMutation>();
-        if (plan is null || plan.FormatVersion != 1 || plan.OperationId != operation.Id)
+        if (plan is null || plan.FormatVersion is not (1 or 2) || plan.OperationId != operation.Id)
         {
             throw new InvalidDataException("操作の変更計画が欠損または不一致です。");
         }
@@ -55,7 +55,25 @@ public sealed class OperationMutationService(StorageRepository storage, TimeProv
         var batch = new List<TableTransactionAction>();
         foreach (var change in plan.Changes)
         {
-            var current = await storage.GetAsync(change.Key, token) ?? throw new InvalidDataException("操作対象が欠損しています。");
+            var current = await storage.GetAsync(change.Key, token);
+            if (current is null && (plan.FormatVersion != 2 || change.ETag.Length != 0))
+            {
+                throw new InvalidDataException("操作対象が欠損しています。");
+            }
+
+            if (current is null)
+            {
+                var created = new TableEntity(storage.Partition, change.Key) { ["Json"] = change.Json };
+                batch.Add(new TableTransactionAction(TableTransactionActionType.Add, created));
+                if (batch.Count == 99)
+                {
+                    await commit(batch, token);
+                    batch.Clear();
+                }
+
+                continue;
+            }
+
             if (current.GetString("Json") == change.Json)
             {
                 continue;

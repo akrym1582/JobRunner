@@ -11,13 +11,17 @@ using Operation = JobRunner.Models.Operation;
 namespace JobRunner.Controllers.Jp1;
 
 /// <summary>確認済みのV12 HTTP契約を、稼働系の共通操作キューへ変換します。</summary>
-public static class Jp1Endpoints
+public static partial class Jp1Endpoints
 {
-    /// <summary>即時登録と保留変更を公開します。未対応操作を成功扱いしません。</summary>
+    /// <summary>対応する参照と操作を公開し、未対応要求は明示的に拒否します。</summary>
     /// <param name="app">既存のAPIホストです。</param>
     public static void Map(WebApplication app)
     {
         app.MapPost("/ajs/api/v1/objects/{**tail}", HandleAsync);
+        app.MapGet("/ajs/api/v1/version", ReadSystemAsync);
+        app.MapGet("/ajs/api/v1/protocolVersion", ReadSystemAsync);
+        app.MapGet("/ajs/api/v1/objects/statuses/{**tail}", ReadAsync);
+        app.MapGet("/ajs/api/v1/objects/statuses", ReadAsync);
     }
 
     /// <summary>公式のエラー形状を作り、独自のエラーIDはJobRunner由来と明示します。</summary>
@@ -25,18 +29,19 @@ public static class Jp1Endpoints
     /// <param name="status">公式のHTTPステータス分類です。</param>
     /// <param name="message">失敗理由です。</param>
     /// <param name="parameter">必須引数不足の項目。その他のエラーはnullです。</param>
+    /// <param name="code">条件に対応する公式または独自IDです。</param>
     /// <returns>applicationをajsとしたJSONエラーです。</returns>
-    private static IResult Error(HttpContext context, int status, string message, string? parameter = null)
+    private static IResult Error(HttpContext context, int status, string message, string? parameter = null, string? code = null)
     {
         var body = new
         {
             errorSource = $"{context.Request.Scheme}://{context.Request.Host}{context.Request.Path}",
             message,
-            messageID = parameter is null ? "JOBRUNNER-" + status : "KNAK3201-E",
+            messageID = code ?? (parameter is null ? "JOBRUNNER_HTTP_" + status : "KNAK3201-E"),
             application = "ajs",
             extensions = parameter is null
             ? new[] { new { key = "implementation", value = "JobRunner" } }
-            : new[] { new { key = "error_type", value = "PARAMETER" }, new { key = "error_code", value = "ERROR_PARAM_EMPTY" }, new { key = "error_parameter", value = parameter } },
+            : new[] { new { key = "error_type", value = "PARAMETER" }, new { key = "error_code", value = code is null or "KNAK3201-E" ? "ERROR_PARAM_EMPTY" : code }, new { key = "error_parameter", value = parameter } },
         };
         return Results.Json(body, statusCode: status);
     }
@@ -67,7 +72,7 @@ public static class Jp1Endpoints
             bool fixedRegistration = path.StartsWith(prefix + "definitions/", StringComparison.Ordinal) && path.EndsWith(fixedSuffix, StringComparison.Ordinal);
             bool unregister = path.StartsWith(prefix + "definitions/", StringComparison.Ordinal) && action == "cancelRegistration";
             bool hold = path.StartsWith(prefix + "statuses/", StringComparison.Ordinal) && path.EndsWith(holdSuffix, StringComparison.Ordinal);
-            bool statusOperation = path.StartsWith(prefix + "statuses/", StringComparison.Ordinal) && action is "cancelExecSchedule" or "restoreChangedSchedule" or "kill" or "rerun" or "changeStartTime" or "execImmediate";
+            bool statusOperation = path.StartsWith(prefix + "statuses/", StringComparison.Ordinal) && action is "cancelExecSchedule" or "restoreChangedSchedule" or "kill" or "rerun" or "changeStartTime" or "execImmediate" or "interrupt" or "changeStatus" or "changeDelayMonitor";
             if (!register && !fixedRegistration && !hold && !unregister && !statusOperation)
             {
                 return Error(context, 404, "このAPIは未対応です。");
@@ -75,24 +80,21 @@ public static class Jp1Endpoints
 
             string resource = path[(prefix.Length + (register || fixedRegistration || unregister ? "definitions/".Length : "statuses/".Length))..actionIndex];
             var body = await context.Request.ReadFromJsonAsync<JsonElement>(context.RequestAborted);
-            if (body.ValueKind != JsonValueKind.Object || !body.TryGetProperty("parameters", out var parameters) || parameters.ValueKind != JsonValueKind.Object)
+            if (body.ValueKind != JsonValueKind.Object || !body.TryGetProperty("parameters", out var parameters) || parameters.ValueKind == JsonValueKind.Null)
             {
                 return Error(context, 400, "parametersオブジェクトを指定してください。", "parameters");
             }
 
-            foreach (string required in hold ? new[] { "manager", "serviceName", "holdAttr" } : new[] { "manager", "serviceName" })
+            if (parameters.ValueKind != JsonValueKind.Object)
             {
-                if (!parameters.TryGetProperty(required, out var value) || value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(value.GetString()))
-                {
-                    return Error(context, 400, required + "を指定してください。", required);
-                }
+                throw new Jp1ParameterException("parameters", 3206, "parametersはオブジェクトです。");
             }
 
-            string manager = parameters.GetProperty("manager").GetString()!;
-            string service = parameters.GetProperty("serviceName").GetString()!;
-            if (Encoding.UTF8.GetByteCount(manager) > 255 || Encoding.UTF8.GetByteCount(service) > 30)
+            string manager = RequiredString(parameters, "manager", 255);
+            string service = RequiredString(parameters, "serviceName", 30);
+            if (hold)
             {
-                return Error(context, 400, "マネージャー名またはサービス名が上限を超えています。");
+                _ = RequiredString(parameters, "holdAttr", 16);
             }
 
             if (manager != options.Jp1ManagerName || service != options.SchedulerId)
@@ -105,8 +107,11 @@ public static class Jp1Endpoints
             {
                 allowed = action switch
                 {
+                    "changeStatus" => ["manager", "serviceName", "newStatus", "newReturnCode"],
+                    "changeDelayMonitor" => ["manager", "serviceName", "delayedStart", "delayedStartTime", "delayedEnd", "delayedEndTime", "monitoringJobnet", "timeRequiredForExecution"],
                     "rerun" => ["manager", "serviceName", "rerunMethod", "rerunOptions"],
-                    "changeStartTime" => ["manager", "serviceName", "kindTime", "absoluteTime", "changeLower", "pushedAhead"],
+                    "changeStartTime" => ["manager", "serviceName", "kindTime", "absoluteTime", "relativeSign", "relativeDay", "relativeTime", "changeLower", "pushedAhead"],
+                    "cancelRegistration" => ["manager", "serviceName", "dateType", "begin", "end"],
                     "execImmediate" => ["manager", "serviceName", "changeLower", "pushedAhead"],
                     _ => ["manager", "serviceName"],
                 };
@@ -136,11 +141,7 @@ public static class Jp1Endpoints
                 fixedUntil = fixedTo?.AddDays(1);
                 if (parameters.TryGetProperty("futureGeneration", out var generation) && generation.ValueKind != JsonValueKind.Null)
                 {
-                    if (generation.ValueKind != JsonValueKind.Number || !generation.TryGetInt32(out int count) || count is < 0 or > 99)
-                    {
-                        return Error(context, 400, "futureGenerationは0〜99です。");
-                    }
-
+                    int count = RequiredNumber(parameters, "futureGeneration", 0, 99);
                     futureGenerations = count == 0 ? null : count;
                 }
 
@@ -152,7 +153,7 @@ public static class Jp1Endpoints
                 if ((fixedDue is not null && (fixedFrom is not null || futureGenerations is not null))
                     || (fixedDue is null && fixedFrom is null && futureGenerations is null))
                 {
-                    return Error(context, 400, "期間・未来世代数または単独の日時を指定してください。");
+                    throw new Jp1ParameterException("startTime", fixedDue is null ? 3201 : 3209, "期間・未来世代数または単独の日時を指定してください。");
                 }
 
                 passed = parameters.TryGetProperty("passedDaemonStarts", out var policy) && policy.ValueKind != JsonValueKind.Null ? policy.GetString() : fixedDue is not null ? "IMMEDIATE" : null;
@@ -166,28 +167,61 @@ public static class Jp1Endpoints
             string holdAttr = hold ? parameters.GetProperty("holdAttr").GetString()! : string.Empty;
             if (hold && holdAttr is not ("SET" or "RELEASE"))
             {
-                return Error(context, 400, "holdAttrはSETまたはRELEASEで指定してください。");
+                throw new Jp1ParameterException("holdAttr", 3206, "holdAttrはSETまたはRELEASEで指定してください。");
             }
 
             DateTimeOffset? moveDue = null;
             string? rerunMethod = null;
             List<string>? rerunFlags = null;
+            string? changeLower = null;
+            string? pushedAhead = null;
+            int? relativeMinutes = null;
+            string? dateType = null;
+            DateOnly? cancelBegin = null;
+            DateOnly? cancelEnd = null;
+            if (unregister && new[] { "dateType", "begin", "end" }.Any(k => parameters.TryGetProperty(k, out var p) && p.ValueKind != JsonValueKind.Null))
+            {
+                dateType = Choice(parameters, "dateType", null, "CALENDAR_DATE", "EXECUTION_DATE");
+                cancelBegin = ReadDate(parameters, "begin") ?? throw new Jp1ParameterException("begin", 3201, "開始日が必要です。");
+                cancelEnd = ReadDate(parameters, "end") ?? throw new Jp1ParameterException("end", 3201, "終了日が必要です。");
+                if (cancelBegin > cancelEnd)
+                {
+                    throw new Jp1ParameterException("end", 3206, "終了日は開始日以降です。");
+                }
+            }
+
             if (action is "changeStartTime" or "execImmediate")
             {
-                if (!parameters.TryGetProperty("changeLower", out var lower) || lower.GetString() != "SHIFT"
-                    || !parameters.TryGetProperty("pushedAhead", out var ahead) || ahead.GetString() != "MOVE")
-                {
-                    return Error(context, 400, "現在の対応範囲はchangeLower=SHIFT、pushedAhead=MOVEです。");
-                }
-
+                changeLower = Choice(parameters, "changeLower", "NOTSHIFT", "SHIFT", "NOTSHIFT");
+                pushedAhead = Choice(parameters, "pushedAhead", "ADD", "ADD", "MOVE");
                 if (action == "changeStartTime")
                 {
-                    if (!parameters.TryGetProperty("kindTime", out var kind) || kind.GetString() != "ABSOLUTETIME" || !parameters.TryGetProperty("absoluteTime", out var time))
+                    string kind = Choice(parameters, "kindTime", null, "ABSOLUTETIME", "RELATIVETIME");
+                    if (kind == "ABSOLUTETIME")
                     {
-                        return Error(context, 400, "kindTime=ABSOLUTETIMEとabsoluteTimeを指定してください。");
+                        moveDue = ParameterTime(parameters, "absoluteTime", options);
                     }
+                    else
+                    {
+                        string sign = Choice(parameters, "relativeSign", null, "+", "-");
+                        int days = RequiredNumber(parameters, "relativeDay", 0, 99);
+                        string time = RequiredString(parameters, "relativeTime", 5);
+                        int minutes;
+                        try
+                        {
+                            minutes = Scheduling.ScheduleCalculator.ParseTime(time);
+                        }
+                        catch (FormatException)
+                        {
+                            throw new Jp1ParameterException("relativeTime", 3206, "相対時刻は00:00〜47:59です。");
+                        }
 
-                    moveDue = ReadLocalTime(time.GetString()!, options);
+                        relativeMinutes = ((days * 1440) + minutes) * (sign == "-" ? -1 : 1);
+                        if (relativeMinutes == 0)
+                        {
+                            throw new Jp1ParameterException("relativeTime", 3203, "相対時間は1分以上です。");
+                        }
+                    }
                 }
             }
 
@@ -210,6 +244,14 @@ public static class Jp1Endpoints
                 }
             }
 
+            string? newStatus = action == "changeStatus" && Present(parameters, "newStatus") ? Choice(parameters, "newStatus", null, "NORMAL", "FAIL", "WARNING", "ABNORMAL", "BYPASS", "RETURNCODE") : null;
+            int? newReturnCode = action == "changeStatus" && Present(parameters, "newReturnCode") ? ReturnCode(parameters) : null;
+            if (action == "changeStatus" && ((newStatus is null && newReturnCode is null) || (newStatus == "RETURNCODE" && newReturnCode is null)))
+            {
+                throw new Jp1ParameterException("newReturnCode", 3201, "変更後の状態または終了コードが必要です。");
+            }
+
+            var delayMonitor = action == "changeDelayMonitor" ? ReadDelayMonitor(parameters) : null;
             string requestId = context.Request.Headers["X-JobRunner-Request-Id"].ToString();
             if (requestId.Length > 100)
             {
@@ -229,6 +271,16 @@ public static class Jp1Endpoints
             if (fixedRegistration && (fixedFrom is not null || fixedDue is not null || passed != "NEXTTIME"))
             {
                 hash = StorageRepository.Hash(JsonSerializer.Serialize(new { BaseHash = hash, fixedFrom, fixedUntil, fixedDue, passed }));
+            }
+
+            if ((changeLower is not null && (changeLower != "SHIFT" || pushedAhead != "MOVE" || relativeMinutes is not null)) || dateType is not null)
+            {
+                hash = StorageRepository.Hash(JsonSerializer.Serialize(new { BaseHash = hash, changeLower, pushedAhead, relativeMinutes, dateType, cancelBegin, cancelEnd }));
+            }
+
+            if (newStatus is not null || newReturnCode is not null || delayMonitor is not null)
+            {
+                hash = StorageRepository.Hash(JsonSerializer.Serialize(new { BaseHash = hash, newStatus, newReturnCode, delayMonitor }));
             }
 
             context.Response.Headers["X-JobRunner-Operation-Id"] = id;
@@ -251,6 +303,7 @@ public static class Jp1Endpoints
 
             var active = StorageRepository.Read<Activation>(activeRow);
             string target;
+            Occurrence? statusTarget = null;
             if (register || fixedRegistration || unregister)
             {
                 var bundle = await definitions.ReadAsync(active.DefinitionHash, context.RequestAborted);
@@ -279,6 +332,7 @@ public static class Jp1Endpoints
                 }
 
                 target = occurrence.Id;
+                statusTarget = occurrence;
             }
 
             var operation = new Operation
@@ -286,14 +340,23 @@ public static class Jp1Endpoints
                 Id = id,
                 RequestHash = hash,
                 StateNamespace = active.Id,
-                Kind = register || fixedRegistration ? "Register" : unregister ? "UnregisterRoot" : hold ? holdAttr == "SET" ? "Hold" : "Release" : action switch { "cancelExecSchedule" => "Cancel", "restoreChangedSchedule" => "Restore", "kill" => "Stop", "rerun" => "Rerun", "changeStartTime" => "Move", _ => "RunNow" },
+                Kind = register || fixedRegistration ? "Register" : unregister ? "UnregisterRoot" : hold ? holdAttr == "SET" ? "Hold" : "Release" : action switch { "cancelExecSchedule" => "Cancel", "restoreChangedSchedule" => "Restore", "kill" => "Stop", "interrupt" => "Interrupt", "changeStatus" => "ChangeStatus", "changeDelayMonitor" => "ChangeDelayMonitor", "rerun" => "Rerun", "changeStartTime" => "Move", _ => "RunNow" },
                 Target = target,
                 RegistrationKind = fixedRegistration ? "Confirmed" : "Immediate",
                 FutureGenerations = futureGenerations,
-                Start = fixedFrom,
-                End = fixedUntil,
+                NewStatus = newStatus,
+                NewReturnCode = newReturnCode,
+                DelayMonitor = delayMonitor,
+                ExpectedState = action == "changeStatus" ? statusTarget!.State : null,
+                AttemptId = action == "changeStatus" ? statusTarget!.AttemptId : null,
+                Start = unregister ? cancelBegin : fixedFrom,
+                End = unregister ? cancelEnd : fixedUntil,
                 FixedDue = fixedDue,
                 PassedDaemonStarts = passed,
+                ChangeLower = changeLower,
+                PushedAhead = pushedAhead,
+                RelativeMinutes = relativeMinutes,
+                DateType = dateType,
                 Due = register ? clock.GetUtcNow() : moveDue,
                 RerunMethod = rerunMethod,
                 RerunOptions = rerunFlags,
@@ -314,6 +377,10 @@ public static class Jp1Endpoints
             }
 
             return await AwaitResultAsync(context, key, register || fixedDue is not null, storage, clock);
+        }
+        catch (Jp1ParameterException ex)
+        {
+            return Error(context, 400, ex.Message, ex.Parameter, ex.MessageId);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or BadHttpRequestException or FormatException or ArgumentException)
         {
@@ -340,9 +407,9 @@ public static class Jp1Endpoints
             return null;
         }
 
-        if (!DateOnly.TryParseExact(value.GetString(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) || date.Year is < 1994 or > 2036)
+        if (value.ValueKind != JsonValueKind.String || !DateOnly.TryParseExact(value.GetString(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) || date.Year is < 1994 or > 2036)
         {
-            throw new FormatException("年月日は1994〜2036年のYYYY-MM-DDです。");
+            throw new Jp1ParameterException(name, 3206, "年月日は1994〜2036年のYYYY-MM-DDです。");
         }
 
         return date;
@@ -386,7 +453,7 @@ public static class Jp1Endpoints
             var operation = await HistoryRetentionService.ReadOperationAsync(row, storage, context.RequestAborted);
             if (operation.Status == "Rejected")
             {
-                return Error(context, 409, operation.Result ?? "操作が拒否されました。");
+                return Error(context, 409, operation.Result ?? "操作が拒否されました。", code: operation.ErrorCode ?? "JOBRUNNER_STATE_CONFLICT");
             }
 
             if (operation.Status == "Completed")
@@ -408,6 +475,6 @@ public static class Jp1Endpoints
             await Task.Delay(TimeSpan.FromMilliseconds(100), clock, context.RequestAborted);
         }
 
-        return Error(context, 500, "処理の完了確認がタイムアウトしました。操作は取り消していません。操作IDで再照会してください。");
+        return Error(context, 500, "処理の完了確認がタイムアウトしました。操作は取り消していません。操作IDで再照会してください。", code: "JOBRUNNER_OPERATION_TIMEOUT");
     }
 }

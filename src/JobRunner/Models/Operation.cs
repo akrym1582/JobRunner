@@ -136,4 +136,36 @@ public sealed class Operation
     /// <summary>Gets or sets. 再実行時のHOLD、WARNINGオプションです。</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<string>? RerunOptions { get; set; }
+
+    /// <summary>Gets or sets. ネストの時刻連動。nullは独自APIのSHIFTです。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? ChangeLower { get; set; }
+
+    /// <summary>Gets or sets. 前倒し前の予定の保持方式。nullは独自APIのMOVEです。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? PushedAhead { get; set; }
+
+    /// <summary>Gets or sets. 現在の予定に加算するサービス時刻の分数。Dueと排他です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public int? RelativeMinutes { get; set; }
+
+    /// <summary>Gets or sets. 期間解除の日付種別。Start/Endは終了日を含みます。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? DateType { get; set; }
+
+    /// <summary>Gets or sets. 拒否理由の分類。サーバーが保存する安定したエラーIDです。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? ErrorCode { get; set; }
+
+    /// <summary>Gets or sets. 手動で指定するJP1終了状態です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? NewStatus { get; set; }
+
+    /// <summary>Gets or sets. 手動で指定する符号付き終了コードです。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public int? NewReturnCode { get; set; }
+
+    /// <summary>Gets or sets. 変更する項目だけを持つ遅延監視要求です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public DelayMonitorSettings? DelayMonitor { get; set; }
 }

@@ -6,7 +6,7 @@ using JobRunner.Scheduling;
 namespace JobRunner.Import;
 
 /// <summary>実行に影響する未知属性、配置衝突、循環を有効化より前に検出します。</summary>
-public static class DefinitionValidator
+public static partial class DefinitionValidator
 {
     /// <summary>全ユニットに適用する属性。表示属性は保存し、実行には用いません。</summary>
     private static readonly HashSet<string> Common = ["ty", "cm", "sz", "el", "ex"];
@@ -21,7 +21,7 @@ public static class DefinitionValidator
     private static readonly HashSet<string> Job = ["te", "sc", "prm", "wkp", "env", "etm", "jd", "wth", "tho", "ha"];
 
     /// <summary>先行終了コードだけを参照する判定ジョブ属性です。</summary>
-    private static readonly HashSet<string> Judgment = ["ej", "ejc", "ejl", "ejh", "ejm", "eju", "ha"];
+    private static readonly HashSet<string> Judgment = ["ej", "ejc", "ejl", "ejh", "ejm", "eju", "ejf", "ejv", "ejt", "eji", "ejs", "ejg", "ha"];
 
     /// <summary>繰り返しが意味を持つ属性。その他は二重指定を拒否します。</summary>
     private static readonly HashSet<string> Repeated = ["sd", "st", "cy", "sh", "shd", "ar", "op", "cl", "env", "el", "cftd", "ln"];
@@ -42,9 +42,9 @@ public static class DefinitionValidator
             var allowed = unit.Type switch
             {
                 "g" => Group,
-                "n" => Network,
+                "n" or "rn" => Network,
                 "j" or "pj" or "rj" or "rp" => Job,
-                "jdj" => Judgment,
+                "jdj" or "rjdj" => Judgment,
                 _ => throw Error(unit, $"未対応のユニット種別: {unit.Type}"),
             };
             foreach (var (key, values) in unit.Attributes)
@@ -59,7 +59,7 @@ public static class DefinitionValidator
                     throw Error(unit, $"属性が二重に指定されています: {key}");
                 }
 
-                if (values.Any(v => v.Contains("?AJS2", StringComparison.Ordinal)))
+                if (key != "ejv" && values.Any(v => v.Contains("?AJS2", StringComparison.Ordinal)))
                 {
                     throw Error(unit, "マクロ変数は未対応です。");
                 }
@@ -80,19 +80,9 @@ public static class DefinitionValidator
                 ValidateJob(unit);
             }
 
-            if (unit.Type == "jdj")
+            if (unit.IsJudgment())
             {
-                if (unit.Children.Count > 0 || unit.Get("ej", "gt") is not ("gt" or "ge" or "lt" or "le" or "eq" or "ne" or "ri" or "ro")
-                    || unit.Get("ejm", "ge") is not ("gt" or "ge") || unit.Get("eju", "le") is not ("lt" or "le")
-                    || new[] { "ejc", "ejl", "ejh" }.Any(k => !uint.TryParse(unit.Get(k, "0"), out _)))
-                {
-                    throw Error(unit, "判定ジョブは終了コード比較だけに対応しています。");
-                }
-
-                if (unit.Get("ej") is "ri" or "ro" && (!unit.Attributes.ContainsKey("ejl") || !unit.Attributes.ContainsKey("ejh") || long.Parse(unit.Get("ejl"), CultureInfo.InvariantCulture) + (unit.Get("ejm", "ge") == "gt" ? 1L : 0) > long.Parse(unit.Get("ejh"), CultureInfo.InvariantCulture) - (unit.Get("eju", "le") == "lt" ? 1L : 0)))
-                {
-                    throw Error(unit, "判定範囲に整数が存在しません。");
-                }
+                ValidateJudgment(unit);
             }
 
             if (unit.Get("ha", "n") is not ("y" or "n") || unit.Get("mp", "n") is not ("y" or "n"))
@@ -100,7 +90,7 @@ public static class DefinitionValidator
                 throw Error(unit, "未対応の保留・多重起動指定です。");
             }
 
-            if (unit.Type == "n")
+            if (unit.IsNetwork())
             {
                 ValidateSchedule(unit, options);
             }
@@ -134,24 +124,29 @@ public static class DefinitionValidator
         foreach (var unit in all.Values)
         {
             string parentPath = ScheduleCalculator.Parent(unit.Path);
-            if (all.TryGetValue(parentPath, out var parent) && parent.Type is not ("g" or "n"))
+            if (all.TryGetValue(parentPath, out var parent) && parent.Type is not ("g" or "n" or "rn"))
             {
                 throw Error(unit, "配置先の親がグループまたはネットではありません。");
             }
 
-            if (unit.Type == "g" && parent is not null && parent.Type == "n")
+            if (unit.Type == "g" && parent is not null && parent.IsNetwork())
             {
                 throw Error(unit, "ネットの下位にグループは配置できません。");
             }
 
-            if (parent?.Type == "n" && unit.Type == "n" && unit.Attributes.ContainsKey("sd") && unit.Get("de", "y") != "n")
+            if (parent?.IsNetwork() == true && unit.IsNetwork() && unit.Attributes.ContainsKey("sd") && unit.Get("de", "y") != "n")
             {
                 throw Error(unit, "ネストの独立予定はde=nを指定してください。");
             }
 
-            if (unit.Attributes.ContainsKey("de") && (unit.Get("de") is not ("y" or "n") || parent?.Type != "n" || (unit.Get("de") == "y" && unit.Attributes.ContainsKey("sd"))))
+            if (unit.Attributes.ContainsKey("de") && (unit.Get("de") is not ("y" or "n") || parent?.IsNetwork() != true || (unit.Get("de") == "y" && unit.Attributes.ContainsKey("sd"))))
             {
                 throw Error(unit, "上位依存deはネストだけに指定でき、yとsdは併用できません。");
+            }
+
+            if (unit.IsRecovery() && (parent is null || !parent.IsNetwork()))
+            {
+                throw Error(unit, "リカバリーユニットはネット内だけに定義できます。");
             }
 
             string reference = unit.Get("jc");
@@ -168,18 +163,23 @@ public static class DefinitionValidator
                     throw Error(unit, "接続先が同じネット直下に存在しません。");
                 }
 
+                if (all[from].IsRecovery() && !all[to].IsRecovery())
+                {
+                    throw Error(unit, "リカバリーの後続はリカバリーユニットにしてください。");
+                }
+
                 graph[from].Add(to);
             }
 
             foreach (var child in unit.Children)
             {
                 var incoming = Edges(unit).Where(e => e.To == child.Path).ToList();
-                if (child.Type == "jdj" && (incoming.Count != 1 || incoming[0].Conditional || all[incoming[0].From].Type is not ("j" or "pj" or "rj" or "rp")))
+                if (child.IsJudgment() && (incoming.Count != 1 || incoming[0].Conditional || all[incoming[0].From].Type is not ("j" or "pj" or "rj" or "rp")))
                 {
                     throw Error(child, "終了コード判定の先行は通常ジョブ一つにしてください。");
                 }
 
-                if (incoming.Any(e => e.Conditional) && (incoming.Count != 1 || all[incoming[0].From].Type != "jdj"))
+                if (incoming.Any(e => e.Conditional) && (incoming.Count != 1 || !all[incoming[0].From].IsJudgment()))
                 {
                     throw Error(child, "条件接続の先行は判定ジョブ一つにしてください。");
                 }
