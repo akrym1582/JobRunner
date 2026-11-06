@@ -12,17 +12,17 @@
 | 入力絶対名 | 5.1.1 | 配置基点の曖昧な変換をしない | 未実装・拒否 | パーサーで位置付きエラー |
 | 種別と通常接続 | 5.2.1、5.2.4 `g/n/j/pj`、`ar=(f=...,t=...,seq)` | 同一ネット直下の接続を解決。重複、欠落、循環を拒否 | 実装済み・仕様テスト済み | DefinitionTests、IntegrationTests |
 | 稼働日と休業日 | 5.2.3 `op/cl` | 日付例外、曜日、上位探索。日付例外が曜日より優先するケースを検証 | 実装済み・仕様テスト済み（限定ケース） | ScheduleTests.ExplicitOpenDateOverridesWeekend |
-| カレンダー参照と基準時刻 | 5.2.3/5.2.4 `jc/stt` | グループ参照の存在確認と基準時刻継承あり。組合せの詳細比較が不足 | 実装あり・追加検証未達 | 境界・継承・参照の組合せを追加する必要あり |
+| カレンダー参照と基準時刻 | 5.2.3/5.2.4 `jc/stt` | グループ参照と基準時刻継承、基準06:00の前後・相対時刻を検証 | 実装済み・限定ケース検証 | CalendarBoundaryTests |
 | 開始日・処理サイクル | 5.2.4 pp.1053–1055 `sd/cy` | 暦日、登録日、日/週/月/年サイクル。月末とうるう年を検証 | 実装済み・仕様テスト済み（限定ケース） | ScheduleTests.MonthlyLastDayIncludesLeapDay、CalculatesOneThousandDailyJobsForOneYear |
 | 曜日、運用日番号、休業日番号 | 5.2.4 `sd` | 指定の解析と計算あり。登録日を跨ぐ組合せの期待値検証が不足 | 実装あり・追加検証未達 | 追加の公式期待値が必要 |
-| 振り替え | 5.2.4 pp.1055–1056 `sh/shd` | 前後・中止・休業日実行、猶予日数を実装。月境界と複数ルール競合は未検証 | 実装あり・追加検証未達 | 追加の仕様テストが必要 |
-| 時刻48時間制 | 5.2.4 `st`、計画16.6 | 23:59/24:00/25:00/47:59をUTCへ変換。業務日を別保存 | 実装済み・仕様テスト済み（基準0:00） | ScheduleTests.PreservesBusinessDateBeyondMidnight、PreviousBusinessDayCanStillBeInFuture |
+| 振り替え | 5.2.4 pp.1055–1056 `sh/shd` | 前後・中止・休業日実行、猶予日数を実装。年跨ぎ・起算順序と重複排除を検証 | 実装済み・限定ケース検証 | CalendarBoundaryTests、ExtendedScheduleTests、ConfirmedGenerationTests |
+| 時刻48時間制 | 5.2.4 `st`、計画16.6 | 23:59/24:00/25:00/47:59をUTCへ変換。業務日を別保存 | 実装済み・仕様テスト済み（基準0:00/06:00） | ScheduleTests.PreservesBusinessDateBeyondMidnight、PreviousBusinessDayCanStillBeInFuture |
 | 時刻24時間制の24時以降 | 詳細仕様の追加確認が必要 | JP1で不正とは断定せず、未対応として拒否 | 調査中・未実装 | 実装後に境界テストが必要 |
 | 相対日、月区分、基準日、起算、時間間隔 | `+sd/sdd/md/cftd`、独自間隔登録 | 相対業務月、起算、固定開始からの一定間隔を実装。実機比較未実施 | 一部実装・限定ケース検証 | ExtendedScheduleTests、BranchAndIntervalTests |
 | ネスト | 5.2.4、設計ガイド3.5.3 | 上位ルール・同一業務日から最早候補を一つ採用 | 一部実装・限定ケース検証 | NestedScheduleTests |
 | Linux上のPCジョブ | ユーザー指定の独自拡張 | ty=pjをLinuxでも受理。teは/bin/sh、sc/prmはローカル実行ファイルと引数。Windowsコマンドの変換はしない | 実装済み・Linux統合テスト済み | PcJobTests |
 | ローカル実行・終了判定 | 5.2.5 pp.1064–1067 `te/sc/prm/wkp/env/etm/jd/wth/tho` | シェル/実行ファイル分離、両出力収集、コード分類 | 実装済み・仕様テスト済み（Linux teとコード判定） | ExecutionTests.ClassifiesActualExitCodes、LogStorageFailureStopsProducer |
-| 自動確定登録・補充・解除維持 | 計画16章（JobRunner独自運用） | 採用IDと基準日固定、決定的な世代キー、カーソル補充、解除行保持 | 実装あり・追加検証未達 | RecoveryTestsで起動登録を検証。ExecutionControlTestsで解除・保留・予定変更の再起動復元も検証。補充中断は未検証 |
+| 自動確定登録・補充・解除維持 | 計画16章（JobRunner独自運用） | 採用IDと基準日固定、決定的な世代キー、カーソル補充、解除行保持 | 実装済み・障害テスト済み | RecoveryTests、ExecutionControlTests、ConfirmedGenerationTests、ReviewRegressionTests。DefinitionMonitorTestsで監視設定の部分生成・長期停止復旧も確認 |
 | 即時登録・保留解除 | 独自管理API。JP1互換DTOではない | 操作IDで重複防止、親・先行成功後に開始 | 実装済み・仕様テスト済み | IntegrationTests.RunsRealProcessesThroughStandbyApiAndRecovers |
 | 計画登録 | ユーザー指定による範囲変更 | 要求はRejected | 対象外 | 確定登録と既存の即時登録を提供 |
 | 一時変更・再実行・停止 | 独自管理API、TOP方式は7.4.10参照 | Move/RunNow/Restore/Cancelを再開可能な変更計画で子孫へ適用。ネットStopはInterruptedとUnknownで結果確認を要求。TOP再実行・末端異常再実行に対応。選択再実行方式とHOLD/WARNINGも追加 | 一部実装・仕様テスト済み | ExecutionControlTests、NetworkOperationTests、OperationMutationTests |
@@ -45,7 +45,7 @@
 
 | 領域 | 対応する範囲 | 対象外・差異 |
 | --- | --- | --- |
-| 参照 | 現在の採用領域のGET statuses一覧、unitName:execIDの単体。階層、定義/状態、名前比較EQ/BW/EW/NE/CO/NC、種別、NO/STATUS/RESULT/PERIOD/EXECID、個別の対応状態 | 旧採用領域の検索、正規表現、集約状態GRP_*、Agent/リリース検索、searchConnectInfo=YES。1000件超は独自エラーで拒否（JP1のall=falseによる一部返却とは異なる） |
+| 参照 | 現在の採用領域のGET statuses一覧、unitName:execIDの単体。階層、定義/状態、名前比較EQ/BW/EW/NE/CO/NC/RE、GRP_*状態集合、種別、NO/STATUS/RESULT/PERIOD/EXECID、個別の対応状態 | 旧採用領域の検索、Agent/リリース検索、searchConnectInfo=YES。最大1000件・超過は200/all=falseの部分返却 |
 | 世代選択 | STATUSはVIEWSTATUSRANGE=allの実行中→再実行待ち→次回予定。RESULTは最新終了。PERIODはルートの実行期間との重なり | today設定、夏時間の曖昧・欠落時刻のJP1補正。旧データの欠落した実開始日時は精密な期間互換対象外 |
 | 状態 | TIMEWAIT/TERMWAIT/EXECWAIT/HOLDING/RUNNING/WACONT/ABCONT/NORMAL/NORMALFALSE/WARNING/ABNORMAL/FAIL/KILL/INTERRUPT/UNKNOWN/UNEXEC/BYPASS、未登録NOENTRY・未計画NOPLAN | Agentキュー、閉塞、順序不正、イベント/監視・起動条件の状態。履歴退避状態は業務結果へ戻して表示 |
 | 入力エラーID | KNAK3201（必須）、3202（バイト長）、3203（数値範囲）、3204（禁止文字）、3206（形式）、3207（比較値不足）、3209（排他）の確認済み条件 | KNAK3208（対象APIの配列上限を未確認）、全JP1エラー、本文の完全一致、複数違反の報告順、付加情報コードの全面互換。対応IDは各検証箇所に限定 |
@@ -57,4 +57,8 @@
 
 ## 公式Web API一覧からの追加対応
 
-V11の19 API一覧との突合結果、追加API、対象外と残る差異は[Web API照合表](jp1-webapi-matrix.md)を参照してください。中断、遅延監視変更、ジョブ状態変更、実行結果詳細、JobRunnerの製品情報を追加しました。遅延監視の設定変更・状態表示・検索は対応し、Agent/リリース/定義からの監視属性取込は引き続き対象外です。
+V11の19 API一覧との突合結果、追加API、対象外と残る差異は[Web API照合表](jp1-webapi-matrix.md)を参照してください。中断、遅延監視変更、ジョブ状態変更、実行結果詳細、JobRunnerの製品情報を追加しました。遅延監視の設定変更・状態表示・検索は対応し、sy/ey/fdからのネット監視設定取込も対応。Agent/リリース、一般ジョブのfdと外部通知は対象外です。
+
+## カレンダー境界の検証範囲
+
+`CalendarBoundaryTests`で、基準06:00を参照・継承した24/48時間制、基準時刻の直前/一致/直後、相対時刻、年跨ぎの休日振替・猶予と起算、当月/翌月の業務月末を確認する。同時刻ルールの重複排除は監視設定の採用ルールとともに、件数/日数方式・長期停止からの復旧で確認する。29〜31日と第5曜日の基準日、24時間制の24時以降、夏時間の曖昧・欠落時刻は拒否を維持する。実JP1との比較を済ませた意味ではない。

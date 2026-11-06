@@ -6,15 +6,15 @@
 
 | 項番 / API種別 | API | メソッド・パス | 判定と境界 |
 | --- | --- | --- | --- |
-| 1 / SC-004 | ユニット一覧 | GET `objects/statuses` | 一部対応。名前・階層・種別・世代・状態・遅延で検索。1000件超は独自エラー。正規表現、Agent、リリース、接続情報等は未対応 |
-| 2 / SC-007 | ユニット情報 | GET `objects/statuses/{unit:execID}` | 一部対応。現在の採用領域とその退避履歴。遅延設定・有無も返す。全メンバーは未網羅 |
+| 1 / SC-004 | ユニット一覧 | GET `objects/statuses` | 一部対応。名前・階層・種別・世代・状態・遅延で検索。最大1000件・超過は200/all=false。RE（ワイルドカード）とGRP_*状態集合を追加。Agent、リリース、接続情報等は未対応 |
+| 2 / SC-007 | ユニット情報 | GET `objects/statuses/{unit:execID}` | 一部対応。現在の採用領域とその退避履歴。遅延設定・有無も返す。登録日時・ジョブ番号・待ち合わせ・接続情報の未取得値も返す。実機比較は未実施 |
 | 3 / SC-010 | 実行結果詳細 | GET `objects/statuses/{unit:execID}/actions/execResultDetails/invoke` | 今回追加。最新試行のstdout/stderrを区別して返す。5MiBで切り捨て、all=false。実行中・Unknownは409。JP1実機の詳細本文とは完全一致しない |
 | 4 / SC-017 | 計画実行登録 | POST `objects/definitions/{unit}/actions/registerPlannedExec/invoke` | 対象外。ユーザーが確定登録のみ必要と明示 |
 | 5 / SC-018 | 確定実行登録 | POST `objects/definitions/{unit}/actions/registerFixedExec/invoke` | 一部対応。期間、未来世代数、日時、NEXTTIME/IMMEDIATE、初回holding。非空macro・起動条件は未対応 |
 | 6 / SC-019 | 即時実行登録 | POST `objects/definitions/{unit}/actions/registerImmediateExec/invoke` | 一部対応。holdingとexecID応答。非空macro・起動条件は未対応 |
 | 7 / SC-020 | 登録解除 | POST `objects/definitions/{unit}/actions/cancelRegistration/invoke` | 全体または暦日/実行日期間。除外を保存して補充・復旧で復活させない |
 | 8 / SC-012 | 保留属性変更 | POST `objects/statuses/{unit:execID}/actions/changeHold/invoke` | 一部対応。未開始世代のSET/RELEASE |
-| 9 / SC-024 | 遅延監視変更 | POST `objects/statuses/{unit:execID}/actions/changeDelayMonitor/invoke` | 今回追加。ネットのNOT/ABSOLUTE/ROOT/TOP/OWNと所要時間。省略は維持、NOTでは時刻無視。外部通知・定義属性取込は対象外 |
+| 9 / SC-024 | 遅延監視変更 | POST `objects/statuses/{unit:execID}/actions/changeDelayMonitor/invoke` | 今回追加。ネットのNOT/ABSOLUTE/ROOT/TOP/OWNと所要時間。省略は維持、NOTでは時刻無視。定義sy/ey/fdから世代生成時に設定。外部通知・一般ジョブのfdは対象外 |
 | 10 / SC-025 | ジョブ状態変更 | POST `objects/statuses/{unit:execID}/actions/changeStatus/invoke` | 今回追加。非実行中・結果既知のローカルジョブ。元試行を保持して手動コードを別保存。動作中・Unknown・退避済み・ネットは拒否。判定ジョブはコードのみ |
 | 11 / SC-026 | 日時変更 | POST `objects/statuses/{unit:execID}/actions/changeStartTime/invoke` | 一部対応。絶対/相対、ADD/MOVE、SHIFT/NOTSHIFT、未開始世代 |
 | 12 / SC-027 | 即時実行への変更 | POST `objects/statuses/{unit:execID}/actions/execImmediate/invoke` | 一部対応。未開始の世代一式、ADD/MOVE、SHIFT/NOTSHIFT |
@@ -35,3 +35,11 @@
 - 製品情報: [V11 7.1.18](https://itpfdoc.hitachi.co.jp/manuals/3021/30213b1920/AJSO0296.HTM)、[7.1.19](https://itpfdoc.hitachi.co.jp/manuals/3021/30213b1920/AJSO0297.HTM)。対応能力は `/api/jobrunner/compatibility` と本表で判断する。
 
 主な回帰試験: `AdditionalHttpTests`、`AdditionalOperationTests`、`DefinitionVersionTests`。既存のJP1 HTTP、予定・復旧・再実行試験も継続する。HTTP同期200、同一ID再送、エラーでの非変更と永続結果を確認し、単にルートが存在するだけでは対応済みと判定しない。
+
+## 参照・定義監視の追加（保存形式5）
+
+V12 7.4.2表7-57のREは`*`（任意列）、`?`（1文字）、`\`（次の記号を文字として扱う）で全体一致する。一般的な正規表現ではない。末尾だけのエスケープは形式エラー。GRP_*は表7-60の集合と実装済み状態の交差を検索し、応答の状態を集約値へ変えない。1000件の上限はJobRunnerの運用上限であり、検索適用後に完全名・予定日時・世代ID順で返す。
+
+V12 7.3.2に合わせ、GETのdelayedStartTime/delayedEndTimeはABSOLUTEの場合hh:mm、ROOT/TOP/OWNは分数文字列。timeRequiredForExecutionは監視有効時だけ分数文字列。POSTの時刻入力とは形式が異なる。registerTimeは保存済み登録CreatedAtのみを使い、旧データで不明なら空文字。jobNumberは-1（OSのPIDで代用しない）、waitingはNONE、未対応の接続情報は空文字。
+
+V12 5.2.4のsy/ey/fdをローカルネットで受理する。sy/eyは採用ルール別、fdはネット単位。保存済み世代へのAPI上書きは定義更新や復旧で消さず、新しい補充世代のみ更新後の定義を使う。M/Uをルートへ指定することは未対応として拒否する。一般ジョブのfdと外部通知は対象外。

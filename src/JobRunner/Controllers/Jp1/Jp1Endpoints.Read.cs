@@ -109,7 +109,7 @@ public static partial class Jp1Endpoints
             string lower = single ? "NO" : Choice(query, "searchLowerUnits", "NO", "NO", "YES");
             string search = single ? "DEFINITION_AND_STATUS" : Choice(query, "searchTarget", "DEFINITION_AND_STATUS", "DEFINITION", "DEFINITION_AND_STATUS");
             string type = single ? "NO" : Choice(query, "unitType", "NO", "NO", "GROUP", "ROOT", "NET", "JOB");
-            string method = single ? "NO" : Choice(query, "unitNameMatchMethods", "NO", "NO", "EQ", "BW", "EW", "NE", "CO", "NC");
+            string method = single ? "NO" : Choice(query, "unitNameMatchMethods", "NO", "NO", "EQ", "BW", "EW", "NE", "CO", "NC", "RE");
             string name = string.Empty;
             if (method != "NO")
             {
@@ -119,10 +119,14 @@ public static partial class Jp1Endpoints
                 }
 
                 name = RequiredString(query, "unitName", 30);
+                if (method == "RE")
+                {
+                    Jp1Search.ValidatePattern(name);
+                }
             }
 
             bool definitionOnly = search == "DEFINITION" || type == "GROUP";
-            string filter = single || definitionOnly ? "NO" : Choice(query, "status", "NO", "NO", "UNREGISTERED", "NOPLAN", "UNEXEC", "BYPASS", "TIMEWAIT", "TERMWAIT", "EXECWAIT", "HOLDING", "RUNNING", "WACONT", "ABCONT", "ABNORMAL", "INTERRUPT", "KILL", "FAIL", "UNKNOWN", "WARNING", "NORMAL", "NORMALFALSE");
+            string filter = single || definitionOnly ? "NO" : Choice(query, "status", "NO", "NO", "UNREGISTERED", "NOPLAN", "UNEXEC", "BYPASS", "TIMEWAIT", "TERMWAIT", "EXECWAIT", "HOLDING", "RUNNING", "WACONT", "ABCONT", "ABNORMAL", "INTERRUPT", "KILL", "FAIL", "UNKNOWN", "WARNING", "NORMAL", "NORMALFALSE", "GRP_WAIT", "GRP_RUN", "GRP_ABNORMAL", "GRP_NORMAL");
             string generation = single ? "EXECID" : definitionOnly || filter == "UNREGISTERED" ? "NO" : Choice(query, "generation", "STATUS", "NO", "STATUS", "RESULT", "PERIOD", "EXECID");
             bool ignoreExecution = definitionOnly || filter == "UNREGISTERED";
             string delayFilter = single || ignoreExecution ? "NO" : Choice(query, "delayStatus", "NO", "NO", "START", "END", "YES");
@@ -223,7 +227,7 @@ public static partial class Jp1Endpoints
             {
                 bool isRoot = unit.IsNetwork() && (!units.TryGetValue(ScheduleCalculator.Parent(unit.Path), out var parent) || parent.Type == "g");
                 string simple = unit.Path[(unit.Path.LastIndexOf('/') + 1)..];
-                bool nameMatch = method switch { "EQ" => simple == name, "NE" => simple != name, "BW" => simple.StartsWith(name, StringComparison.Ordinal), "EW" => simple.EndsWith(name, StringComparison.Ordinal), "CO" => simple.Contains(name, StringComparison.Ordinal), "NC" => !simple.Contains(name, StringComparison.Ordinal), _ => true };
+                bool nameMatch = method switch { "EQ" => simple == name, "NE" => simple != name, "BW" => simple.StartsWith(name, StringComparison.Ordinal), "EW" => simple.EndsWith(name, StringComparison.Ordinal), "CO" => simple.Contains(name, StringComparison.Ordinal), "NC" => !simple.Contains(name, StringComparison.Ordinal), "RE" => Jp1Search.MatchesName(simple, name), _ => true };
                 if (single ? unit.Path != unitPath : (!nameMatch || (lower == "NO" ? ScheduleCalculator.Parent(unit.Path) != location : !unit.Path.StartsWith(location.TrimEnd('/') + "/", StringComparison.Ordinal))
                     || (type == "GROUP" && unit.Type != "g") || (type == "NET" && !unit.IsNetwork()) || (type == "ROOT" && !isRoot) || (type == "JOB" && (unit.Type == "g" || unit.IsNetwork()))))
                 {
@@ -250,12 +254,12 @@ public static partial class Jp1Endpoints
                     candidates.Add(null);
                 }
 
-                foreach (var candidate in candidates)
+                foreach (var candidate in candidates.OrderBy(o => o?.Due).ThenBy(o => o?.Id, StringComparer.Ordinal))
                 {
                     var fixedUnits = candidate is null ? units : versions[candidate.DefinitionHash ?? active.DefinitionHash];
                     var fixedUnit = candidate is null ? unit : fixedUnits[unit.Path];
                     string status = candidate is null ? unit.Type == "g" || definitionOnly ? "NONE" : registered ? "NOPLAN" : "NOENTRY" : Jp1Status.Map(candidate, fixedUnits, occurrences, now);
-                    if (filter is not ("NO" or "UNREGISTERED") && status != filter)
+                    if (filter is not ("NO" or "UNREGISTERED") && !Jp1Search.MatchesStatus(status, filter))
                     {
                         continue;
                     }
@@ -289,12 +293,12 @@ public static partial class Jp1Endpoints
                     selected.Add(new
                     {
                         definition = new { unitName = unit.Path, simpleUnitName = simple, rootJobnetName = unit.Type == "g" ? string.Empty : rootPath, unitComment = fixedUnit.Get("cm"), unitType = fixedUnit.Type == "g" ? "GROUP" : fixedUnit.IsNetwork() ? isRoot ? "ROOTNET" : "NET" : fixedUnit.IsJudgment() ? "JDJOB" : fixedUnit.Type is "pj" or "rp" ? "PJOB" : "JOB", owner = fixedUnit.OwnerName ?? string.Empty, jp1ResourceGroup = fixedUnit.ResourceGroup ?? string.Empty, unitID = -1, execAgent = fixedUnit.Get("ex"), execFileName = fixedUnit.Get("sc"), parameters = fixedUnit.Get("prm"), customJobType = string.Empty, registerStatus = registered ? "YES" : "NO", recoveryUnit = fixedUnit.IsRecovery(), wait = false, jobnetReleaseUnit = false },
-                        unitStatus = new { unitName = unit.Path, simpleUnitName = simple, execID = root?.Jp1ExecutionId ?? string.Empty, status, schStartTime = Stamp(candidate?.Due, options), startTime = Stamp(candidate?.StartedAt ?? attempt?.StartedAt, options), reStartTime = Stamp(candidate?.RestartedAt, options), endTime = Stamp(candidate?.FinishedAt, options), retCode = (candidate?.ManualExitCode ?? attempt?.ExitCode) is int exitCode ? unchecked((uint)exitCode).ToString(CultureInfo.InvariantCulture) : string.Empty, startDelayStatus = delay.Start ? "YES" : noDelay, endDelayStatus = delay.End ? "YES" : noDelay, nestStartDelayStatus = nestedDelays.Any(d => d.Start) ? "YES" : noDelay, nestEndDelayStatus = nestedDelays.Any(d => d.End) ? "YES" : noDelay, startDelayTime = Stamp(startLimit, options), endDelayTime = Stamp(endLimit, options), delayedStart = candidate is null ? "NONE" : monitor?.Start ?? (fixedUnit.IsNetwork() ? "NOT" : "UNSUPPORTED"), delayedStartTime = MonitorTime(monitor?.StartMinutes), delayedEnd = candidate is null ? "NONE" : monitor?.End ?? (fixedUnit.IsNetwork() ? "NOT" : "UNSUPPORTED"), delayedEndTime = MonitorTime(monitor?.EndMinutes), monitoringJobnet = candidate is null ? "NONE" : !fixedUnit.IsNetwork() ? "UNSUPPORTED" : monitor?.Duration == true ? "TIME_REQUIRED_FOR_EXECUTION_YES" : "TIME_REQUIRED_FOR_EXECUTION_NO", timeRequiredForExecution = MonitorTime(monitor?.DurationMinutes), holdAttr = candidate is null ? "NONE" : candidate.HoldOverride is bool holding ? holding ? "HOLD" : "RELEASE" : fixedUnit.Get("ha", "n") == "y" ? "YES" : "NO", changeType = candidate is null ? "NONE" : candidate.ScheduleChangeId is null ? "NO" : candidate.State == "Cancelled" ? "CANCEL" : "TIME", execHost = string.Empty },
+                        unitStatus = new { unitName = unit.Path, simpleUnitName = simple, execID = root?.Jp1ExecutionId ?? string.Empty, status, schStartTime = Stamp(candidate?.Due, options), startTime = Stamp(candidate?.StartedAt ?? attempt?.StartedAt, options), reStartTime = Stamp(candidate?.RestartedAt, options), endTime = Stamp(candidate?.FinishedAt, options), retCode = (candidate?.ManualExitCode ?? attempt?.ExitCode) is int exitCode ? unchecked((uint)exitCode).ToString(CultureInfo.InvariantCulture) : string.Empty, startDelayStatus = delay.Start ? "YES" : noDelay, endDelayStatus = delay.End ? "YES" : noDelay, nestStartDelayStatus = nestedDelays.Any(d => d.Start) ? "YES" : noDelay, nestEndDelayStatus = nestedDelays.Any(d => d.End) ? "YES" : noDelay, startDelayTime = Stamp(startLimit, options), endDelayTime = Stamp(endLimit, options), delayedStart = candidate is null ? "NONE" : monitor?.Start ?? (fixedUnit.IsNetwork() ? "NOT" : "UNSUPPORTED"), delayedStartTime = MonitorTime(monitor?.StartMinutes, monitor?.Start), delayedEnd = candidate is null ? "NONE" : monitor?.End ?? (fixedUnit.IsNetwork() ? "NOT" : "UNSUPPORTED"), delayedEndTime = MonitorTime(monitor?.EndMinutes, monitor?.End), monitoringJobnet = candidate is null ? "NONE" : !fixedUnit.IsNetwork() ? "UNSUPPORTED" : monitor?.Duration == true ? "TIME_REQUIRED_FOR_EXECUTION_YES" : "TIME_REQUIRED_FOR_EXECUTION_NO", timeRequiredForExecution = monitor?.Duration == true ? monitor.DurationMinutes?.ToString(CultureInfo.InvariantCulture) ?? string.Empty : string.Empty, holdAttr = candidate is null ? "NONE" : candidate.HoldOverride is bool holding ? holding ? "HOLD" : "RELEASE" : fixedUnit.Get("ha", "n") == "y" ? "YES" : "NO", changeType = candidate is null ? "NONE" : candidate.ScheduleChangeId is null ? "NO" : candidate.State == "Cancelled" ? "CANCEL" : "TIME", execHost = string.Empty, registerTime = Stamp(candidate is null ? null : registrations.SingleOrDefault(r => r.Id == candidate.RegistrationId)?.CreatedAt, options), jobNumber = -1, waiting = "NONE", destHostName = string.Empty, destServiceName = string.Empty, destUnitName = string.Empty, destExecID = string.Empty, srcHostName = string.Empty, srcServiceName = string.Empty, srcUnitName = string.Empty, srcExecID = string.Empty, execOrderMethod = string.Empty },
                         release = (object?)null,
                     });
                     if (selected.Count > 1000)
                     {
-                        return Error(context, 400, "検索結果が1000件を超えています。条件を絞ってください。", code: "JOBRUNNER_RESULT_LIMIT");
+                        return Results.Json(new { statuses = selected.Take(1000), all = false });
                     }
                 }
             }

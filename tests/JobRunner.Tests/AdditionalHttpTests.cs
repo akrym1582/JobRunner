@@ -23,7 +23,7 @@ public sealed class AdditionalHttpTests
         await storage.InitializeAsync(CancellationToken.None);
         var input = storage.Blobs.GetBlobContainerClient(inputName);
         await input.CreateAsync();
-        await input.GetBlobClient("jobs").UploadAsync(BinaryData.FromString("unit=net;{ty=n;sd=0,ud;unit=j;{ty=j;te=\"printf output; printf error >&2\";}}"));
+        await input.GetBlobClient("jobs").UploadAsync(BinaryData.FromString("unit=net;{ty=n;sd=0,ud;sy=C5;ey=25:00;fd=10;unit=j;{ty=j;te=\"printf output; printf error >&2\";}}"));
         using var app = new AppProcess(scope.Options);
         try
         {
@@ -40,11 +40,23 @@ public sealed class AdditionalHttpTests
             Assert.Equal(HttpStatusCode.OK, held.StatusCode);
             string heldId = (await held.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("execID").GetString()!;
             string rootResource = Resource("/net", heldId);
+            var initial = (await app.Client.GetFromJsonAsync<JsonElement>(rootResource + Query())).GetProperty("unitStatus");
+            Assert.Equal("5", initial.GetProperty("delayedStartTime").GetString());
+            Assert.Equal("25:00", initial.GetProperty("delayedEndTime").GetString());
+            Assert.Equal("10", initial.GetProperty("timeRequiredForExecution").GetString());
+            Assert.True(DateTimeOffset.TryParse(initial.GetProperty("registerTime").GetString(), out _));
+            Assert.Equal(-1, initial.GetProperty("jobNumber").GetInt32());
+            Assert.Equal("NONE", initial.GetProperty("waiting").GetString());
+            foreach (string field in new[] { "destHostName", "destServiceName", "destUnitName", "destExecID", "srcHostName", "srcServiceName", "srcUnitName", "srcExecID", "execOrderMethod" })
+            {
+                Assert.Equal(string.Empty, initial.GetProperty(field).GetString());
+            }
+
             using var delay = await app.Client.PostAsJsonAsync(rootResource + "/actions/changeDelayMonitor/invoke", new { parameters = new { manager = "localhost", serviceName = "AJSROOT1", delayedStart = "OWN", delayedStartTime = "00:01", delayedEnd = "NOT", delayedEndTime = 999 } });
             Assert.Equal(HttpStatusCode.OK, delay.StatusCode);
             var state = await app.Client.GetFromJsonAsync<JsonElement>(rootResource + Query());
             Assert.Equal("OWN", state.GetProperty("unitStatus").GetProperty("delayedStart").GetString());
-            Assert.Equal("00:01", state.GetProperty("unitStatus").GetProperty("delayedStartTime").GetString());
+            Assert.Equal("1", state.GetProperty("unitStatus").GetProperty("delayedStartTime").GetString());
             foreach (object unused in new object[] { "invalid", 42 })
             {
                 using var request = new HttpRequestMessage(HttpMethod.Post, rootResource + "/actions/changeDelayMonitor/invoke") { Content = JsonContent.Create(new { parameters = new { manager = "localhost", serviceName = "AJSROOT1", delayedEnd = "NOT", delayedEndTime = unused } }) };
@@ -65,6 +77,11 @@ public sealed class AdditionalHttpTests
             state = await app.Client.GetFromJsonAsync<JsonElement>(heldJob + Query());
             Assert.Equal("ABNORMAL", state.GetProperty("unitStatus").GetProperty("status").GetString());
             Assert.Equal("4", state.GetProperty("unitStatus").GetProperty("retCode").GetString());
+            string search = "/ajs/api/v1/objects/statuses?mode=search&manager=localhost&serviceName=AJSROOT1&location=%2Fnet&generation=EXECID&execID=" + Uri.EscapeDataString(heldId);
+            var abnormal = await app.Client.GetFromJsonAsync<JsonElement>(search + "&status=GRP_ABNORMAL");
+            Assert.Equal("ABNORMAL", Assert.Single(abnormal.GetProperty("statuses").EnumerateArray()).GetProperty("unitStatus").GetProperty("status").GetString());
+            var normal = await app.Client.GetFromJsonAsync<JsonElement>(search + "&status=GRP_NORMAL");
+            Assert.Empty(normal.GetProperty("statuses").EnumerateArray());
             using var invalid = await app.Client.PostAsJsonAsync(heldJob + "/actions/changeStatus/invoke", new { parameters = new { manager = "localhost", serviceName = "AJSROOT1", newReturnCode = 4 } });
             Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
             using var heldInterrupt = await app.Client.PostAsJsonAsync(rootResource + "/actions/interrupt/invoke", new { parameters = new { manager = "localhost", serviceName = "AJSROOT1" } });

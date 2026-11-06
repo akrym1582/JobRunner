@@ -363,7 +363,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
         }
 
         var existing = row is null ? null : StorageRepository.Read<Activation>(row);
-        if (existing is not null && existing.FormatVersion is not (1 or 2 or 3 or 4))
+        if (existing is not null && existing.FormatVersion is not (1 or 2 or 3 or 4 or 5))
         {
             throw new InvalidDataException("有効版の保存形式を認識できません。");
         }
@@ -374,8 +374,8 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
         active = same ? existing : new Activation { Id = Guid.NewGuid().ToString("N"), DefinitionHash = hash, SettingsHash = settingsHash, Baseline = clock.GetUtcNow() };
 
         // 新しい登録意味論を旧実行器が読み飛ばして起動しないよう、採用IDを保ったまま形式を進めます。
-        bool upgrade = active!.FormatVersion < 4;
-        active.FormatVersion = 4;
+        bool upgrade = active!.FormatVersion < 5;
+        active.FormatVersion = 5;
         if (!same || upgrade)
         {
             await CommitAsync([row is null ? Add("definition-active", active) : Update(row, active)], cancellationToken);
@@ -427,7 +427,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
             try
             {
                 var manifest = current.Value.Content.ToObjectFromJson<Activation>();
-                if (manifest is null || manifest.FormatVersion is not (1 or 2 or 3 or 4) || manifest.Phase != "Ready" || string.IsNullOrWhiteSpace(manifest.Id))
+                if (manifest is null || manifest.FormatVersion is not (1 or 2 or 3 or 4 or 5) || manifest.Phase != "Ready" || string.IsNullOrWhiteSpace(manifest.Id))
                 {
                     throw new InvalidDataException("管理Blobが破損しています。");
                 }
@@ -442,7 +442,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
 
         leader!.Ensure();
         await mirror.UploadAsync(BinaryData.FromObjectAsJson(active), new BlobUploadOptions { Conditions = condition }, cancellationToken);
-        await storage.PutImmutableAsync($"management/{storage.Partition}/{hash}/{settingsHash}/{active.Id}/activation-v4.json", BinaryData.FromObjectAsJson(active), cancellationToken);
+        await storage.PutImmutableAsync($"management/{storage.Partition}/{hash}/{settingsHash}/{active.Id}/activation-v5.json", BinaryData.FromObjectAsJson(active), cancellationToken);
     }
 
     /// <summary>補充範囲に依存せず、途中まで保存された現行領域の世代を先に完成させます。</summary>
@@ -586,6 +586,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
                 RootPath = root.Path,
                 BusinessDate = selected.Point.BusinessDate,
                 Rule = selected.Point.Rule,
+                DelayMonitor = unit.IsNetwork() ? DefinitionDelayMonitor.Read(unit, selected.Point.Rule) : null,
                 Due = selected.Point.Due,
                 OriginalDue = selected.Point.Due,
                 ScheduleExcluded = selected.Enabled ? null : true,
