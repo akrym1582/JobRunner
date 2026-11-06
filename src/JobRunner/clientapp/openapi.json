@@ -94,6 +94,35 @@
         }
       }
     },
+    "/api/jobrunner/ui/definition-editor/schedules": {
+      "post": {
+        "tags": [
+          "JobRunner"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorScheduleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorSchedulePreview"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobrunner/ui/definition-editor/export": {
       "post": {
         "tags": [
@@ -540,6 +569,28 @@
         },
         "additionalProperties": false
       },
+      "EditorAttributes": {
+        "required": [
+          "attributes",
+          "id"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "attributes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      },
       "EditorContainer": {
         "required": [
           "parentPath",
@@ -579,6 +630,15 @@
               "$ref": "#/components/schemas/EditorContainer"
             },
             "nullable": true
+          },
+          "timeZone": {
+            "type": "string",
+            "nullable": true
+          },
+          "scheduleTimeMode": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -608,6 +668,20 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/EditorRoot"
+            },
+            "nullable": true
+          },
+          "schedules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorAttributes"
+            },
+            "nullable": true
+          },
+          "calendars": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorAttributes"
             },
             "nullable": true
           }
@@ -752,6 +826,56 @@
           },
           "parentPath": {
             "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorSchedulePreview": {
+        "required": [
+          "points",
+          "timeZone"
+        ],
+        "type": "object",
+        "properties": {
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SchedulePoint"
+            }
+          },
+          "timeZone": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorScheduleRequest": {
+        "required": [
+          "anchor",
+          "draft",
+          "from",
+          "networkId",
+          "until"
+        ],
+        "type": "object",
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/EditorDraft"
+          },
+          "networkId": {
+            "type": "string"
+          },
+          "anchor": {
+            "type": "string",
+            "format": "date"
+          },
+          "from": {
+            "type": "string",
+            "format": "date"
+          },
+          "until": {
+            "type": "string",
+            "format": "date"
           }
         },
         "additionalProperties": false
@@ -1475,6 +1599,24 @@
           }
         },
         "additionalProperties": { }
+      },
+      "SchedulePoint": {
+        "type": "object",
+        "properties": {
+          "rule": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "businessDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "due": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
       }
     }
   }

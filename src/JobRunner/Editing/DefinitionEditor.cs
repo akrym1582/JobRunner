@@ -29,7 +29,9 @@ public static partial class DefinitionEditor
         }).ToList(),
         DefinitionValidator.Edges(network).Select(e => new EditorEdge(e.From, e.To, e.Conditional)).ToList())).ToList(),
         editorVersion,
-        editorVersion >= 3 ? ProjectRoots(bundle) : null);
+        editorVersion >= 3 ? ProjectRoots(bundle) : null,
+        editorVersion >= 4 ? ProjectTiming(bundle, true) : null,
+        editorVersion >= 4 ? ProjectTiming(bundle, false) : null);
 
     /// <summary>元の文字コードで原文を表示します。</summary>
     /// <param name="sources">対象原文です。</param>
@@ -49,6 +51,11 @@ public static partial class DefinitionEditor
         }
 
         int editorVersion = draft.EditorVersion ?? 1;
+        if (editorVersion == 4)
+        {
+            return RenderTiming(bundle, draft);
+        }
+
         if (editorVersion == 3)
         {
             return RenderHierarchy(bundle, draft);
@@ -328,7 +335,7 @@ public static partial class DefinitionEditor
 
         public void Replace(int start, int end, string text) => replacements.Add((start, end, text));
 
-        public void SetValues(DefinitionSyntax syntax, string key, List<string> values, bool quoted, Func<string, string>? normalize = null)
+        public void SetValues(DefinitionSyntax syntax, string key, List<string> values, bool quoted, Func<string, string>? normalize = null, bool ordered = false)
         {
             normalize ??= value => value;
             var previous = syntax.Attributes.Where(a => a.Key == key).ToList();
@@ -337,9 +344,9 @@ public static partial class DefinitionEditor
                 return;
             }
 
-            if (key == "env")
+            if (key == "env" || ordered)
             {
-                // 同名環境変数は後勝ちなので、利用者が指定した順序を維持します。
+                // 環境変数の後勝ちと、予定・カレンダーの入力順序を維持します。
                 for (int i = 0; i < previous.Count; i++)
                 {
                     if (i >= values.Count)
@@ -348,14 +355,14 @@ public static partial class DefinitionEditor
                     }
                     else if (previous[i].Value != values[i])
                     {
-                        Replace(previous[i].ValueStart, previous[i].End, Quote(values[i]) + ";");
+                        Replace(previous[i].ValueStart, previous[i].End, (quoted ? Quote(values[i]) : values[i]) + ";");
                     }
                 }
 
                 if (values.Count > previous.Count)
                 {
                     int insert = previous.Count > 0 ? previous[^1].End : syntax.BodyStart;
-                    Replace(insert, insert, string.Concat(values.Skip(previous.Count).Select(value => Newline + "  env=" + Quote(value) + ";")) + Newline);
+                    Replace(insert, insert, string.Concat(values.Skip(previous.Count).Select(value => Newline + "  " + key + "=" + (quoted ? Quote(value) : value) + ";")) + Newline);
                 }
 
                 return;

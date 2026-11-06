@@ -12,16 +12,22 @@ public static partial class UiEndpoints
 {
     private static void MapEditor(RouteGroupBuilder group)
     {
-        group.MapGet("/definition-editor", async (string? definitionHash, StorageRepository storage, DefinitionService definitions, CancellationToken token) =>
+        group.MapGet("/definition-editor", async (string? definitionHash, StorageRepository storage, DefinitionService definitions, RunnerOptions options, CancellationToken token) =>
         {
             string hash = definitionHash ?? (await ActiveAsync(storage, token)).DefinitionHash;
             var bundle = await definitions.ReadSourcesAsync(hash, token);
-            return new EditorDocument(DefinitionEditor.Project(bundle), DefinitionEditor.Describe(bundle.Sources, bundle.Sources), DefinitionEditor.Containers(bundle));
+            return new EditorDocument(DefinitionEditor.Project(bundle, 4), DefinitionEditor.Describe(bundle.Sources, bundle.Sources), DefinitionEditor.Containers(bundle), options.TimeZone, options.ScheduleTimeMode);
         });
         group.MapPost("/definition-editor/preview", async (EditorDraft draft, DefinitionService definitions, CancellationToken token) =>
         {
             var bundle = await definitions.ReadSourcesAsync(draft.DefinitionHash, token);
             return CompileDraft(bundle, draft, definitions).Preview;
+        });
+        group.MapPost("/definition-editor/schedules", async (EditorScheduleRequest request, DefinitionService definitions, RunnerOptions options, CancellationToken token) =>
+        {
+            var bundle = await definitions.ReadSourcesAsync(request.Draft.DefinitionHash, token);
+            var compiled = definitions.Validate(DefinitionEditor.Render(bundle, request.Draft));
+            return DefinitionEditor.PreviewSchedule(compiled, request, options);
         });
         group.MapPost("/definition-editor/export", async (EditorDraft draft, DefinitionService definitions, CancellationToken token) =>
         {

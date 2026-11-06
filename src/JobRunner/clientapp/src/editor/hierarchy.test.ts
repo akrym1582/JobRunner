@@ -9,7 +9,12 @@ import {
 import { upgradeDraft } from "./model";
 const baseline: EditorDraft = {
   definitionHash: "fixed",
-  editorVersion: 3,
+  editorVersion: 4,
+  schedules: [
+    { id: "/root", attributes: { sd: ["0,ud"] } },
+    { id: "/root/child", attributes: {} },
+  ],
+  calendars: [],
   roots: [
     {
       node: {
@@ -99,4 +104,27 @@ describe("安定IDによるネット階層", () => {
     expect(networkNames(added).get(added.networks[0].path)).toBe("/team/new");
     expect(empty.networks).toEqual([]);
   });
+});
+
+it("版3の新規・改名・削除を維持し予定とカレンダーだけ補う", () => {
+  const old = structuredClone(baseline);
+  old.editorVersion = 3;
+  delete old.schedules;
+  delete old.calendars;
+  const renamed = updateNetworkNode(old, {
+    ...old.roots![0].node,
+    name: "renamed",
+  });
+  const deleted = removeHierarchyNode(renamed, "/root/child");
+  const added = addRoot(deleted, 0, "/", "newroot");
+  const migrated = upgradeDraft(added, baseline);
+  expect(migrated.roots).toEqual(added.roots);
+  expect(networkNames(migrated).get("/root")).toBe("/renamed");
+  expect(migrated.schedules!.map((s) => s.id)).toEqual(
+    migrated.networks.map((n) => n.path),
+  );
+  expect(migrated.schedules![1].attributes).toEqual({ sd: ["0,ud"] });
+  expect(migrated.calendars).toEqual(baseline.calendars);
+  expect(added.schedules).toBeUndefined();
+  expect(() => upgradeDraft(added, { ...baseline, schedules: null })).toThrow();
 });

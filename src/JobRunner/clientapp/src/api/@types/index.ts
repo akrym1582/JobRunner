@@ -30,6 +30,14 @@ export type Edge = {
   kind: string;
 }
 
+export type EditorAttributes = {
+  id: string;
+
+  attributes: {
+    [key: string]: string[];
+  };
+}
+
 export type EditorContainer = {
   sourceIndex: number;
   parentPath: string;
@@ -39,6 +47,8 @@ export type EditorDocument = {
   draft: EditorDraft;
   sources: EditorSource[];
   containers?: EditorContainer[] | null | undefined;
+  timeZone?: string | null | undefined;
+  scheduleTimeMode?: number | null | undefined;
 }
 
 export type EditorDraft = {
@@ -46,6 +56,8 @@ export type EditorDraft = {
   networks: EditorNetwork[];
   editorVersion?: number | null | undefined;
   roots?: EditorRoot[] | null | undefined;
+  schedules?: EditorAttributes[] | null | undefined;
+  calendars?: EditorAttributes[] | null | undefined;
 }
 
 export type EditorEdge = {
@@ -84,6 +96,19 @@ export type EditorRoot = {
   node: EditorNode;
   sourceIndex: number;
   parentPath: string;
+}
+
+export type EditorSchedulePreview = {
+  points: SchedulePoint[];
+  timeZone: string;
+}
+
+export type EditorScheduleRequest = {
+  draft: EditorDraft;
+  networkId: string;
+  anchor: string;
+  from: string;
+  until: string;
 }
 
 export type EditorSource = {
@@ -277,4 +302,10 @@ export type ProblemDetails = {
   status?: number | null | undefined;
   detail?: string | null | undefined;
   instance?: string | null | undefined;
+}
+
+export type SchedulePoint = {
+  rule?: number | undefined;
+  businessDate?: string | undefined;
+  due?: string | undefined;
 }

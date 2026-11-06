@@ -48,7 +48,7 @@ public sealed class DefinitionEditorApiTests
             var originalBundle = await new DefinitionService(scope.Repository, scope.Options).ReadSourcesAsync(document.Draft.DefinitionHash, CancellationToken.None);
             var before = await OperationalStateAsync(scope.Repository);
             var exact = await app.Client.GetFromJsonAsync<EditorDocument>("/api/jobrunner/ui/definition-editor?definitionHash=" + document.Draft.DefinitionHash);
-            Assert.Equal(3, exact!.Draft.EditorVersion);
+            Assert.Equal(4, exact!.Draft.EditorVersion);
             Assert.Equal("7", exact.Draft.Networks[0].Nodes.Single(n => n.Type == "jdj").Attributes["ejc"][0]);
             var legacy = DefinitionEditor.Project(originalBundle, 1) with { EditorVersion = null };
             var legacyPreview = await (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/preview", new { legacy.DefinitionHash, legacy.Networks })).Content.ReadFromJsonAsync<EditorPreview>();
@@ -101,11 +101,29 @@ public sealed class DefinitionEditorApiTests
             document.Draft.Networks.Add(new("new:root", [], []));
             net.Nodes.Add(new("new:nested", "nested", "rn", new(), 400, 48));
             document.Draft.Networks.Add(new("new:nested", [], []));
+            document.Draft.Schedules!.Add(new("new:root", new() { ["sd"] = ["0,ud"] }));
+            document.Draft.Schedules.Add(new("new:nested", new()));
             preview = await (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/preview", document.Draft)).Content.ReadFromJsonAsync<EditorPreview>();
             Assert.True(preview!.Valid);
             Assert.Contains(preview.Sources, s => s.Text.Contains("sd=0,ud;ha=y;", StringComparison.Ordinal));
             response = await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/export", document.Draft);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            document.Draft.Schedules[0].Attributes["sd"] = ["1,2026/11/6", "2,2026/11/7"];
+            document.Draft.Schedules[0].Attributes["st"] = ["1,09:00", "2,10:00"];
+            document.Draft.Schedules[0].Attributes["sh"] = ["1,no", "2,no"];
+            if (multiple)
+            {
+                document.Draft.Calendars![0].Attributes["cl"] = ["su", "2026/12/31"];
+            }
+
+            var trialRequest = new EditorScheduleRequest(document.Draft, net.Path, new(2026, 11, 6), new(2026, 11, 6), new(2026, 11, 8));
+            var trialResponse = await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/schedules", trialRequest);
+            Assert.Equal(HttpStatusCode.OK, trialResponse.StatusCode);
+            var trial = await trialResponse.Content.ReadFromJsonAsync<EditorSchedulePreview>();
+            Assert.Equal(2, trial!.Points.Count);
+            Assert.Equal(scope.Options.TimeZone, trial.TimeZone);
+            Assert.Equal(HttpStatusCode.BadRequest, (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/schedules", trialRequest with { NetworkId = "new:nested" })).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/export", document.Draft)).StatusCode);
             net.Edges.Add(new EditorEdge(net.Nodes[0].Id, net.Nodes[0].Id, false));
             preview = await (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/preview", document.Draft)).Content.ReadFromJsonAsync<EditorPreview>();
             Assert.False(preview!.Valid);

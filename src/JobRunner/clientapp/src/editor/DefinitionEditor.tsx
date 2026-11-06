@@ -21,6 +21,7 @@ import type {
 import { client, errorMessage } from "../client";
 import { EditorGraph } from "./EditorGraph";
 import { EditorProperties } from "./EditorProperties";
+import { TimingProperties } from "./TimingProperties";
 import { NetworkProperties } from "./NetworkProperties";
 import { networkNames, removeHierarchyNode, subtreeIds } from "./hierarchy";
 import {
@@ -44,7 +45,7 @@ import {
 import "./editor.css";
 
 async function upgradeSaved(saved: SavedDraft): Promise<SavedDraft> {
-  if (saved.draft.editorVersion === 3) return saved;
+  if (saved.draft.editorVersion === 4) return saved;
   const base = await client.ui.definition_editor.$get({
     query: { definitionHash: saved.draft.definitionHash },
   });
@@ -464,6 +465,14 @@ export function DefinitionEditor({
               onNavigate={onNavigate}
             />
           )}
+          {base && (
+            <TimingProperties
+              base={base}
+              draft={draft}
+              current={network.path}
+              onChange={update}
+            />
+          )}
           <div className="editor-toolbar">
             <div>
               <button
@@ -497,10 +506,10 @@ export function DefinitionEditor({
                 <option value="rjdj" disabled={(draft.editorVersion ?? 1) < 2}>
                   リカバリー判定
                 </option>
-                <option value="n" disabled={draft.editorVersion !== 3}>
+                <option value="n" disabled={(draft.editorVersion ?? 1) < 3}>
                   子ネット
                 </option>
-                <option value="rn" disabled={draft.editorVersion !== 3}>
+                <option value="rn" disabled={(draft.editorVersion ?? 1) < 3}>
                   リカバリーネット
                 </option>
               </select>
@@ -522,6 +531,11 @@ export function DefinitionEditor({
                       next.networks = [
                         ...next.networks,
                         { path: added.id, nodes: [], edges: [] },
+                      ];
+                    if (isNetwork(added.type) && draft.editorVersion === 4)
+                      next.schedules = [
+                        ...(draft.schedules ?? []),
+                        { id: added.id, attributes: {} },
                       ];
                     update(next);
                     setSelected(added.id);

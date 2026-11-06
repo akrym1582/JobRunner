@@ -199,7 +199,31 @@ test("子リカバリーネットを作成し先行へ接続する", async ({ pa
 
 test("全ネット削除後も空ファイルを出力せずルートを作り直せる", async ({
   page,
+  request,
 }) => {
+  // 共通定義のカレンダーグループに依存せず、空になる単一ネットを使います。
+  // 保存だけ行い、採用・登録は変更しません。
+  const imported = await request.post(api + "/definitions/import", {
+    data: [
+      {
+        mapping: {
+          kind: "Unit",
+          blobPath: "empty-file-test.ajs",
+          targetPath: "/",
+          encoding: "utf-8",
+        },
+        base64: Buffer.from("unit=削除対象;{ty=n;sd=0,ud;}").toString("base64"),
+      },
+    ],
+  });
+  expect(imported.ok()).toBeTruthy();
+  const { version } = await imported.json();
+  await page.route("**/ui/definition-editor", async (route) => {
+    const response = await request.get(
+      api + "/ui/definition-editor?definitionHash=" + version,
+    );
+    await route.fulfill({ response });
+  });
   await open(page);
   while (await page.getByLabel("編集ネット").locator("option").count()) {
     page.once("dialog", (d) => d.accept());

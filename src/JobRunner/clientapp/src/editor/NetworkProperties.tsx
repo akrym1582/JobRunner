@@ -23,7 +23,7 @@ export function NetworkProperties({
 }) {
   const [target, setTarget] = useState(0);
   const [name, setName] = useState("新規ネット");
-  if (draft.editorVersion !== 3) return null;
+  if ((draft.editorVersion ?? 1) < 3) return null;
   const node = networkNode(draft, current);
   const containers = base.containers ?? [];
   return (

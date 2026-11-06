@@ -6,16 +6,19 @@ export const isNetwork = (type: string) => ["n", "rn"].includes(type);
 export const canEdit = (type: string, version: number) =>
   isJob(type) ||
   (version >= 2 && isJudgment(type)) ||
-  (version === 3 && isNetwork(type));
+  (version >= 3 && version <= 4 && isNetwork(type));
 
 export function upgradeDraft(
   draft: EditorDraft,
   baseline: EditorDraft,
 ): EditorDraft {
   if (
-    ![1, 2].includes(draft.editorVersion ?? 1) ||
-    baseline.editorVersion !== 3 ||
+    ![1, 2, 3].includes(draft.editorVersion ?? 1) ||
+    baseline.editorVersion !== 4 ||
     !baseline.roots ||
+    !baseline.schedules ||
+    !baseline.calendars ||
+    (draft.editorVersion === 3 && !draft.roots) ||
     draft.definitionHash !== baseline.definitionHash
   )
     throw new Error("下書きの形式または元版が一致しません。");
@@ -24,12 +27,25 @@ export function upgradeDraft(
   );
   return {
     ...draft,
-    editorVersion: 3,
-    roots: structuredClone(baseline.roots),
+    editorVersion: 4,
+    roots: structuredClone(
+      draft.editorVersion === 3 ? draft.roots : baseline.roots,
+    ),
+    calendars: structuredClone(baseline.calendars ?? []),
+    schedules: draft.networks.map((network) => {
+      const original = baseline.schedules?.find((s) => s.id === network.path);
+      const root = draft.roots?.some((r) => r.node.id === network.path);
+      if (!original && !network.path.startsWith("new:"))
+        throw new Error("元版の予定属性を確認できません。");
+      return original
+        ? structuredClone(original)
+        : { id: network.path, attributes: root ? { sd: ["0,ud"] } : {} };
+    }),
     networks: draft.networks.map((n) => ({
       ...n,
       nodes: n.nodes.map((node) => {
-        if (!isJudgment(node.type) || draft.editorVersion === 2) return node;
+        if (!isJudgment(node.type) || (draft.editorVersion ?? 1) >= 2)
+          return node;
         const original = originals.get(node.id);
         if (!original || original.type !== node.type)
           throw new Error("元版の判定ジョブを確認できません。");

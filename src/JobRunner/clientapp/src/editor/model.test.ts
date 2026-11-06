@@ -13,7 +13,9 @@ describe("JP1の100列・100行グリッド", () => {
 describe("判定属性がない旧下書き", () => {
   const baseline: EditorDraft = {
     definitionHash: "old-version",
-    editorVersion: 3,
+    editorVersion: 4,
+    schedules: [{ id: "/net", attributes: { sd: ["0,ud"] } }],
+    calendars: [],
     roots: [
       {
         node: {
@@ -69,7 +71,7 @@ describe("判定属性がない旧下書き", () => {
       { from: "/net/a", to: "/net/judge", conditional: false },
     ];
     const upgraded = upgradeDraft(old, baseline);
-    expect(upgraded.editorVersion).toBe(3);
+    expect(upgraded.editorVersion).toBe(4);
     expect(upgraded.networks[0].nodes[0].attributes.te).toEqual(["edited"]);
     expect(upgraded.networks[0].nodes[1].attributes).toEqual(
       baseline.networks[0].nodes[1].attributes,
@@ -81,7 +83,7 @@ describe("判定属性がない旧下書き", () => {
       upgradeDraft(old, { ...baseline, definitionHash: "active-new-version" }),
     ).toThrow();
     expect(() =>
-      upgradeDraft({ ...old, editorVersion: 4 }, baseline),
+      upgradeDraft({ ...old, editorVersion: 5 }, baseline),
     ).toThrow();
   });
   it("判定とリカバリー判定にコマンド属性を混入しない", () => {

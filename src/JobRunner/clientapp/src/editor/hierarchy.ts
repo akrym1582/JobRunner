@@ -59,6 +59,7 @@ export function removeHierarchyNode(
   return {
     ...draft,
     roots: draft.roots?.filter((r) => !removed.has(r.node.id)),
+    schedules: draft.schedules?.filter((s) => !removed.has(s.id)),
     networks: draft.networks
       .filter((n) => !removed.has(n.path))
       .map((n) => removeNode(n, id)),
@@ -83,5 +84,9 @@ export function addRoot(
       },
     ],
     networks: [...draft.networks, { path: id, nodes: [], edges: [] }],
+    schedules:
+      draft.editorVersion === 4
+        ? [...(draft.schedules ?? []), { id, attributes: { sd: ["0,ud"] } }]
+        : draft.schedules,
   };
 }

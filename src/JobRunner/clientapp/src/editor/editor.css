@@ -426,3 +426,67 @@
 .editor-workspace[hidden] {
   display: none;
 }
+
+.editor-timing {
+  margin: 12px 0;
+  padding: 16px;
+  border: 1px solid #d8e2ef;
+  border-radius: 12px;
+  background: white;
+}
+.editor-timing summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.editor-timing h3 {
+  margin: 20px 0 12px;
+}
+.editor-timing p {
+  font-size: 13px;
+  line-height: 1.7;
+}
+.editor-timing-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+}
+.editor-timing-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.editor-timing-field label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+.editor-timing-field .editor-timing-toggle {
+  flex-direction: row;
+  align-items: center;
+}
+.editor-timing-toggle input {
+  width: auto;
+}
+.editor-timing-field small {
+  color: #64748b;
+  overflow-wrap: anywhere;
+}
+.editor-timing textarea {
+  width: 100%;
+  resize: vertical;
+}
+.editor-schedule-preview {
+  margin: 20px 0;
+  padding: 16px;
+  background: #f5f8fc;
+  border-radius: 8px;
+}
+.editor-schedule-preview table {
+  width: 100%;
+  font-size: 13px;
+  text-align: left;
+}

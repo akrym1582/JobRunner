@@ -90,7 +90,8 @@ unit=後続ジョブ;{ty=j;te="true";}}
 unit=判定検証;{ty=n;sd=0,ud;sz=4*1;el=先行,j,+80 +48;el=既存判定,jdj,+240 +48;el=従属,j,+400 +48;ar=(f=先行,t=既存判定);ar=(f=既存判定,t=従属,con);
 unit=先行;{ty=j;te="true";wth=0;}
 unit=既存判定,0000,owner,group;{ty=jdj;cm="残す判定";ej=ri;ejl=1;ejh=9;ejm=gt;eju=le;ha=n;}
-unit=従属;{ty=j;te="true";}}`;
+unit=従属;{ty=j;te="true";}}
+unit=運用暦;{ty=g;stt=06:00;cl=sa;cl=su;unit=継承暦;{ty=g;}}`;
 await source
   .getBlockBlobClient("jobs")
   .upload(definition, Buffer.byteLength(definition));

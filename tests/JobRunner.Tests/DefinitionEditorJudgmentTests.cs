@@ -183,7 +183,7 @@ public sealed class DefinitionEditorJudgmentTests
         Assert.Equal("gt", parsed.Units[0].Children[1].Get("ejm"));
         draft.Networks[0].Nodes[1].Attributes["ej"] = ["eq"];
         Assert.Throws<ArgumentException>(() => DefinitionEditor.Render(bundle, draft));
-        Assert.Throws<ArgumentException>(() => DefinitionEditor.Render(bundle, draft with { EditorVersion = 4 }));
+        Assert.Throws<ArgumentException>(() => DefinitionEditor.Render(bundle, draft with { EditorVersion = 5 }));
     }
 
     /// <summary>範囲外値、成立しない範囲、構文注入と種別外属性を拒否します。</summary>
