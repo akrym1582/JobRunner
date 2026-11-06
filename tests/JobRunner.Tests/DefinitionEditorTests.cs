@@ -178,6 +178,42 @@ public sealed class DefinitionEditorTests
         Assert.Equal((16000, 10000), DefinitionLayout.Read(parsed)["/net/changed"]);
     }
 
+    /// <summary>合法な端の座標はszのアイコン数上限とは別に保持します。</summary>
+    /// <param name="x">水平座標です。</param>
+    /// <param name="y">垂直座標です。</param>
+    /// <param name="size">拡張後のアイコン数です。</param>
+    [Theory]
+    [InlineData(16000, 10000, "100*100")]
+    [InlineData(15920, 9552, "100*100")]
+    [InlineData(0, 0, "2*1")]
+    [InlineData(16000, 48, "100*1")]
+    [InlineData(80, 10000, "2*100")]
+    public void MoveAcceptsCoordinateBoundariesWithoutOverflowingSize(int x, int y, string size)
+    {
+        var (service, bundle) = Create(Original);
+        var draft = DefinitionEditor.Project(bundle);
+        draft.Networks[0].Nodes[0] = draft.Networks[0].Nodes[0] with { X = x, Y = y };
+        var parsed = service.Validate(DefinitionEditor.Render(bundle, draft)).Units[0];
+        Assert.Equal((x, y), DefinitionLayout.Read(parsed)["/net/a"]);
+        Assert.Equal(size, parsed.Get("sz"));
+    }
+
+    /// <summary>szの上限への丸めで不正な座標を受け入れません。</summary>
+    /// <param name="x">水平座標です。</param>
+    /// <param name="y">垂直座標です。</param>
+    [Theory]
+    [InlineData(-1, 48)]
+    [InlineData(16001, 48)]
+    [InlineData(80, -1)]
+    [InlineData(80, 10001)]
+    public void MoveRejectsCoordinatesOutsideBoundaries(int x, int y)
+    {
+        var (_, bundle) = Create(Original);
+        var draft = DefinitionEditor.Project(bundle);
+        draft.Networks[0].Nodes[0] = draft.Networks[0].Nodes[0] with { X = x, Y = y };
+        Assert.Throws<ArgumentException>(() => DefinitionEditor.Render(bundle, draft));
+    }
+
     private static (DefinitionService Service, DefinitionBundle Bundle) Create(string text, string encoding = "utf-8", bool bom = false, bool validate = true)
     {
         var options = new RunnerOptions();

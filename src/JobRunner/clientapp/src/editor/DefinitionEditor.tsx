@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import useAspidaSWR from "@aspida/swr";
 import {
   CheckCircle2,
@@ -32,7 +32,12 @@ import {
   undo,
   type History,
 } from "./model";
-import { readDraft, writeDraft } from "./storage";
+import {
+  DraftConflictError,
+  readDraft,
+  writeDraft,
+  type SavedDraft,
+} from "./storage";
 import "./editor.css";
 
 export function DefinitionEditor({
@@ -54,6 +59,7 @@ export function DefinitionEditor({
   const [saving, setSaving] = useState("");
   const [saveError, setSaveError] = useState("");
   const [saveAllowed, setSaveAllowed] = useState(true);
+  const [conflicted, setConflicted] = useState(false);
   const [selected, setSelected] = useState("");
   const [kind, setKind] = useState("j");
   const [connecting, setConnecting] = useState(false);
@@ -66,6 +72,10 @@ export function DefinitionEditor({
   const [message, setMessage] = useState("");
   const [loadError, setLoadError] = useState("");
   const revision = useRef(0);
+  const savedRevision = useRef<string | null>(null);
+  const savedContent = useRef("");
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const conflict = useRef(false);
   const draft = history?.present;
   const network =
     draft?.networks.find((n) => n.path === path) ?? draft?.networks[0];
@@ -73,12 +83,45 @@ export function DefinitionEditor({
   const changed =
     !!draft && JSON.stringify(base?.draft) !== JSON.stringify(draft);
 
+  const persist = useCallback(
+    (value: SavedDraft, compareEvenIfUnchanged = false) => {
+      const content = JSON.stringify({
+        version: 1,
+        base: value.base,
+        draft: value.draft,
+      });
+      // 同じタブの連続入力は順番に保存し、成功した版を次の比較に使います。
+      const pending = saveQueue.current.then(async () => {
+        if (conflict.current) throw new DraftConflictError();
+        if (!compareEvenIfUnchanged && content === savedContent.current) return;
+        savedRevision.current = await writeDraft(value, savedRevision.current);
+        savedContent.current = content;
+      });
+      saveQueue.current = pending.catch((error) => {
+        if (error instanceof DraftConflictError) {
+          conflict.current = true;
+          setConflicted(true);
+        }
+        setSaving("");
+        setSaveError(`自動保存できません: ${String(error)}`);
+      });
+      return pending;
+    },
+    [],
+  );
+
   useEffect(() => {
     let current = true;
     void readDraft()
       .then((saved) => {
         if (!current) return;
         if (saved) {
+          savedRevision.current = saved.revision ?? null;
+          savedContent.current = JSON.stringify({
+            version: 1,
+            base: saved.base,
+            draft: saved.draft,
+          });
           setBase(saved.base);
           setHistory({ past: [], present: saved.draft, future: [] });
         }
@@ -115,23 +158,18 @@ export function DefinitionEditor({
     if (!base || !draft || !saveAllowed) return;
     let current = true;
     setSaving("下書きを保存中…");
-    void writeDraft({ version: 1, base, draft })
+    void persist({ version: 1, base, draft })
       .then(() => {
         if (current) {
           setSaving("ブラウザーに保存済み");
           setSaveError("");
         }
       })
-      .catch((e) => {
-        if (current) {
-          setSaving("");
-          setSaveError(`自動保存できません: ${String(e)}`);
-        }
-      });
+      .catch(() => {});
     return () => {
       current = false;
     };
-  }, [base, draft, saveAllowed]);
+  }, [base, draft, saveAllowed, persist]);
   useEffect(() => {
     setSelected("");
     setConnectFrom("");
@@ -236,10 +274,22 @@ export function DefinitionEditor({
       )
     )
       return;
+    const started = revision.current;
     setBusy(true);
     try {
+      if (!saveAllowed)
+        throw new Error(
+          "保存領域を確認できないため破棄できません。保存済み下書きを読み直してください。",
+        );
       const current = await source.mutate();
       if (!current) throw new Error("現在の定義を取得できません。");
+      if (started !== revision.current) {
+        setMessage("再取得中に編集されたため、下書きの破棄を中止しました。");
+        return;
+      }
+      // 未編集のタブからの破棄でも、別タブの保存版との比較は省略しません。
+      await persist({ version: 1, base: current, draft: current.draft }, true);
+      if (started !== revision.current) return;
       revision.current++;
       setBase(current);
       setHistory({ past: [], present: current.draft, future: [] });
@@ -247,6 +297,46 @@ export function DefinitionEditor({
       setShowPreview(false);
       setSaveAllowed(true);
       setSelected("");
+    } catch (e) {
+      setMessage(await errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function reloadSaved() {
+    if (
+      !window.confirm(
+        "このタブの編集を破棄して、保存済み下書きを読み直しますか？必要な編集は先にダウンロードしてください。",
+      )
+    )
+      return;
+    const started = revision.current;
+    setBusy(true);
+    try {
+      await saveQueue.current;
+      const saved = await readDraft();
+      if (started !== revision.current) {
+        setMessage("読み直し中に編集されたため、現在の編集を保持しました。");
+        return;
+      }
+      if (!saved) throw new Error("保存済み下書きがありません。");
+      savedRevision.current = saved.revision ?? null;
+      savedContent.current = JSON.stringify({
+        version: 1,
+        base: saved.base,
+        draft: saved.draft,
+      });
+      conflict.current = false;
+      setConflicted(false);
+      revision.current++;
+      setBase(saved.base);
+      setHistory({ past: [], present: saved.draft, future: [] });
+      setPreview(undefined);
+      setShowPreview(false);
+      setSelected("");
+      setSaveError("");
+      setSaveAllowed(true);
+      setMessage("");
     } catch (e) {
       setMessage(await errorMessage(e));
     } finally {
@@ -279,21 +369,27 @@ export function DefinitionEditor({
       {saveError && (
         <div className="alert" role="alert">
           {saveError}
-          <button
-            onClick={() => {
-              if (base && draft) {
-                setSaveAllowed(true);
-                void writeDraft({ version: 1, base, draft })
-                  .then(() => {
-                    setSaveError("");
-                    setSaving("ブラウザーに保存済み");
-                  })
-                  .catch((e) => setSaveError(String(e)));
-              }
-            }}
-          >
-            保存を再試行
-          </button>
+          {conflicted || !saveAllowed ? (
+            <button disabled={busy} onClick={() => void reloadSaved()}>
+              保存済み下書きを読み直す
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                if (base && draft) {
+                  void persist({ version: 1, base, draft })
+                    .then(() => {
+                      setSaveAllowed(true);
+                      setSaveError("");
+                      setSaving("ブラウザーに保存済み");
+                    })
+                    .catch(() => {});
+                }
+              }}
+            >
+              保存を再試行
+            </button>
+          )}
         </div>
       )}
       {draft && activeHash && draft.definitionHash !== activeHash && (

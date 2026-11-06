@@ -250,3 +250,263 @@ test("ブラウザー保存失敗を隠さず表示する", async ({ page }) => 
     .fill("printf edited");
   await expect(page.getByRole("alert")).toContainText("quota exceeded");
 });
+
+test("別タブの保存を古い下書きで上書きしない", async ({ page, context }) => {
+  await openEditor(page);
+  await expect(
+    page.getByText("ブラウザーに保存済み", { exact: true }),
+  ).toBeVisible();
+  const other = await context.newPage();
+  await openEditor(other);
+  for (const tab of [page, other])
+    await tab
+      .getByRole("button", { name: "編集 在庫チェック", exact: true })
+      .click();
+  await page
+    .getByRole("textbox", { name: "コマンド", exact: true })
+    .fill("printf first-tab");
+  await expect(
+    page.getByText("ブラウザーに保存済み", { exact: true }),
+  ).toBeVisible();
+  await other
+    .getByRole("textbox", { name: "コマンド", exact: true })
+    .fill("printf stale-tab");
+  await expect(other.getByRole("alert")).toContainText("別のタブ");
+  await expect(
+    other.getByRole("textbox", { name: "コマンド", exact: true }),
+  ).toHaveValue("printf stale-tab");
+  await page.reload();
+  await page.getByRole("button", { name: "定義編集", exact: true }).click();
+  await page
+    .getByRole("button", { name: "編集 在庫チェック", exact: true })
+    .click();
+  await expect(
+    page.getByRole("textbox", { name: "コマンド", exact: true }),
+  ).toHaveValue("printf first-tab");
+  // 競合後の破棄も、他方の保存を上書きしてはいけません。
+  other.once("dialog", (dialog) => dialog.accept());
+  await other
+    .getByRole("button", { name: "下書きを破棄", exact: true })
+    .click();
+  await expect(
+    other.getByRole("button", { name: "下書きを破棄", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    other.getByRole("textbox", { name: "コマンド", exact: true }),
+  ).toHaveValue("printf stale-tab");
+  await expect(
+    other.getByRole("button", { name: "保存を再試行", exact: true }),
+  ).toHaveCount(0);
+  other.once("dialog", (dialog) => dialog.accept());
+  await other
+    .getByRole("button", { name: "保存済み下書きを読み直す", exact: true })
+    .click();
+  await other
+    .getByRole("button", { name: "編集 在庫チェック", exact: true })
+    .click();
+  await expect(
+    other.getByRole("textbox", { name: "コマンド", exact: true }),
+  ).toHaveValue("printf first-tab");
+  await other
+    .getByRole("textbox", { name: "コマンド", exact: true })
+    .fill("printf resolved");
+  await expect(
+    other.getByText("ブラウザーに保存済み", { exact: true }),
+  ).toBeVisible();
+  await other.reload();
+  await other.getByRole("button", { name: "定義編集", exact: true }).click();
+  await other
+    .getByRole("button", { name: "編集 在庫チェック", exact: true })
+    .click();
+  await expect(
+    other.getByRole("textbox", { name: "コマンド", exact: true }),
+  ).toHaveValue("printf resolved");
+});
+
+test("破棄の遅い再取得が新しい編集を消さない", async ({ page }) => {
+  await openEditor(page);
+  await page
+    .getByRole("button", { name: "編集 在庫チェック", exact: true })
+    .click();
+  await page
+    .getByRole("textbox", { name: "コマンド", exact: true })
+    .fill("printf before-discard");
+  await expect(
+    page.getByText("ブラウザーに保存済み", { exact: true }),
+  ).toBeVisible();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let arrived!: () => void;
+  const received = new Promise<void>((resolve) => {
+    arrived = resolve;
+  });
+  await page.route("**/ui/definition-editor", async (route) => {
+    const response = await route.fetch();
+    arrived();
+    await gate;
+    await route.fulfill({ response });
+  });
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "下書きを破棄", exact: true }).click();
+  await received;
+  await page
+    .getByRole("textbox", { name: "コマンド", exact: true })
+    .fill("printf after-discard-start");
+  release();
+  await expect(
+    page.getByRole("button", { name: "下書きを破棄", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    page.getByRole("textbox", { name: "コマンド", exact: true }),
+  ).toHaveValue("printf after-discard-start");
+  await expect(
+    page.getByText("ブラウザーに保存済み", { exact: true }),
+  ).toBeVisible();
+  await page.unroute("**/ui/definition-editor");
+  await page.reload();
+  await page.getByRole("button", { name: "定義編集", exact: true }).click();
+  await page
+    .getByRole("button", { name: "編集 在庫チェック", exact: true })
+    .click();
+  await expect(
+    page.getByRole("textbox", { name: "コマンド", exact: true }),
+  ).toHaveValue("printf after-discard-start");
+});
+
+test("旧形式の下書きを読み、連続編集と座標上限を保存・出力できる", async ({
+  page,
+  request,
+}) => {
+  await page.goto("/");
+  const base = await (await request.get(api + "/ui/definition-editor")).json();
+  await page.evaluate(async (base) => {
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open("jobrunner-definition-editor", 1);
+      request.onupgradeneeded = () =>
+        request.result.createObjectStore("drafts");
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const db = request.result;
+        // 旧版と同じ接続終了処理を持つタブが残っている状態から更新します。
+        db.onversionchange = () => db.close();
+        const tx = db.transaction("drafts", "readwrite");
+        const draft = structuredClone(base.draft);
+        const node = draft.networks
+          .flatMap(
+            (n: {
+              nodes: { name: string; attributes: Record<string, string[]> }[];
+            }) => n.nodes,
+          )
+          .find((n: { name: string }) => n.name === "在庫チェック");
+        node.attributes.te = ["printf legacy"];
+        tx.objectStore("drafts").put({ version: 1, base, draft }, "current");
+        tx.oncomplete = () => resolve();
+        tx.onabort = () => {
+          db.close();
+          reject(tx.error);
+        };
+      };
+    });
+  }, base);
+  await page.getByRole("button", { name: "定義編集", exact: true }).click();
+  await page
+    .getByRole("button", { name: "編集 在庫チェック", exact: true })
+    .click();
+  // 旧版タブが再接続して無条件保存することも防ぎます。
+  expect(
+    await page.evaluate(
+      () =>
+        new Promise<string>((resolve) => {
+          const request = indexedDB.open("jobrunner-definition-editor", 1);
+          request.onerror = () => resolve(request.error?.name ?? "unknown");
+          request.onsuccess = () => {
+            request.result.close();
+            resolve("opened");
+          };
+        }),
+    ),
+  ).toBe("VersionError");
+  const command = page.getByRole("textbox", { name: "コマンド", exact: true });
+  await expect(command).toHaveValue("printf legacy");
+  await command.fill("");
+  await command.pressSequentially("printf sequential");
+  await page.getByLabel("水平 H").fill("16000");
+  await page.getByLabel("垂直 V").fill("10000");
+  await expect(
+    page.getByText("ブラウザーに保存済み", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page.reload();
+  await page.getByRole("button", { name: "定義編集", exact: true }).click();
+  // 端の座標に移動したノードは図の外にあるので一覧から選びます。
+  await page
+    .locator(".editor-unit-list")
+    .getByRole("button", { name: /在庫チェック/ })
+    .click();
+  await expect(command).toHaveValue("printf sequential");
+  await expect(page.getByLabel("水平 H")).toHaveValue("16000");
+  await expect(page.getByLabel("垂直 V")).toHaveValue("10000");
+  await page
+    .getByRole("button", { name: "検証・プレビュー", exact: true })
+    .click();
+  await expect(page.getByRole("heading", { name: /検証OK/ })).toBeVisible();
+  await expect(page.getByLabel("変更後の原文")).toContainText("+16000 +10000");
+  await expect(page.getByLabel("変更後の原文")).toContainText("sz=100*100;");
+});
+
+test("破棄も保存版を比較し、読み直した後は通常どおり破棄できる", async ({
+  page,
+  context,
+}) => {
+  await openEditor(page);
+  await expect(
+    page.getByText("ブラウザーに保存済み", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "編集 在庫チェック", exact: true })
+    .click();
+  const original = await page
+    .getByRole("textbox", { name: "コマンド", exact: true })
+    .inputValue();
+  const other = await context.newPage();
+  await openEditor(other);
+  await page
+    .getByRole("textbox", { name: "コマンド", exact: true })
+    .fill("printf newer-tab");
+  await expect(
+    page.getByText("ブラウザーに保存済み", { exact: true }),
+  ).toBeVisible();
+  // ローカル編集をしていない古いタブから破棄を試みます。
+  other.once("dialog", (dialog) => dialog.accept());
+  await other
+    .getByRole("button", { name: "下書きを破棄", exact: true })
+    .click();
+  await expect(other.getByRole("alert")).toContainText("別のタブ");
+  other.once("dialog", (dialog) => dialog.accept());
+  await other
+    .getByRole("button", { name: "保存済み下書きを読み直す", exact: true })
+    .click();
+  await other
+    .getByRole("button", { name: "編集 在庫チェック", exact: true })
+    .click();
+  await expect(
+    other.getByRole("textbox", { name: "コマンド", exact: true }),
+  ).toHaveValue("printf newer-tab");
+  other.once("dialog", (dialog) => dialog.accept());
+  await other
+    .getByRole("button", { name: "下書きを破棄", exact: true })
+    .click();
+  await expect(
+    other.getByRole("button", { name: "下書きを破棄", exact: true }),
+  ).toBeEnabled();
+  await other.reload();
+  await other.getByRole("button", { name: "定義編集", exact: true }).click();
+  await other
+    .getByRole("button", { name: "編集 在庫チェック", exact: true })
+    .click();
+  await expect(
+    other.getByRole("textbox", { name: "コマンド", exact: true }),
+  ).toHaveValue(original);
+});

@@ -190,17 +190,13 @@ public static class DefinitionEditor
             var movedNodes = network.Nodes.Where(node => !oldNodes.TryGetValue(node.Id, out var old) || node.X != old.X || node.Y != old.Y).ToList();
             if (movedNodes.Count > 0)
             {
-                int columns = Math.Max(1, movedNodes.Select(n => ((n.X ?? 0) / 160) + 1).DefaultIfEmpty(1).Max());
-                int rows = Math.Max(1, movedNodes.Select(n => ((n.Y ?? 0) / 96) + 1).DefaultIfEmpty(1).Max());
+                // elの座標上限とszのアイコン数上限は別です。非グリッド座標は保持し、表示領域だけを100まで広げます。
+                int columns = Math.Clamp(movedNodes.Select(n => ((n.X ?? 0) / 160) + 1).Max(), 1, 100);
+                int rows = Math.Clamp(movedNodes.Select(n => ((n.Y ?? 0) / 96) + 1).Max(), 1, 100);
                 string size = units[network.Path].Get("sz", "10*8");
                 var match = Regex.Match(size, @"^(\d+)[*x＊](\d+)$", RegexOptions.CultureInvariant);
                 if (match.Success && int.TryParse(match.Groups[1].Value, out int oldColumns) && int.TryParse(match.Groups[2].Value, out int oldRows) && (columns > oldColumns || rows > oldRows))
                 {
-                    if (columns > 100 || rows > 100)
-                    {
-                        throw new ArgumentException("配置は100列・100行以内にしてください。");
-                    }
-
                     document.SetValues(syntax, "sz", [$"{Math.Max(columns, oldColumns)}*{Math.Max(rows, oldRows)}"], false);
                 }
             }
