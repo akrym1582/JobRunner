@@ -15,6 +15,40 @@ public sealed class DefinitionEditorLocalTests
 {
     private const string Text = "/* 原文 */\r\nunit=net,0000,owner,team;{ty=n;sd=0,ud;unit=job;{ty=j;te=\"true\";}}\r\n";
 
+    /// <summary>CP932の非可逆な別符号は入力で拒否し、受理したコメントのバイトは保ちます。</summary>
+    /// <param name="version">下書きの版です。</param>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public void RejectsLossyCp932AndPreservesAcceptedCommentBytes(int version)
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        var encoding = Encoding.GetEncoding(932, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
+        byte[] alternate = [0x87, 0x90];
+        byte[] canonical = [0x81, 0xe0];
+
+        // 既定のbest-fitでは正規化されますが、本番の例外fallbackでは入力時に拒否されます。
+        var permissive = Encoding.GetEncoding(932);
+        Assert.Equal("≒", permissive.GetString(alternate));
+        Assert.Equal(canonical, permissive.GetBytes(permissive.GetString(alternate)));
+        Assert.Throws<DecoderFallbackException>(() => encoding.GetString(alternate));
+        Assert.Equal("≒", encoding.GetString(canonical));
+        byte[] Before(string command, byte[] comment) => [.. encoding.GetBytes("/* "), .. comment, .. encoding.GetBytes(" */\r\nunit=net;{ty=n;sd=0,ud;unit=job;{ty=j;cm=\""), .. comment, .. encoding.GetBytes("\";te=\"" + command + "\";}}\r\n")];
+        var source = new SourceEvidence { Mapping = new() { BlobPath = "jobs.ajs", Encoding = "shift_jis" }, Base64 = Convert.ToBase64String(Before("true", alternate)) };
+        Assert.Throws<DecoderFallbackException>(() => Read([source]));
+        Assert.Throws<DecoderFallbackException>(() => Service().Validate([source]));
+        source.Base64 = Convert.ToBase64String(Before("true", canonical));
+        var bundle = Read([source]);
+        var draft = DefinitionEditor.Project(bundle, version);
+        Assert.Equal(source.Base64, Assert.Single(DefinitionEditor.Render(bundle, draft)).Base64);
+        draft.Networks[0].Nodes[0].Attributes["te"] = ["echo changed"];
+        var rendered = Assert.Single(DefinitionEditor.Render(bundle, draft));
+        Assert.Equal(Before("echo changed", canonical), Convert.FromBase64String(rendered.Base64));
+        Assert.Equal("≒", Read([rendered]).Units.Flatten().Single(u => u.Name == "job").Get("cm"));
+    }
+
     /// <summary>指定文字コードとBOMの元バイトを保ちます。</summary>
     /// <param name="encoding">文字コードです。</param>
     /// <param name="bom">BOMの有無です。</param>
