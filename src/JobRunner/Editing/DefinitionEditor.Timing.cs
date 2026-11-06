@@ -17,8 +17,9 @@ public static partial class DefinitionEditor
     /// <param name="compiled">下書きを反映し検証した定義です。</param>
     /// <param name="request">試算条件です。</param>
     /// <param name="options">時間制と時間帯です。</param>
+    /// <param name="cancellationToken">要求の取消通知です。</param>
     /// <returns>ルートの候補です。ネストを独立ルートとして計算しません。</returns>
-    public static EditorSchedulePreview PreviewSchedule(DefinitionBundle compiled, EditorScheduleRequest request, RunnerOptions options)
+    public static EditorSchedulePreview PreviewSchedule(DefinitionBundle compiled, EditorScheduleRequest request, RunnerOptions options, CancellationToken cancellationToken = default)
     {
         if (request.Draft.EditorVersion is not (4 or 5 or 6 or 7 or 8) || request.Anchor.Year is < 1994 or > 2036 || request.From.Year is < 1994 or > 2036
             || request.Until > new DateOnly(2037, 1, 1) || request.Until <= request.From || request.Until.DayNumber - request.From.DayNumber > 366)
@@ -37,7 +38,19 @@ public static partial class DefinitionEditor
             throw new ArgumentException("下書き試算はルートネットだけが対象です。ネストには上位世代の条件が必要です。");
         }
 
-        var points = ScheduleCalculator.Calculate(root, all, new Registration { Anchor = request.Anchor }, request.From, request.Until, options).OrderBy(p => p.Due).Take(2001).ToList();
+        // 結果上限の前にも全ルールの計算が必要です。下書きの試算だけに時間上限を設けます。
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(5));
+        List<SchedulePoint> points;
+        try
+        {
+            points = ScheduleCalculator.Calculate(root, all, new Registration { Anchor = request.Anchor }, request.From, request.Until, options, deadline.Token).OrderBy(p => p.Due).Take(2001).ToList();
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new ArgumentException("下書き試算の計算時間が5秒を超えました。期間またはルール数を減らしてください。");
+        }
+
         if (points.Count > 2000)
         {
             throw new ArgumentException("下書き試算は2000候補までです。期間を短くしてください。");

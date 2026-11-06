@@ -192,6 +192,42 @@ public sealed class DefinitionEditorTimingTests
         Assert.Throws<ArgumentException>(() => DefinitionEditor.PreviewSchedule(compiled, new(draft, "/g/n", new(2026, 1, 1), new(2026, 1, 1), new(2027, 1, 1)), new()));
     }
 
+    /// <summary>要求取消を試算上限エラーへ読み替えず、呼出元へ返します。</summary>
+    [Fact]
+    public void PreviewHonorsRequestCancellation()
+    {
+        var (_, bundle) = Create();
+        var draft = DefinitionEditor.Project(bundle, 8);
+        var request = new EditorScheduleRequest(draft, "/g/n", new(2026, 1, 1), new(2026, 1, 1), new(2027, 1, 1));
+        Assert.Throws<OperationCanceledException>(() => DefinitionEditor.PreviewSchedule(bundle, request, new RunnerOptions(), new CancellationToken(true)));
+    }
+
+    /// <summary>長期基準日・複数ルールでも、重複優先と候補上限を集約後に適用します。</summary>
+    /// <param name="sameTime">同時刻ルールを統合するかどうかです。</param>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void WideOldAnchorPreviewKeepsDeduplicationAndResultLimit(bool sameTime)
+    {
+        string rules = string.Join(string.Empty, Enumerable.Range(1, 8).Select(i => $"sd={i},*1;cy={i},(1,d);st={i},12:{(sameTime ? 0 : i):00};"));
+        var options = new RunnerOptions();
+        var service = new DefinitionService(new StorageRepository(options), options);
+        var bundle = service.Validate([new SourceEvidence { Mapping = new() { BlobPath = "wide.ajs" }, Base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes($"unit=g;{{ty=g;cl=sa;cl=su;unit=n;{{ty=n;{rules}}}}}")) }]);
+        var draft = DefinitionEditor.Project(bundle, 8);
+        var request = new EditorScheduleRequest(draft, "/g/n", new(1994, 1, 1), new(2026, 1, 1), new(2027, 1, 1));
+        if (sameTime)
+        {
+            var points = DefinitionEditor.PreviewSchedule(bundle, request, options).Points;
+            Assert.Equal(261, points.Count);
+            Assert.All(points, point => Assert.Equal(1, point.Rule));
+            Assert.Equal(points.OrderBy(p => p.Due), points);
+        }
+        else
+        {
+            Assert.Contains("2000候補", Assert.Throws<ArgumentException>(() => DefinitionEditor.PreviewSchedule(bundle, request, options)).Message, StringComparison.Ordinal);
+        }
+    }
+
     private static (DefinitionService Service, DefinitionBundle Bundle) Create(string encoding = "utf-8", bool bom = false)
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);

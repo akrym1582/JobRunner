@@ -214,6 +214,25 @@ public sealed class DefinitionEditorTests
         Assert.Throws<ArgumentException>(() => DefinitionEditor.Render(bundle, draft));
     }
 
+    /// <summary>座標索引でも先頭elの優先、不正値、空白、未編集原文を維持します。</summary>
+    /// <param name="first">先頭の配置定義です。</param>
+    /// <param name="x">期待する座標です。</param>
+    [Theory]
+    [InlineData("a,j,+80 +48", 80)]
+    [InlineData(" a ,j,+16000 +10000", 16000)]
+    [InlineData("a,j,unknown", null)]
+    public void ProjectionKeepsFirstElementIncludingInvalidPosition(string first, int? x)
+    {
+        var (_, bundle) = Create($"unit=n;{{ty=n;sd=0,ud;el={first};el=a,j,+240 +144;el=missing,j,+1 +2;unit=a;{{ty=j;te=\"echo old\";}}}}", validate: false);
+        bundle.Units = Jp1DefinitionParser.Parse(Encoding.UTF8.GetString(Convert.FromBase64String(bundle.Sources[0].Base64)), bundle.Sources[0].Mapping);
+        var draft = DefinitionEditor.Project(bundle, 8);
+        Assert.Equal(x, draft.Networks[0].Nodes[0].X);
+        Assert.Equal(bundle.Sources[0].Base64, DefinitionEditor.Render(bundle, draft)[0].Base64);
+        draft.Networks[0].Nodes[0].Attributes["te"] = ["echo new"];
+        string output = Encoding.UTF8.GetString(Convert.FromBase64String(DefinitionEditor.Render(bundle, draft)[0].Base64));
+        Assert.Equal(Encoding.UTF8.GetString(Convert.FromBase64String(bundle.Sources[0].Base64)).Replace("echo old", "echo new", StringComparison.Ordinal), output);
+    }
+
     private static (DefinitionService Service, DefinitionBundle Bundle) Create(string text, string encoding = "utf-8", bool bom = false, bool validate = true)
     {
         var options = new RunnerOptions();

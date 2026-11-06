@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useAspidaSWR from "@aspida/swr";
 import {
   CheckCircle2,
@@ -104,10 +104,18 @@ export function DefinitionEditor({
     draft?.networks.find((n) => n.path === path) ??
     draft?.networks[0] ??
     (draft ? { path: "", nodes: [], edges: [] } : undefined);
-  const names = draft ? networkNames(draft) : new Map<string, string>();
+  const names = useMemo(
+    () => (draft ? networkNames(draft) : new Map<string, string>()),
+    [draft],
+  );
   const node = network?.nodes.find((n) => n.id === selected);
-  const changed =
-    !!draft && JSON.stringify(base?.draft) !== JSON.stringify(draft);
+  const baseContent = useMemo(() => JSON.stringify(base?.draft), [base?.draft]);
+  const draftContent = useMemo(() => JSON.stringify(draft), [draft]);
+  const changed = !!draft && baseContent !== draftContent;
+  const creationBase = useMemo(
+    () => (base && draft ? creationDocument(base, draft) : undefined),
+    [base, draft],
+  );
 
   const persist = useCallback(
     (value: SavedDraft, compareEvenIfUnchanged = false) => {
@@ -571,7 +579,7 @@ export function DefinitionEditor({
           />
           {base && (
             <NetworkProperties
-              base={creationDocument(base, draft)}
+              base={creationBase!}
               draft={draft}
               current={network.path}
               onChange={update}
@@ -581,7 +589,7 @@ export function DefinitionEditor({
           {base && (
             <NetworkChangeProperties
               key={`network-change:${network.path}`}
-              base={creationDocument(base, draft)}
+              base={creationBase!}
               draft={draft}
               current={network.path}
               disabled={busy || !saveAllowed}

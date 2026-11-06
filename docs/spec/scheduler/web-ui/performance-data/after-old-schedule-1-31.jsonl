@@ -1,0 +1,4 @@
+{"label":"after","mode":"old-schedule","size":1,"count":31,"sourceChars":82,"units":2,"runtime":"10.0.14","processors":4}
+{"name":"schedule-preview","sample":0,"milliseconds":27.5012,"allocatedBytes":7950544,"managedBytes":8415216,"workingSetBytes":70598656,"resultHash":"84e1a1a603c68a80fa1605909da278f9a89d0b206953d64e913f4968d59931f8","result":null}
+{"name":"schedule-preview","sample":1,"milliseconds":28.5101,"allocatedBytes":7950544,"managedBytes":8410840,"workingSetBytes":74883072,"resultHash":"84e1a1a603c68a80fa1605909da278f9a89d0b206953d64e913f4968d59931f8","result":null}
+{"name":"schedule-preview","sample":2,"milliseconds":24.0011,"allocatedBytes":7950544,"managedBytes":8410528,"workingSetBytes":70922240,"resultHash":"84e1a1a603c68a80fa1605909da278f9a89d0b206953d64e913f4968d59931f8","result":null}

@@ -1,0 +1,4 @@
+{"label":"ff84f69","mode":"old-schedule","size":1,"count":31,"bytes":82,"units":2,"runtime":"10.0.14","processors":4}
+{"name":"schedule-preview","sample":0,"milliseconds":830.0381,"allocatedBytes":937774976,"managedBytes":123109544,"workingSetBytes":206643200,"resultHash":"84e1a1a603c68a80fa1605909da278f9a89d0b206953d64e913f4968d59931f8","result":null}
+{"name":"schedule-preview","sample":1,"milliseconds":907.9708,"allocatedBytes":937774976,"managedBytes":123085888,"workingSetBytes":207941632,"resultHash":"84e1a1a603c68a80fa1605909da278f9a89d0b206953d64e913f4968d59931f8","result":null}
+{"name":"schedule-preview","sample":2,"milliseconds":928.6663,"allocatedBytes":937774976,"managedBytes":123077992,"workingSetBytes":208175104,"resultHash":"84e1a1a603c68a80fa1605909da278f9a89d0b206953d64e913f4968d59931f8","result":null}

@@ -20,14 +20,24 @@ public static partial class DefinitionEditor
     /// <returns>元パスで識別する下書きです。</returns>
     public static EditorDraft Project(DefinitionBundle bundle, int editorVersion = 3) => new(
         bundle.Hash,
-        bundle.Units.Flatten().Where(u => u.IsNetwork()).Select(network => new EditorNetwork(
-        network.Path,
-        network.Children.Select(unit =>
+        bundle.Units.Flatten().Where(u => u.IsNetwork()).Select(network =>
         {
-            var position = Position(network, unit.Name);
-            return new EditorNode(unit.Path, unit.Name, unit.Type, unit.Attributes.Where(a => Keys(unit.Type, editorVersion).Contains(a.Key)).ToDictionary(a => a.Key, a => a.Value.ToList(), StringComparer.Ordinal), position?.X, position?.Y);
+            // 同名elは従来と同じく先頭だけを採用し、不正な先頭値も後続で補完しません。
+            var positions = new Dictionary<string, (int X, int Y)?>(StringComparer.Ordinal);
+            foreach (string value in network.Attributes.GetValueOrDefault("el") ?? [])
+            {
+                positions.TryAdd(ElementName(value), Position(value));
+            }
+
+            return new EditorNetwork(
+                network.Path,
+                network.Children.Select(unit =>
+                {
+                    var position = positions.GetValueOrDefault(unit.Name);
+                    return new EditorNode(unit.Path, unit.Name, unit.Type, unit.Attributes.Where(a => Keys(unit.Type, editorVersion).Contains(a.Key)).ToDictionary(a => a.Key, a => a.Value.ToList(), StringComparer.Ordinal), position?.X, position?.Y);
+                }).ToList(),
+                DefinitionValidator.Edges(network).Select(e => new EditorEdge(e.From, e.To, e.Conditional)).ToList());
         }).ToList(),
-        DefinitionValidator.Edges(network).Select(e => new EditorEdge(e.From, e.To, e.Conditional)).ToList())).ToList(),
         editorVersion,
         editorVersion >= 3 ? ProjectRoots(bundle) : null,
         editorVersion >= 4 ? ProjectTiming(bundle, true) : null,
@@ -295,12 +305,15 @@ public static partial class DefinitionEditor
 
     private static bool SameAttributes(Dictionary<string, List<string>> left, Dictionary<string, List<string>> right) => left.Count == right.Count && left.All(a => right.TryGetValue(a.Key, out var values) && a.Value.SequenceEqual(values));
 
-    private static string ElementName(string value) => value.Split(',')[0].Trim();
-
-    private static (int X, int Y)? Position(UnitDefinition network, string name)
+    private static string ElementName(string value)
     {
-        string? value = network.Attributes.GetValueOrDefault("el")?.FirstOrDefault(v => ElementName(v) == name);
-        var match = Regex.Match(value ?? string.Empty, @"^[^,]+,[^,]+,\s*\+(\d+)\s+\+(\d+)\s*$", RegexOptions.CultureInvariant);
+        int comma = value.IndexOf(',');
+        return (comma >= 0 ? value[..comma] : value).Trim();
+    }
+
+    private static (int X, int Y)? Position(string value)
+    {
+        var match = Regex.Match(value, @"^[^,]+,[^,]+,\s*\+(\d+)\s+\+(\d+)\s*$", RegexOptions.CultureInvariant);
         return match.Success && int.TryParse(match.Groups[1].Value, out int x) && int.TryParse(match.Groups[2].Value, out int y) ? (x, y) : null;
     }
 

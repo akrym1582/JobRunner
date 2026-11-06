@@ -10,6 +10,20 @@ namespace JobRunner.Tests;
 /// <summary>V12の構文と、危険な定義を有効化しない条件を検証します。</summary>
 public sealed class DefinitionTests
 {
+    /// <summary>接続索引でも件数・種別と先行する不正参照の診断順を維持します。</summary>
+    /// <param name="edges">検証する接続です。</param>
+    /// <param name="message">拒否理由です。</param>
+    [Theory]
+    [InlineData("ar=(f=a,t=q);ar=(f=q,t=b,con);ar=(f=q,t=c,con);", "判定ジョブと従属ユニットは一対一")]
+    [InlineData("ar=(f=a,t=q);ar=(f=a,t=q);", "終了コード判定の先行")]
+    [InlineData("ar=(f=a,t=q);ar=(f=a,t=b,con);", "条件接続の先行")]
+    [InlineData("ar=(f=missing,t=b);ar=invalid;", "接続先が同じネット直下に存在しません")]
+    public void IndexedConnectionsPreserveValidation(string edges, string message)
+    {
+        var units = Jp1DefinitionParser.Parse($"unit=n;{{ty=n;{edges}unit=a;{{ty=j;te=\"true\";}}unit=q;{{ty=jdj;ej=eq;ejc=0;}}unit=b;{{ty=j;te=\"true\";}}unit=c;{{ty=j;te=\"true\";}}}}", new DefinitionSource());
+        Assert.Contains(message, Assert.Throws<FormatException>(() => DefinitionValidator.Validate(units, new RunnerOptions())).Message, StringComparison.Ordinal);
+    }
+
     /// <summary>引用文字列の区切り記号とキャストを階層構文と混同しないことを確認します。</summary>
     [Fact]
     public void PreservesQuotedCharactersAndHierarchy()

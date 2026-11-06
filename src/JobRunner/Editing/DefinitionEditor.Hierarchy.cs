@@ -191,9 +191,10 @@ public static partial class DefinitionEditor
         }
 
         // ar/elだけを構文単位で更新します。コマンド中のパスやjcは変更しません。
+        var originalChildren = originalNodes.Values.ToLookup(n => ScheduleCalculator.Parent(n.Id), StringComparer.Ordinal);
         foreach (var unit in units.Values.Where(u => locations.ContainsKey(u.Path) && !removed.Any(p => u.Path == p || u.Path.StartsWith(p + "/", StringComparison.Ordinal))))
         {
-            var changes = originalNodes.Values.Where(n => ScheduleCalculator.Parent(n.Id) == unit.Path && (!currentNodes.TryGetValue(n.Id, out var next) || next.Name != n.Name)).ToDictionary(n => n.Name, n => currentNodes.GetValueOrDefault(n.Id)?.Name, StringComparer.Ordinal);
+            var changes = originalChildren[unit.Path].Where(n => !currentNodes.TryGetValue(n.Id, out var next) || next.Name != n.Name).ToDictionary(n => n.Name, n => currentNodes.GetValueOrDefault(n.Id)?.Name, StringComparer.Ordinal);
             if (changes.Count == 0)
             {
                 continue;

@@ -131,6 +131,7 @@ launch(
   process.execPath,
   [
     "node_modules/vite/bin/vite.js",
+    ...(process.env.EDITOR_BENCH_PRODUCTION ? ["preview"] : []),
     "--host",
     "127.0.0.1",
     "--port",

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { EditorDraft, EditorSchedulePreview } from "../api/@types";
 import { client, errorMessage } from "../client";
 import { formatDate } from "../status";
@@ -24,10 +24,13 @@ export function DraftSchedulePreview({
     busy?: boolean;
   }>();
   const serial = useRef(0);
-  const key = JSON.stringify({ draft, current, anchor, from, until });
+  const key = useMemo(
+    () => JSON.stringify({ draft, current, anchor, from, until }),
+    [draft, current, anchor, from, until],
+  );
   const latest = useRef(key);
   latest.current = key;
-  const names = networkNames(draft);
+  const names = useMemo(() => networkNames(draft), [draft]);
   const root = draft.roots?.find((r) => r.node.id === current);
   const eligible =
     !!root && !Array.from(names.values()).includes(root.parentPath);
@@ -36,7 +39,7 @@ export function DraftSchedulePreview({
     <section className="editor-schedule-preview" aria-label="下書き予定試算">
       <h3>下書きの予定試算（登録しません）</h3>
       <p>
-        実行予定・登録済み世代ではありません。ルートの定義候補だけを計算し、保留・起動条件・間隔登録・ネストの実行予測は含みません。
+        実行予定・登録済み世代ではありません。ルートの定義候補だけを計算し、保留・起動条件・間隔登録・ネストの実行予測は含みません。計算が5秒を超える場合は、期間またはルール数を減らしてください。
       </p>
       {!eligible && (
         <p>ネストは上位世代の条件が必要なため、単独では試算しません。</p>

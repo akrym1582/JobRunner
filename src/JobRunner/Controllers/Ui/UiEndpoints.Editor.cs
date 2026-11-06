@@ -37,7 +37,7 @@ public static partial class UiEndpoints
         {
             var bundle = await EditorSourcesAsync(request.Draft, definitions, token);
             var compiled = definitions.Validate(DefinitionEditor.Render(bundle, request.Draft));
-            return DefinitionEditor.PreviewSchedule(compiled, request, options);
+            return DefinitionEditor.PreviewSchedule(compiled, request, options, token);
         });
         group.MapPost("/definition-editor/export", async (EditorDraft draft, DefinitionService definitions, CancellationToken token) =>
         {

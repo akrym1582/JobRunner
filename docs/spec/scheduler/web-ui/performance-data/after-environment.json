@@ -1,0 +1,73 @@
+{
+  "label": "after",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "processors": 5,
+  "cases": [
+    {
+      "case": "editor-200-1",
+      "seconds": 0.8468008509989886,
+      "timedOut": false,
+      "returnCode": 0,
+      "limitSeconds": 45
+    },
+    {
+      "case": "editor-200-10",
+      "seconds": 3.1202537789977214,
+      "timedOut": false,
+      "returnCode": 0,
+      "limitSeconds": 45
+    },
+    {
+      "case": "editor-200-45",
+      "seconds": 10.482172574000288,
+      "timedOut": false,
+      "returnCode": 0,
+      "limitSeconds": 45
+    },
+    {
+      "case": "editor-1000-1",
+      "seconds": 2.3117500459993607,
+      "timedOut": false,
+      "returnCode": 0,
+      "limitSeconds": 45
+    },
+    {
+      "case": "schedule-1-31",
+      "seconds": 0.3798009889978857,
+      "timedOut": false,
+      "returnCode": 0,
+      "limitSeconds": 10
+    },
+    {
+      "case": "schedule-144-366",
+      "seconds": 2.286082931001147,
+      "timedOut": false,
+      "returnCode": 0,
+      "limitSeconds": 10
+    },
+    {
+      "case": "old-schedule-1-31",
+      "seconds": 0.43755624100231216,
+      "timedOut": false,
+      "returnCode": 0,
+      "limitSeconds": 10
+    },
+    {
+      "case": "old-schedule-8-366",
+      "seconds": 0.6665710509987548,
+      "timedOut": false,
+      "returnCode": 0,
+      "limitSeconds": 10
+    },
+    {
+      "case": "old-schedule-144-366",
+      "seconds": 2.213497020999057,
+      "timedOut": false,
+      "returnCode": 0,
+      "limitSeconds": 10
+    }
+  ],
+  "headAtMeasurement": "ff84f69b6578249c6abbb53366330609374b0b0b",
+  "workingTreeChanged": true,
+  "sourceState": "performance refactor in the commit containing this report"
+}
