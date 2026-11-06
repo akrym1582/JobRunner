@@ -21,9 +21,10 @@ public static class ScheduleCalculator
     /// <param name="from">生成対象業務日の下限です。</param>
     /// <param name="until">生成対象業務日の排他的上限です。</param>
     /// <param name="options">時間制とタイムゾーンです。</param>
+    /// <param name="cancellationToken">呼出元による計算中断です。</param>
     /// <returns>ルール番号・業務日・実日時を分離した予定です。</returns>
-    public static IEnumerable<SchedulePoint> Calculate(UnitDefinition root, IReadOnlyDictionary<string, UnitDefinition> all, Registration registration, DateOnly from, DateOnly until, RunnerOptions options)
-        => CalculateRaw(root, all, registration, from, until, options).GroupBy(p => p.Due).Select(g => g.OrderBy(p => p.Rule).First());
+    public static IEnumerable<SchedulePoint> Calculate(UnitDefinition root, IReadOnlyDictionary<string, UnitDefinition> all, Registration registration, DateOnly from, DateOnly until, RunnerOptions options, CancellationToken cancellationToken = default)
+        => CalculateRaw(root, all, registration, from, until, options, cancellationToken).GroupBy(p => p.Due).Select(g => g.OrderBy(p => p.Rule).First());
 
     /// <summary>曜日と日付のカレンダー指定を上位から継承して評価します。</summary>
     /// <param name="date">評価する業務日です。</param>
@@ -128,12 +129,61 @@ public static class ScheduleCalculator
     /// <param name="from">開始業務日です。</param>
     /// <param name="until">終了業務日です。</param>
     /// <param name="options">時間帯設定です。</param>
+    /// <param name="cancellationToken">呼出元による計算中断です。</param>
     /// <returns>ルール別の候補です。</returns>
-    private static IEnumerable<SchedulePoint> CalculateRaw(UnitDefinition root, IReadOnlyDictionary<string, UnitDefinition> all, Registration registration, DateOnly from, DateOnly until, RunnerOptions options)
+    private static IEnumerable<SchedulePoint> CalculateRaw(UnitDefinition root, IReadOnlyDictionary<string, UnitDefinition> all, Registration registration, DateOnly from, DateOnly until, RunnerOptions options, CancellationToken cancellationToken)
     {
         if (until.DayNumber - from.DayNumber > 3700)
         {
             throw new FormatException("一度の計算範囲は3700日以下にしてください。");
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // 一度の列挙だけに閉じたキャッシュです。別の定義版・登録へ状態を持ち越しません。
+        var workingDays = new Dictionary<DateOnly, bool>();
+        var months = new Dictionary<DateOnly, (DateOnly Start, DateOnly End)>();
+        var prefix = new Dictionary<int, int> { [from.DayNumber] = 0 };
+        int first = from.DayNumber, last = first;
+        bool Working(DateOnly day)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!workingDays.TryGetValue(day, out bool result))
+            {
+                result = IsWorking(day, root, all);
+                workingDays.Add(day, result);
+            }
+
+            return result;
+        }
+
+        (DateOnly Start, DateOnly End) Period(DateOnly month)
+        {
+            if (!months.TryGetValue(month, out var result))
+            {
+                result = CalendarMonth(month, root, all);
+                months.Add(month, result);
+            }
+
+            return result;
+        }
+
+        int CountWorking(DateOnly start, DateOnly end, bool working)
+        {
+            while (first > start.DayNumber)
+            {
+                prefix[first - 1] = prefix[first] - (Working(DateOnly.FromDayNumber(first - 1)) ? 1 : 0);
+                first--;
+            }
+
+            while (last < end.DayNumber)
+            {
+                prefix[last + 1] = prefix[last] + (Working(DateOnly.FromDayNumber(last)) ? 1 : 0);
+                last++;
+            }
+
+            int count = prefix[end.DayNumber] - prefix[start.DayNumber];
+            return working ? count : end.DayNumber - start.DayNumber - count;
         }
 
         var zone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
@@ -151,13 +201,14 @@ public static class ScheduleCalculator
             int shiftDays = int.Parse(RuleValue(root, "shd", rule, "2"), CultureInfo.InvariantCulture);
             for (var day = from.AddDays(-93); day < until.AddDays(93); day = day.AddDays(1))
             {
-                if (!Matches(day, dateSpec, cycle, registration.Anchor, d => IsWorking(d, root, all), m => CalendarMonth(m, root, all)))
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!Matches(day, dateSpec, cycle, registration.Anchor, Working, Period, CountWorking))
                 {
                     continue;
                 }
 
-                DateOnly? business = Shift(day, shift, shiftDays, root, all);
-                business = business is null ? null : Origin(business.Value, RuleValue(root, "cftd", rule, "no"), root, all);
+                DateOnly? business = Shift(day, shift, shiftDays, Working);
+                business = business is null ? null : Origin(business.Value, RuleValue(root, "cftd", rule, "no"), Working);
                 if (business is null || business < from || business >= until || (registration.End is not null && business >= registration.End))
                 {
                     continue;
@@ -223,12 +274,11 @@ public static class ScheduleCalculator
     /// <param name="date">当初の業務日です。</param>
     /// <param name="shift">be、af、ca、noの指定です。</param>
     /// <param name="limit">振り替えの最大日数です。</param>
-    /// <param name="root">対象ネットです。</param>
-    /// <param name="all">カレンダー探索辞書です。</param>
+    /// <param name="working">対象カレンダーの稼働日判定です。</param>
     /// <returns>実行業務日。猶予内にない場合はnullです。</returns>
-    private static DateOnly? Shift(DateOnly date, string shift, int limit, UnitDefinition root, IReadOnlyDictionary<string, UnitDefinition> all)
+    private static DateOnly? Shift(DateOnly date, string shift, int limit, Func<DateOnly, bool> working)
     {
-        if (shift == "no" || IsWorking(date, root, all))
+        if (shift == "no" || working(date))
         {
             return date;
         }
@@ -241,7 +291,7 @@ public static class ScheduleCalculator
         for (int i = 1; i <= limit; i++)
         {
             var candidate = date.AddDays(shift == "be" ? -i : i);
-            if (IsWorking(candidate, root, all))
+            if (working(candidate))
             {
                 return candidate;
             }
@@ -286,10 +336,9 @@ public static class ScheduleCalculator
     /// <summary>サイクルと振替の後に起算日数を適用します。</summary>
     /// <param name="date">振替後の起点日です。</param>
     /// <param name="spec">cftdの値です。</param>
-    /// <param name="unit">対象ネットです。</param>
-    /// <param name="all">カレンダーを含む定義です。</param>
+    /// <param name="working">対象カレンダーの稼働日判定です。</param>
     /// <returns>起算日または猶予超過のnullです。</returns>
-    private static DateOnly? Origin(DateOnly date, string spec, UnitDefinition unit, IReadOnlyDictionary<string, UnitDefinition> all)
+    private static DateOnly? Origin(DateOnly date, string spec, Func<DateOnly, bool> working)
     {
         var parts = spec.Split(',');
         if (parts[0] == "no")
@@ -309,7 +358,7 @@ public static class ScheduleCalculator
         for (int i = 1; i <= limit; i++)
         {
             var candidate = date.AddDays(i * direction);
-            if (IsWorking(candidate, unit, all) && --count == 0)
+            if (working(candidate) && --count == 0)
             {
                 return candidate;
             }
@@ -325,8 +374,9 @@ public static class ScheduleCalculator
     /// <param name="anchor">登録時の基準日です。</param>
     /// <param name="working">対象カレンダーの稼働日判定です。</param>
     /// <param name="period">基準日と月区分による業務月です。</param>
+    /// <param name="countDays">開始を含み終了を含まない稼働・休業日の個数です。</param>
     /// <returns>候補日が開始日とサイクルに一致すればtrueです。</returns>
-    private static bool Matches(DateOnly day, string spec, string cycle, DateOnly anchor, Func<DateOnly, bool> working, Func<DateOnly, (DateOnly Start, DateOnly End)> period)
+    private static bool Matches(DateOnly day, string spec, string cycle, DateOnly anchor, Func<DateOnly, bool> working, Func<DateOnly, (DateOnly Start, DateOnly End)> period, Func<DateOnly, DateOnly, bool, int> countDays)
     {
         var parts = spec.Split('/');
         string selector = parts[^1];
@@ -383,14 +433,7 @@ public static class ScheduleCalculator
                     return false;
                 }
 
-                elapsed = 0;
-                for (var d = seed.Value; d < day; d = d.AddDays(1))
-                {
-                    if (working(d) == wantWorking)
-                    {
-                        elapsed++;
-                    }
-                }
+                elapsed = countDays(seed.Value, day, wantWorking);
             }
 
             return elapsed % (count * (kind == 'w' ? 7 : 1)) == 0;

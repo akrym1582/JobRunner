@@ -16,21 +16,7 @@ public sealed class Jp1DefinitionParser
     /// <param name="mapping">配置先の親グループと診断用Blob名です。</param>
     /// <returns>指定親グループ配下へ配置したユニットです。</returns>
     public static List<UnitDefinition> Parse(string source, DefinitionSource mapping)
-    {
-        var reader = new Reader(source, mapping.BlobPath);
-        var units = new List<UnitDefinition>();
-        while (!reader.End)
-        {
-            units.Add(reader.Unit(NormalizePath(mapping.TargetPath)));
-        }
-
-        if (units.Count == 0)
-        {
-            throw new FormatException($"{mapping.BlobPath}: 定義が空です。");
-        }
-
-        return units;
-    }
+        => ParseCore(source, mapping, null);
 
     /// <summary>
     /// 親パスの区切りを正規化し、意味が曖昧な相対指定を拒否します。
@@ -47,10 +33,32 @@ public sealed class Jp1DefinitionParser
         return "/" + string.Join('/', path.Split('/', StringSplitOptions.RemoveEmptyEntries));
     }
 
+    /// <summary>原文編集用の位置情報を収集します。永続モデルには追加しません。</summary>
+    /// <param name="source">原文です。</param>
+    /// <param name="mapping">配置情報です。</param>
+    /// <param name="syntax">ユニットごとの構文位置です。</param>
+    /// <returns>既存と同じ意味モデルです。</returns>
+    internal static List<UnitDefinition> ParseCore(string source, DefinitionSource mapping, Dictionary<string, DefinitionSyntax>? syntax)
+    {
+        var reader = new Reader(source, mapping.BlobPath, syntax);
+        var units = new List<UnitDefinition>();
+        while (!reader.End)
+        {
+            units.Add(reader.Unit(NormalizePath(mapping.TargetPath)));
+        }
+
+        if (units.Count == 0)
+        {
+            throw new FormatException($"{mapping.BlobPath}: 定義が空です。");
+        }
+
+        return units;
+    }
+
     /// <summary>
     /// 読み取り位置を持つ再帰下降パーサーです。文字列内のセミコロンを属性終端と混同しません。
     /// </summary>
-    private sealed class Reader(string text, string source)
+    private sealed class Reader(string text, string source, Dictionary<string, DefinitionSyntax>? syntax)
     {
         /// <summary>原文中の現在位置。文字列を分割せず構文境界を追跡します。</summary>
         private int offset;
@@ -78,10 +86,14 @@ public sealed class Jp1DefinitionParser
         public UnitDefinition Unit(string parent)
         {
             Skip();
+            int start = offset;
             int startLine = line;
             ExpectWord("unit");
             Expect('=');
+            Skip();
+            int headerStart = offset;
             string header = Value();
+            int headerEnd = offset;
             string[] fields = header.Split(',').Select(f => f.Trim()).ToArray();
             string name = fields[0];
             if (fields.Length > 4 || name.Length == 0 || name.Contains('/') || name is "." or "..")
@@ -108,6 +120,7 @@ public sealed class Jp1DefinitionParser
                 ResourceGroup = resource,
             };
             Expect('{');
+            var location = syntax is null ? null : new DefinitionSyntax(start, headerStart, headerEnd, offset);
             while (true)
             {
                 Skip();
@@ -119,6 +132,11 @@ public sealed class Jp1DefinitionParser
                 if (text[offset] == '}')
                 {
                     offset++;
+                    if (location is not null)
+                    {
+                        location.End = offset;
+                    }
+
                     break;
                 }
 
@@ -137,16 +155,21 @@ public sealed class Jp1DefinitionParser
                 }
 
                 Expect('=');
+                Skip();
+                int valueStart = offset;
                 if (!unit.Attributes.TryGetValue(key, out var values))
                 {
                     values = [];
                     unit.Attributes.Add(key, values);
                 }
 
-                values.Add(Value());
+                string value = Value();
+                values.Add(value);
+                location?.Attributes.Add(new DefinitionAttribute(key, value, saved, valueStart, offset));
             }
 
             unit.Type = unit.Attributes.GetValueOrDefault("ty")?.FirstOrDefault() ?? string.Empty;
+            syntax?.Add(unit.Path, location!);
             return unit;
         }
 

@@ -15,6 +15,50 @@ public sealed class RequiredProperties : ISchemaFilter
         if (context.Type.Namespace == typeof(Graph).Namespace)
         {
             schema.Required.UnionWith(schema.Properties.Keys);
+            if (context.Type == typeof(EditorDraft))
+            {
+                // 旧下書きの要求には版がないため、省略可能な契約を公開します。
+                schema.Required.Remove("editorVersion");
+                schema.Required.Remove("roots");
+                schema.Required.Remove("schedules");
+                schema.Required.Remove("calendars");
+                schema.Required.Remove("localSources");
+                schema.Required.Remove("execution");
+                schema.Required.Remove("newGroups");
+                schema.Required.Remove("newFiles");
+                schema.Required.Remove("groupChanges");
+                schema.Required.Remove("networkChanges");
+            }
+
+            if (context.Type == typeof(EditorGroupChange))
+            {
+                schema.Required.Remove("name");
+                schema.Required.Remove("delete");
+            }
+
+            if (context.Type == typeof(EditorNetworkChange))
+            {
+                schema.Required.Remove("parentPath");
+                schema.Required.Remove("type");
+            }
+
+            if (context.Type == typeof(EditorAttributes))
+            {
+                schema.Required.Remove("type");
+            }
+
+            if (context.Type == typeof(EditorLocalRequest))
+            {
+                schema.Required.Clear();
+            }
+
+            if (context.Type == typeof(EditorDocument))
+            {
+                schema.Required.Remove("containers");
+                schema.Required.Remove("timeZone");
+                schema.Required.Remove("scheduleTimeMode");
+            }
+
             foreach (var property in context.Type.GetProperties())
             {
                 string name = System.Text.Json.JsonNamingPolicy.CamelCase.ConvertName(property.Name);

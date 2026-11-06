@@ -14,6 +14,13 @@ export type Catalog = {
   networks: Network[];
 }
 
+export type DefinitionSource = {
+  kind?: string | undefined;
+  targetPath?: string | undefined;
+  blobPath?: string | undefined;
+  encoding?: string | undefined;
+}
+
 export type DelayMonitorSettings = {
   start?: string | null | undefined;
   startMinutes?: number | null | undefined;
@@ -28,6 +35,134 @@ export type Edge = {
   from: string;
   to: string;
   kind: string;
+}
+
+export type EditorAttributes = {
+  id: string;
+
+  attributes: {
+    [key: string]: string[];
+  };
+
+  type?: string | null | undefined;
+}
+
+export type EditorContainer = {
+  sourceIndex: number;
+  parentPath: string;
+}
+
+export type EditorDocument = {
+  draft: EditorDraft;
+  sources: EditorSource[];
+  containers?: EditorContainer[] | null | undefined;
+  timeZone?: string | null | undefined;
+  scheduleTimeMode?: number | null | undefined;
+}
+
+export type EditorDraft = {
+  definitionHash: string;
+  networks: EditorNetwork[];
+  editorVersion?: number | null | undefined;
+  roots?: EditorRoot[] | null | undefined;
+  schedules?: EditorAttributes[] | null | undefined;
+  calendars?: EditorAttributes[] | null | undefined;
+  localSources?: SourceEvidence[] | null | undefined;
+  execution?: EditorAttributes[] | null | undefined;
+  newGroups?: EditorGroupCreation[] | null | undefined;
+  newFiles?: EditorFileCreation[] | null | undefined;
+  groupChanges?: EditorGroupChange[] | null | undefined;
+  networkChanges?: EditorNetworkChange[] | null | undefined;
+}
+
+export type EditorEdge = {
+  from: string;
+  to: string;
+  conditional: boolean;
+}
+
+export type EditorFileCreation = {
+  fileName: string;
+  targetPath: string;
+  encoding: string;
+  bom: boolean;
+  groupName: string;
+}
+
+export type EditorGroupChange = {
+  id: string;
+  name?: string | null | undefined;
+  delete?: boolean | undefined;
+}
+
+export type EditorGroupCreation = {
+  sourceIndex: number;
+  parentPath: string;
+  name: string;
+}
+
+export type EditorLocalRequest = {
+  sources?: SourceEvidence[] | null | undefined;
+  zipBase64?: string | null | undefined;
+}
+
+export type EditorNetwork = {
+  path: string;
+  nodes: EditorNode[];
+  edges: EditorEdge[];
+}
+
+export type EditorNetworkChange = {
+  id: string;
+  parentPath?: string | null | undefined;
+  type?: string | null | undefined;
+}
+
+export type EditorNode = {
+  id: string;
+  name: string;
+  type: string;
+
+  attributes: {
+    [key: string]: string[];
+  };
+
+  x: number | null;
+  y: number | null;
+}
+
+export type EditorPreview = {
+  valid: boolean;
+  errors: string[];
+  layoutErrors: string[];
+  sources: EditorSource[];
+}
+
+export type EditorRoot = {
+  node: EditorNode;
+  sourceIndex: number;
+  parentPath: string;
+}
+
+export type EditorSchedulePreview = {
+  points: SchedulePoint[];
+  timeZone: string;
+}
+
+export type EditorScheduleRequest = {
+  draft: EditorDraft;
+  networkId: string;
+  anchor: string;
+  from: string;
+  until: string;
+}
+
+export type EditorSource = {
+  fileName: string;
+  encoding: string;
+  targetPath: string;
+  text: string;
+  changed: boolean;
 }
 
 export type ExecutionPage = {
@@ -213,4 +348,17 @@ export type ProblemDetails = {
   status?: number | null | undefined;
   detail?: string | null | undefined;
   instance?: string | null | undefined;
+}
+
+export type SchedulePoint = {
+  rule?: number | undefined;
+  businessDate?: string | undefined;
+  due?: string | undefined;
+}
+
+export type SourceEvidence = {
+  mapping?: DefinitionSource | undefined;
+  contentHash?: string | undefined;
+  eTag?: string | undefined;
+  base64?: string | undefined;
 }

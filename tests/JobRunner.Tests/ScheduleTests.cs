@@ -71,4 +71,67 @@ public sealed class ScheduleTests
 
         Assert.Equal(365000, count);
     }
+
+    /// <summary>古い基準日の稼働・休業日サイクルを独立した逐日カウントと照合します。</summary>
+    /// <param name="selector">稼働日または休業日です。</param>
+    /// <param name="cycle">日または週サイクルです。</param>
+    /// <param name="interval">期待する対象日数です。</param>
+    [Theory]
+    [InlineData("*1", "(3,d)", 3)]
+    [InlineData("@1", "(2,w)", 14)]
+    public void OldAnchorCyclesMatchIndependentDayCount(string selector, string cycle, int interval)
+    {
+        var units = Jp1DefinitionParser.Parse($"unit=g;{{ty=g;cl=sa;cl=su;op=2026/1/3;cl=2026/1/5;unit=n;{{ty=n;sd=1,{selector};cy=1,{cycle};sh=1,no;st=1,12:00;}}}}", new DefinitionSource());
+        var all = units.Flatten().ToDictionary(u => u.Path);
+        var root = all["/g/n"];
+        var anchor = new DateOnly(1994, 1, 1);
+        var from = new DateOnly(2026, 1, 1);
+        var until = from.AddDays(366);
+        bool Wanted(DateOnly day)
+        {
+            bool working = day == new DateOnly(2026, 1, 3) || (day != new DateOnly(2026, 1, 5) && day.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday));
+            return selector[0] == '*' ? working : !working;
+        }
+
+        var expected = new List<DateOnly>();
+        int count = 0;
+        for (var day = anchor; day < until; day = day.AddDays(1))
+        {
+            if (Wanted(day))
+            {
+                if (day >= from && count % interval == 0)
+                {
+                    expected.Add(day);
+                }
+
+                count++;
+            }
+        }
+
+        var actual = ScheduleCalculator.Calculate(root, all, new Registration { Anchor = anchor }, from, until, new RunnerOptions()).ToList();
+        Assert.Equal(expected, actual.Select(p => p.BusinessDate));
+    }
+
+    /// <summary>同じ列挙内の別位相と、次の計算のカレンダー変更を混同しません。</summary>
+    [Fact]
+    public void CalendarMemoIsLocalAndKeepsRulePriority()
+    {
+        var units = Jp1DefinitionParser.Parse("unit=g;{ty=g;cl=su;unit=n;{ty=n;sd=9,1994/1/*1;cy=9,(1,d);sd=2,2026/2/*1;cy=2,(1,d);st=9,12:00;st=2,12:00;}}", new DefinitionSource());
+        var all = units.Flatten().ToDictionary(u => u.Path);
+        var root = all["/g/n"];
+        List<SchedulePoint> Run() => ScheduleCalculator.Calculate(root, all, new Registration { Anchor = new(2026, 1, 1) }, new(2026, 1, 1), new(2026, 3, 1), new RunnerOptions()).OrderBy(p => p.Due).ToList();
+        var before = Run();
+        Assert.All(before.Where(p => p.BusinessDate.Month == 1), p => Assert.Equal(9, p.Rule));
+        Assert.All(before.Where(p => p.BusinessDate.Month == 2), p => Assert.Equal(2, p.Rule));
+        all["/g"].Attributes["cl"].Add("sa");
+        Assert.Equal(before.Where(p => p.BusinessDate.DayOfWeek != DayOfWeek.Saturday), Run());
+    }
+
+    /// <summary>結果の集約前でも呼出元から中断できます。</summary>
+    [Fact]
+    public void CanceledCalculationDoesNotEnumerateRules()
+    {
+        var units = Jp1DefinitionParser.Parse("unit=n;{ty=n;sd=*1;cy=(1,d);}", new DefinitionSource());
+        Assert.Throws<OperationCanceledException>(() => ScheduleCalculator.Calculate(units[0], units.ToDictionary(u => u.Path), new Registration { Anchor = new(1994, 1, 1) }, new(2026, 1, 1), new(2027, 1, 1), new RunnerOptions(), new CancellationToken(true)).ToList());
+    }
 }

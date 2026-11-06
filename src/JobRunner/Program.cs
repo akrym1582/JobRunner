@@ -25,6 +25,7 @@ public static class Program
         {
             options.SupportNonNullableReferenceTypes();
             options.SchemaFilter<Controllers.Ui.RequiredProperties>();
+            options.OperationFilter<Controllers.Ui.EditorDownloadSchema>();
             options.DocInclusionPredicate((_, api) =>
             api.RelativePath?.StartsWith("api/jobrunner/ui", StringComparison.Ordinal) == true || api.RelativePath?.StartsWith("api/jobrunner/operations", StringComparison.Ordinal) == true);
         });
@@ -50,6 +51,21 @@ public static class Program
         {
             try
             {
+                if (HttpMethods.IsPost(context.Request.Method) && context.Request.Path == "/api/jobrunner/ui/definition-editor/local")
+                {
+                    const long editorLimit = 12 * 1024 * 1024;
+                    if (context.Request.ContentLength > editorLimit)
+                    {
+                        await Results.Problem("定義編集のHTTP要求は12MiBまでです。", statusCode: 413).ExecuteAsync(context);
+                        return;
+                    }
+
+                    if (context.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } size)
+                    {
+                        size.MaxRequestBodySize = editorLimit;
+                    }
+                }
+
                 await next(context);
             }
             catch (Exception ex) when (ex is FormatException or ArgumentException or InvalidDataException or KeyNotFoundException)

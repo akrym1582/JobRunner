@@ -163,7 +163,11 @@ public static partial class DefinitionValidator
             }
 
             var graph = unit.Children.ToDictionary(c => c.Path, _ => new List<string>(), StringComparer.Ordinal);
-            foreach (var (from, to) in Connections(unit))
+
+            // 接続の構文解析は一度だけ行い、子ごとの先行・条件接続検証へ再利用します。
+            var incomingEdges = new Dictionary<string, List<(string From, string To, bool Conditional)>>(StringComparer.Ordinal);
+            var conditionalCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (var (from, to, conditional) in Edges(unit))
             {
                 if (!graph.ContainsKey(from) || !graph.ContainsKey(to))
                 {
@@ -176,11 +180,22 @@ public static partial class DefinitionValidator
                 }
 
                 graph[from].Add(to);
+                if (!incomingEdges.TryGetValue(to, out var edges))
+                {
+                    edges = [];
+                    incomingEdges.Add(to, edges);
+                }
+
+                edges.Add((from, to, conditional));
+                if (conditional)
+                {
+                    conditionalCounts[from] = conditionalCounts.GetValueOrDefault(from) + 1;
+                }
             }
 
             foreach (var child in unit.Children)
             {
-                var incoming = Edges(unit).Where(e => e.To == child.Path).ToList();
+                var incoming = incomingEdges.GetValueOrDefault(child.Path) ?? [];
                 if (child.IsJudgment() && (incoming.Count != 1 || incoming[0].Conditional || all[incoming[0].From].Type is not ("j" or "pj" or "rj" or "rp")))
                 {
                     throw Error(child, "終了コード判定の先行は通常ジョブ一つにしてください。");
@@ -191,7 +206,7 @@ public static partial class DefinitionValidator
                     throw Error(child, "条件接続の先行は判定ジョブ一つにしてください。");
                 }
 
-                if (Edges(unit).Count(e => e.Conditional && e.From == child.Path) > 1)
+                if (conditionalCounts.GetValueOrDefault(child.Path) > 1)
                 {
                     throw Error(child, "判定ジョブと従属ユニットは一対一です。");
                 }

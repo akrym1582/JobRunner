@@ -172,6 +172,54 @@ public sealed class DefinitionService(StorageRepository storage, RunnerOptions o
         return bundle;
     }
 
+    /// <summary>保存済み原文だけを読み、入力Blobの現在値や損失のある実行モデルで代用しません。</summary>
+    /// <param name="hash">編集の基点となる版です。</param>
+    /// <param name="cancellationToken">中断通知です。</param>
+    /// <returns>原文の完全性を検証した定義です。</returns>
+    public async Task<DefinitionBundle> ReadSourcesAsync(string hash, CancellationToken cancellationToken)
+    {
+        if (!System.Text.RegularExpressions.Regex.IsMatch(hash, "^[a-f0-9]{64}$"))
+        {
+            throw new ArgumentException("定義版の形式が不正です。");
+        }
+
+        string prefix = $"definitions/{hash}/manifests/";
+        await foreach (var item in storage.Container.GetBlobsAsync(prefix: prefix, cancellationToken: cancellationToken))
+        {
+            var content = (await storage.Container.GetBlobClient(item.Name).DownloadContentAsync(cancellationToken)).Value.Content;
+            if (item.Name != prefix + StorageRepository.Hash(content.ToArray()) + ".json")
+            {
+                throw new InvalidDataException("保存済み原文のmanifestが破損しています。");
+            }
+
+            var sources = content.ToObjectFromJson<List<SourceEvidence>>() ?? throw new InvalidDataException("原文manifestが空です。");
+            foreach (var source in sources)
+            {
+                byte[] bytes = Convert.FromBase64String(source.Base64);
+                if (StorageRepository.Hash(bytes) != source.ContentHash)
+                {
+                    throw new InvalidDataException("保存済み原文のハッシュが一致しません。");
+                }
+
+                var blob = storage.Container.GetBlobClient($"definitions/{hash}/sources/{source.ContentHash}");
+                if (!await blob.ExistsAsync(cancellationToken) || !(await blob.DownloadContentAsync(cancellationToken)).Value.Content.ToArray().AsSpan().SequenceEqual(bytes))
+                {
+                    throw new InvalidDataException("保存済み原文が欠落または破損しています。");
+                }
+            }
+
+            var bundle = Validate(sources);
+            if (bundle.Hash != hash)
+            {
+                throw new InvalidDataException("原文と定義版が一致しません。");
+            }
+
+            return bundle;
+        }
+
+        throw new InvalidDataException("保存済み原文のmanifestがありません。実行モデルからの復元は行いません。");
+    }
+
     /// <summary>意味を変える設定を決定的にハッシュ化します。</summary>
     /// <returns>時間制・タイムゾーン・実行先に対応したハッシュです。</returns>
     public string SettingsHash()

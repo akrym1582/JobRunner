@@ -37,6 +37,180 @@
         }
       }
     },
+    "/api/jobrunner/ui/definition-editor/local": {
+      "post": {
+        "tags": [
+          "JobRunner"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorLocalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorDocument"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobrunner/ui/definition-editor/local/new": {
+      "post": {
+        "tags": [
+          "JobRunner"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorFileCreation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorDocument"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobrunner/ui/definition-editor": {
+      "get": {
+        "tags": [
+          "JobRunner"
+        ],
+        "parameters": [
+          {
+            "name": "definitionHash",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorDocument"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobrunner/ui/definition-editor/preview": {
+      "post": {
+        "tags": [
+          "JobRunner"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorPreview"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobrunner/ui/definition-editor/schedules": {
+      "post": {
+        "tags": [
+          "JobRunner"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorScheduleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorSchedulePreview"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobrunner/ui/definition-editor/export": {
+      "post": {
+        "tags": [
+          "JobRunner"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobrunner/ui/jobnets": {
       "get": {
         "tags": [
@@ -396,6 +570,24 @@
         },
         "additionalProperties": false
       },
+      "DefinitionSource": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "targetPath": {
+            "type": "string"
+          },
+          "blobPath": {
+            "type": "string"
+          },
+          "encoding": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "DelayMonitorSettings": {
         "type": "object",
         "properties": {
@@ -449,6 +641,496 @@
           },
           "kind": {
             "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorAttributes": {
+        "required": [
+          "attributes",
+          "id"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "attributes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "type": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorContainer": {
+        "required": [
+          "parentPath",
+          "sourceIndex"
+        ],
+        "type": "object",
+        "properties": {
+          "sourceIndex": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "parentPath": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorDocument": {
+        "required": [
+          "draft",
+          "sources"
+        ],
+        "type": "object",
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/EditorDraft"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorSource"
+            }
+          },
+          "containers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorContainer"
+            },
+            "nullable": true
+          },
+          "timeZone": {
+            "type": "string",
+            "nullable": true
+          },
+          "scheduleTimeMode": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorDraft": {
+        "required": [
+          "definitionHash",
+          "networks"
+        ],
+        "type": "object",
+        "properties": {
+          "definitionHash": {
+            "type": "string"
+          },
+          "networks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorNetwork"
+            }
+          },
+          "editorVersion": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "roots": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorRoot"
+            },
+            "nullable": true
+          },
+          "schedules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorAttributes"
+            },
+            "nullable": true
+          },
+          "calendars": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorAttributes"
+            },
+            "nullable": true
+          },
+          "localSources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceEvidence"
+            },
+            "nullable": true
+          },
+          "execution": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorAttributes"
+            },
+            "nullable": true
+          },
+          "newGroups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorGroupCreation"
+            },
+            "nullable": true
+          },
+          "newFiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorFileCreation"
+            },
+            "nullable": true
+          },
+          "groupChanges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorGroupChange"
+            },
+            "nullable": true
+          },
+          "networkChanges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorNetworkChange"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorEdge": {
+        "required": [
+          "conditional",
+          "from",
+          "to"
+        ],
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "conditional": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorFileCreation": {
+        "required": [
+          "bom",
+          "encoding",
+          "fileName",
+          "groupName",
+          "targetPath"
+        ],
+        "type": "object",
+        "properties": {
+          "fileName": {
+            "type": "string"
+          },
+          "targetPath": {
+            "type": "string"
+          },
+          "encoding": {
+            "type": "string"
+          },
+          "bom": {
+            "type": "boolean"
+          },
+          "groupName": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorGroupChange": {
+        "required": [
+          "id"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "delete": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorGroupCreation": {
+        "required": [
+          "name",
+          "parentPath",
+          "sourceIndex"
+        ],
+        "type": "object",
+        "properties": {
+          "sourceIndex": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "parentPath": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorLocalRequest": {
+        "type": "object",
+        "properties": {
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceEvidence"
+            },
+            "nullable": true
+          },
+          "zipBase64": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorNetwork": {
+        "required": [
+          "edges",
+          "nodes",
+          "path"
+        ],
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorNode"
+            }
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorEdge"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorNetworkChange": {
+        "required": [
+          "id"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "parentPath": {
+            "type": "string",
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorNode": {
+        "required": [
+          "attributes",
+          "id",
+          "name",
+          "type",
+          "x",
+          "y"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "attributes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "x": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "y": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorPreview": {
+        "required": [
+          "errors",
+          "layoutErrors",
+          "sources",
+          "valid"
+        ],
+        "type": "object",
+        "properties": {
+          "valid": {
+            "type": "boolean"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "layoutErrors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorSource"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorRoot": {
+        "required": [
+          "node",
+          "parentPath",
+          "sourceIndex"
+        ],
+        "type": "object",
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/EditorNode"
+          },
+          "sourceIndex": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "parentPath": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorSchedulePreview": {
+        "required": [
+          "points",
+          "timeZone"
+        ],
+        "type": "object",
+        "properties": {
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SchedulePoint"
+            }
+          },
+          "timeZone": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorScheduleRequest": {
+        "required": [
+          "anchor",
+          "draft",
+          "from",
+          "networkId",
+          "until"
+        ],
+        "type": "object",
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/EditorDraft"
+          },
+          "networkId": {
+            "type": "string"
+          },
+          "anchor": {
+            "type": "string",
+            "format": "date"
+          },
+          "from": {
+            "type": "string",
+            "format": "date"
+          },
+          "until": {
+            "type": "string",
+            "format": "date"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorSource": {
+        "required": [
+          "changed",
+          "encoding",
+          "fileName",
+          "targetPath",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "fileName": {
+            "type": "string"
+          },
+          "encoding": {
+            "type": "string"
+          },
+          "targetPath": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "changed": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -1144,6 +1826,42 @@
           }
         },
         "additionalProperties": { }
+      },
+      "SchedulePoint": {
+        "type": "object",
+        "properties": {
+          "rule": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "businessDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "due": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SourceEvidence": {
+        "type": "object",
+        "properties": {
+          "mapping": {
+            "$ref": "#/components/schemas/DefinitionSource"
+          },
+          "contentHash": {
+            "type": "string"
+          },
+          "eTag": {
+            "type": "string"
+          },
+          "base64": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       }
     }
   }
