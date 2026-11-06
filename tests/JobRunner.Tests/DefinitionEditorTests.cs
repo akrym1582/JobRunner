@@ -162,6 +162,22 @@ public sealed class DefinitionEditorTests
         Assert.Equal(("/net/b", "/net/a", false), Assert.Single(DefinitionValidator.Edges(parsed)));
     }
 
+    /// <summary>名前だけ変える場合、範囲内の非グリッド座標と既存szを補正しません。</summary>
+    [Fact]
+    public void RenameKeepsOriginalNonGridCoordinatesAndSize()
+    {
+        var (service, bundle) = Create(Original.Replace("+80 +48", "+16000 +10000", StringComparison.Ordinal));
+        var draft = DefinitionEditor.Project(bundle);
+        draft.Networks[0].Nodes[0] = draft.Networks[0].Nodes[0] with { Name = "changed" };
+        var parsed = service.Validate(DefinitionEditor.Render(bundle, draft)).Units[0];
+        Assert.Equal("2*1", parsed.Get("sz"));
+        Assert.Equal((16000, 10000), DefinitionLayout.Read(parsed)["/net/changed"]);
+        draft.Networks[0].Nodes.Add(new EditorNode("new:job", "追加", "j", new() { ["te"] = ["true"] }, 400, 48));
+        parsed = service.Validate(DefinitionEditor.Render(bundle, draft)).Units[0];
+        Assert.Equal("3*1", parsed.Get("sz"));
+        Assert.Equal((16000, 10000), DefinitionLayout.Read(parsed)["/net/changed"]);
+    }
+
     private static (DefinitionService Service, DefinitionBundle Bundle) Create(string text, string encoding = "utf-8", bool bom = false, bool validate = true)
     {
         var options = new RunnerOptions();

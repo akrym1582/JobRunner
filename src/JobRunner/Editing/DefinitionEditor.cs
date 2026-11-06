@@ -184,8 +184,14 @@ public static class DefinitionEditor
             if (layoutChanged)
             {
                 document.SetValues(syntax, "el", elements, false);
-                int columns = Math.Max(1, network.Nodes.Select(n => ((n.X ?? 0) / 160) + 1).DefaultIfEmpty(1).Max());
-                int rows = Math.Max(1, network.Nodes.Select(n => ((n.Y ?? 0) / 96) + 1).DefaultIfEmpty(1).Max());
+            }
+
+            // 名前変更や削除だけでは、既存の非グリッド座標やszを補正しません。
+            var movedNodes = network.Nodes.Where(node => !oldNodes.TryGetValue(node.Id, out var old) || node.X != old.X || node.Y != old.Y).ToList();
+            if (movedNodes.Count > 0)
+            {
+                int columns = Math.Max(1, movedNodes.Select(n => ((n.X ?? 0) / 160) + 1).DefaultIfEmpty(1).Max());
+                int rows = Math.Max(1, movedNodes.Select(n => ((n.Y ?? 0) / 96) + 1).DefaultIfEmpty(1).Max());
                 string size = units[network.Path].Get("sz", "10*8");
                 var match = Regex.Match(size, @"^(\d+)[*x＊](\d+)$", RegexOptions.CultureInvariant);
                 if (match.Success && int.TryParse(match.Groups[1].Value, out int oldColumns) && int.TryParse(match.Groups[2].Value, out int oldRows) && (columns > oldColumns || rows > oldRows))

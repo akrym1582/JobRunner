@@ -89,7 +89,7 @@ npm run benchmark:format -- 712b414
 対象は`feature/jobrunner-definition-editor`（基点main `d56095b`）。採用版の保存済み原文を読む独自UI APIとSVG編集、IndexedDBの自動保存、読取専用プレビュー、単一ファイル/ZIPの出力を追加した。保存モデルとスケジューラーの操作は変更していない。
 
 - Linux、.NET SDK 10.0.403、Node.js 24.22.1、Azurite 3.35.0、システムChromiumで実施。
-- `./scripts/verify.sh`: Releaseビルド・StyleCop、**239件成功、失敗0・スキップ0**。TRXの実行件数を確認。
+- `./scripts/verify.sh`（`1f5a6c0`）: Releaseビルド・StyleCop、**239件成功、失敗0・スキップ0**。TRXの実行件数を確認。
 - `DefinitionEditorTests`: 原文バイト一致、UTF-8/UTF-16 BOM、CRLF、Shift_JIS、文字コード非対応文字、引用符/#、環境変数の順序、属性間コメント、追加/削除/名前交換、座標/接続の更新、重複/循環/条件接続/リカバリー逆接続/種別変更の拒否。
 - `DefinitionEditorApiTests`: 実HTTPで単一ファイルとZIPをダウンロードし、manifestの配置で再解析。元入力Blob変更後も保存版を使用し、原文欠落を明示エラーにする。成功・失敗要求の前後で採用/登録/世代/試行/操作行と定義Blobが不変であることを確認。
 - OpenAPI出力とaspida再生成が成功し、再生成前後の全ファイルのハッシュが一致。ファイル応答は生成されたBlobクライアントを使用。
@@ -100,3 +100,5 @@ npm run benchmark:format -- 712b414
 初回の編集ブラウザー試験では、値を持つtextareaの完全一致ラベル検索で3件が待ち時間切れになった。失敗トレースを保存して確認し、テストの対象指定をtextboxのアクセシブル名に変更した。タイムアウトや期待値は緩和していない。最終レビューで名前交換時のel置換が他方の座標を消すケースを検出したため、元の名前から一度だけ投影する処理へ修正し、回帰試験を追加した。
 
 画像は`images/definition-editor.png`、`images/definition-preview.png`を追加し、既存8枚も現行ナビゲーションで再撮影した。全体画面と原文確認画面を目視確認し、READMEに編集画面を掲載した。実JP1への投入比較、Windows、実Azureでの確認は未実施。最新コミットのCI結果はドラフトPRに記録する。
+
+PR作成後の境界確認で、名前変更・削除だけでもszを再計算していた箇所を補修した。サイズの拡張は追加・移動したノードの必要量だけから求め、既存の非グリッド座標を補正しない。範囲上限の座標を持つジョブの名前変更と別ジョブ追加を回帰条件にし、Releaseで`DefinitionEditorTests`の13件が成功した。追加後の全体件数は240件で、最新コミットの全体CI結果はPRに記録する。
