@@ -12,6 +12,11 @@ public static partial class UiEndpoints
 {
     private static void MapEditor(RouteGroupBuilder group)
     {
+        group.MapPost("/definition-editor/local", (EditorLocalRequest request, DefinitionService definitions, RunnerOptions options) =>
+        {
+            var bundle = EditorLocalFiles.Read(request, definitions);
+            return new EditorDocument(DefinitionEditor.Project(bundle, 4) with { LocalSources = bundle.Sources }, DefinitionEditor.Describe(bundle.Sources, bundle.Sources), DefinitionEditor.Containers(bundle), options.TimeZone, options.ScheduleTimeMode);
+        });
         group.MapGet("/definition-editor", async (string? definitionHash, StorageRepository storage, DefinitionService definitions, RunnerOptions options, CancellationToken token) =>
         {
             string hash = definitionHash ?? (await ActiveAsync(storage, token)).DefinitionHash;
@@ -20,18 +25,18 @@ public static partial class UiEndpoints
         });
         group.MapPost("/definition-editor/preview", async (EditorDraft draft, DefinitionService definitions, CancellationToken token) =>
         {
-            var bundle = await definitions.ReadSourcesAsync(draft.DefinitionHash, token);
+            var bundle = await EditorSourcesAsync(draft, definitions, token);
             return CompileDraft(bundle, draft, definitions).Preview;
         });
         group.MapPost("/definition-editor/schedules", async (EditorScheduleRequest request, DefinitionService definitions, RunnerOptions options, CancellationToken token) =>
         {
-            var bundle = await definitions.ReadSourcesAsync(request.Draft.DefinitionHash, token);
+            var bundle = await EditorSourcesAsync(request.Draft, definitions, token);
             var compiled = definitions.Validate(DefinitionEditor.Render(bundle, request.Draft));
             return DefinitionEditor.PreviewSchedule(compiled, request, options);
         });
         group.MapPost("/definition-editor/export", async (EditorDraft draft, DefinitionService definitions, CancellationToken token) =>
         {
-            var bundle = await definitions.ReadSourcesAsync(draft.DefinitionHash, token);
+            var bundle = await EditorSourcesAsync(draft, definitions, token);
             var compiled = CompileDraft(bundle, draft, definitions);
             if (!compiled.Preview.Valid)
             {
@@ -65,6 +70,23 @@ public static partial class UiEndpoints
 
             return Results.File(stream.ToArray(), "application/zip", "jobrunner-definitions.zip");
         }).Produces(200, contentType: "application/octet-stream");
+    }
+
+    private static Task<DefinitionBundle> EditorSourcesAsync(EditorDraft draft, DefinitionService definitions, CancellationToken token)
+    {
+        // ローカル原文は毎回検証し、Storageへ保存せず既存の編集経路へ渡します。
+        if (draft.LocalSources is null)
+        {
+            return definitions.ReadSourcesAsync(draft.DefinitionHash, token);
+        }
+
+        var bundle = EditorLocalFiles.Read(new(draft.LocalSources), definitions);
+        if (bundle.Hash != draft.DefinitionHash)
+        {
+            throw new ArgumentException("ローカル原文と下書きの基点版が一致しません。");
+        }
+
+        return Task.FromResult(bundle);
     }
 
     private static (EditorPreview Preview, List<SourceEvidence> Sources) CompileDraft(DefinitionBundle bundle, EditorDraft draft, DefinitionService definitions)

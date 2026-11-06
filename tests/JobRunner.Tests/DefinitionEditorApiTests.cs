@@ -15,6 +15,60 @@ namespace JobRunner.Tests;
 /// <summary>実HTTPで原文ダウンロードと運用データへの非干渉を確認します。</summary>
 public sealed class DefinitionEditorApiTests
 {
+    /// <summary>ローカル原文の検証・編集・試算・ZIP再入力はStorageへ保存しません。</summary>
+    /// <returns>実HTTPの往復と永続状態の比較です。</returns>
+    [Fact]
+    public async Task LocalFilesRoundTripWithoutSavingDefinitions()
+    {
+        await using var scope = new StorageScope();
+        string containerName = "local-" + Guid.NewGuid().ToString("N");
+        scope.Options.DefinitionSources = [new() { BlobPath = containerName + "/active.ajs" }];
+        await scope.Repository.InitializeAsync(CancellationToken.None);
+        var container = scope.Repository.Blobs.GetBlobContainerClient(containerName);
+        await container.CreateAsync();
+        await container.GetBlobClient("active.ajs").UploadAsync(BinaryData.FromString("unit=active;{ty=n;sd=0,ud;}"));
+        using var app = new AppProcess(scope.Options);
+        try
+        {
+            await WaitForEditorAsync(app);
+            var before = await OperationalStateAsync(scope.Repository);
+            byte[] original = Encoding.UTF8.GetBytes("\uFEFF/* local */\r\nunit=local;{ty=n;sd=0,ud;unit=job;{ty=j;te=\"true\";}}\r\n");
+            var input = new EditorLocalRequest([new() { Mapping = new() { BlobPath = "local.ajs" }, Base64 = Convert.ToBase64String(original) }]);
+            var opened = await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/local", input);
+            Assert.Equal(HttpStatusCode.OK, opened.StatusCode);
+            var document = (await opened.Content.ReadFromJsonAsync<EditorDocument>())!;
+            Assert.NotNull(document.Draft.LocalSources);
+            var download = await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/export", document.Draft);
+            Assert.Equal(original, await download.Content.ReadAsByteArrayAsync());
+            var forged = document.Draft with { DefinitionHash = "wrong" };
+            Assert.Equal(HttpStatusCode.BadRequest, (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/preview", forged)).StatusCode);
+            document.Draft.Networks[0].Nodes[0].Attributes["te"] = ["echo local"];
+            var preview = await (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/preview", document.Draft)).Content.ReadFromJsonAsync<EditorPreview>();
+            Assert.True(preview!.Valid);
+            Assert.Contains("echo local", preview.Sources[0].Text, StringComparison.Ordinal);
+            var trial = await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/schedules", new EditorScheduleRequest(document.Draft, "/local", new(2026, 1, 1), new(2026, 1, 1), new(2026, 1, 2)));
+            Assert.Empty((await trial.Content.ReadFromJsonAsync<EditorSchedulePreview>())!.Points);
+            input.Sources!.Add(new() { Mapping = new() { BlobPath = "other/cal.ajs", TargetPath = "/business" }, Base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes("unit=cal;{ty=g;cl=su;}")) });
+            opened = await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/local", input);
+            document = (await opened.Content.ReadFromJsonAsync<EditorDocument>())!;
+            download = await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/export", document.Draft);
+            string zip = Convert.ToBase64String(await download.Content.ReadAsByteArrayAsync());
+            var restored = await (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/local", new EditorLocalRequest(ZipBase64: zip))).Content.ReadFromJsonAsync<EditorDocument>();
+            Assert.Equal(document.Draft.DefinitionHash, restored!.Draft.DefinitionHash);
+            Assert.Equal(document.Draft.LocalSources!.Select(s => s.Base64), restored.Draft.LocalSources!.Select(s => s.Base64));
+            Assert.Equal("/business", restored.Sources.Single(s => s.FileName == "other/cal.ajs").TargetPath);
+            using var oversized = new StringContent(new string(' ', (12 * 1024 * 1024) + 1), Encoding.UTF8, "application/json");
+            using var oversizedRequest = new HttpRequestMessage(HttpMethod.Post, "/api/jobrunner/ui/definition-editor/local") { Content = oversized };
+            oversizedRequest.Headers.ExpectContinue = true;
+            Assert.Equal(HttpStatusCode.RequestEntityTooLarge, (await app.Client.SendAsync(oversizedRequest)).StatusCode);
+            Assert.Equal(before, await OperationalStateAsync(scope.Repository));
+        }
+        finally
+        {
+            await container.DeleteAsync();
+        }
+    }
+
     /// <summary>元入力を更新しても保存版から編集し、ZIPまたは元バイト列を出力します。</summary>
     /// <param name="multiple">複数ファイル出力かどうかです。</param>
     /// <returns>実HTTPとStorageの検証です。</returns>

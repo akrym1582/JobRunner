@@ -2,6 +2,51 @@ import { test, expect, type Page, type Locator } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { EditorDocument } from "../src/api/@types";
+
+test("試算中に条件AからBへ変え、応答後にAへ戻しても再試算できる", async ({
+  page,
+}) => {
+  await open(page);
+  await dates(page);
+  let release!: () => void;
+  let started!: () => void;
+  const received = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(
+    "**/definition-editor/schedules",
+    async (route) => {
+      const response = await route.fetch();
+      started();
+      await gate;
+      await route.fulfill({ response });
+    },
+    { times: 1 },
+  );
+  const button = page.getByRole("button", {
+    name: "下書きを試算",
+    exact: true,
+  });
+  await button.click();
+  await received;
+  await page
+    .getByLabel("試算終了業務日（含まない）", { exact: true })
+    .fill("2024-03-02");
+  const response = page.waitForResponse("**/definition-editor/schedules");
+  release();
+  await (await response).finished();
+  await expect(page.getByText(/下書き候補/)).toHaveCount(0);
+  await page
+    .getByLabel("試算終了業務日（含まない）", { exact: true })
+    .fill("2024-03-01");
+  await expect(button).toBeEnabled();
+  await button.click();
+  await expect(page.getByText(/下書き候補 .*件/)).toBeVisible();
+});
+
 const api = "http://127.0.0.1:5181/api/jobrunner";
 async function open(page: Page) {
   await page.goto("/");

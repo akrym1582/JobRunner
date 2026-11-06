@@ -490,3 +490,25 @@
   font-size: 13px;
   text-align: left;
 }
+
+.editor-local-input {
+  margin: 1rem 0;
+}
+.editor-local-input summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.editor-local-input fieldset {
+  border: 1px solid var(--editor-border);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin: 0.75rem 0;
+  min-width: 0;
+}
+.editor-local-input label {
+  display: grid;
+  gap: 0.35rem;
+}
+.editor-local-input input[type="file"] {
+  max-width: 100%;
+}

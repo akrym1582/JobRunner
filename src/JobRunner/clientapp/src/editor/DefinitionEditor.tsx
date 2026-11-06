@@ -22,6 +22,7 @@ import { client, errorMessage } from "../client";
 import { EditorGraph } from "./EditorGraph";
 import { EditorProperties } from "./EditorProperties";
 import { TimingProperties } from "./TimingProperties";
+import { LocalDefinitionInput } from "./LocalDefinitionInput";
 import { NetworkProperties } from "./NetworkProperties";
 import { networkNames, removeHierarchyNode, subtreeIds } from "./hierarchy";
 import {
@@ -329,6 +330,51 @@ export function DefinitionEditor({
       setBusy(false);
     }
   }
+  async function importLocal(load: () => Promise<EditorDocument>) {
+    if (
+      base &&
+      !window.confirm(
+        "現在の下書きをローカル定義で置き換えますか？必要な編集は先にダウンロードしてください。",
+      )
+    )
+      return;
+    const started = revision.current;
+    setBusy(true);
+    setMessage("");
+    try {
+      if (!loaded || !saveAllowed)
+        throw new Error(
+          "保存領域を確認できないため置き換えできません。保存済み下書きを読み直してください。",
+        );
+      const current = await load();
+      if (started !== revision.current) {
+        setMessage(
+          "読込中に編集されたため、ローカル定義への置き換えを中止しました。",
+        );
+        return;
+      }
+      // 保存が成功するまで現在の編集を残し、別タブとの競合も同じ版比較で検出します。
+      await persist({ version: 1, base: current, draft: current.draft }, true);
+      if (started !== revision.current) return;
+      revision.current++;
+      setBase(current);
+      setHistory({ past: [], present: current.draft, future: [] });
+      setPreview(undefined);
+      setShowPreview(false);
+      setSelected("");
+      setConnectFrom("");
+      setSaving("ブラウザーに保存済み");
+      setSaveError("");
+      setMessage(
+        "ローカル定義を下書きとして読み込みました。採用・登録はしていません。",
+      );
+    } catch (error) {
+      const detail = await errorMessage(error);
+      if (started === revision.current) setMessage(detail);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function reloadSaved() {
     if (
       !window.confirm(
@@ -407,7 +453,7 @@ export function DefinitionEditor({
           {saveError ? "自動保存エラー" : saving}
         </span>
       </div>
-      {loadError && (
+      {loadError && !draft?.localSources && (
         <div className="alert" role="alert">
           {loadError}
           <button onClick={() => void source.mutate()}>定義を再取得</button>
@@ -439,16 +485,25 @@ export function DefinitionEditor({
           )}
         </div>
       )}
-      {draft && activeHash && draft.definitionHash !== activeHash && (
-        <div className="notice" role="status">
-          採用定義が更新されています。この下書きは開始時の版{" "}
-          {draft.definitionHash.slice(0, 12)} に固定しています。
-        </div>
-      )}
+      {draft &&
+        !draft.localSources &&
+        activeHash &&
+        draft.definitionHash !== activeHash && (
+          <div className="notice" role="status">
+            採用定義が更新されています。この下書きは開始時の版{" "}
+            {draft.definitionHash.slice(0, 12)} に固定しています。
+          </div>
+        )}
       <div className="editor-scope-note">
         <FileCode2 size={16} />
         この下書きは実行中の定義や予定に反映されません。ダウンロード後、既存の取込・採用手順で適用します。
       </div>
+      {draft?.localSources && (
+        <p role="status">
+          ローカル入力（未採用）・{draft.localSources.length}ファイル
+        </p>
+      )}
+      <LocalDefinitionInput disabled={busy || !loaded} onImport={importLocal} />
       {message && (
         <div className="notice" role="status">
           {message}

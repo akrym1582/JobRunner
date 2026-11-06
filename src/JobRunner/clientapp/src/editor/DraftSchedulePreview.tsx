@@ -81,6 +81,15 @@ export function DraftSchedulePreview({
               const message = await errorMessage(error);
               if (request === serial.current && latest.current === key)
                 setResponse({ key, error: message });
+            } finally {
+              // 条件を戻しても、終了した通信の「処理中」を復活させません。
+              setResponse((previous) =>
+                request === serial.current &&
+                previous?.key === key &&
+                previous.busy
+                  ? undefined
+                  : previous,
+              );
             }
           }}
         >

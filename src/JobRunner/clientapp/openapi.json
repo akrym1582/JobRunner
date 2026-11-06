@@ -37,6 +37,35 @@
         }
       }
     },
+    "/api/jobrunner/ui/definition-editor/local": {
+      "post": {
+        "tags": [
+          "JobRunner"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorLocalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorDocument"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobrunner/ui/definition-editor": {
       "get": {
         "tags": [
@@ -512,6 +541,24 @@
         },
         "additionalProperties": false
       },
+      "DefinitionSource": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "targetPath": {
+            "type": "string"
+          },
+          "blobPath": {
+            "type": "string"
+          },
+          "encoding": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "DelayMonitorSettings": {
         "type": "object",
         "properties": {
@@ -684,6 +731,13 @@
               "$ref": "#/components/schemas/EditorAttributes"
             },
             "nullable": true
+          },
+          "localSources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceEvidence"
+            },
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -704,6 +758,23 @@
           },
           "conditional": {
             "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorLocalRequest": {
+        "type": "object",
+        "properties": {
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceEvidence"
+            },
+            "nullable": true
+          },
+          "zipBase64": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -1614,6 +1685,24 @@
           "due": {
             "type": "string",
             "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SourceEvidence": {
+        "type": "object",
+        "properties": {
+          "mapping": {
+            "$ref": "#/components/schemas/DefinitionSource"
+          },
+          "contentHash": {
+            "type": "string"
+          },
+          "eTag": {
+            "type": "string"
+          },
+          "base64": {
+            "type": "string"
           }
         },
         "additionalProperties": false

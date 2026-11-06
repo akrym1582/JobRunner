@@ -14,6 +14,13 @@ export type Catalog = {
   networks: Network[];
 }
 
+export type DefinitionSource = {
+  kind?: string | undefined;
+  targetPath?: string | undefined;
+  blobPath?: string | undefined;
+  encoding?: string | undefined;
+}
+
 export type DelayMonitorSettings = {
   start?: string | null | undefined;
   startMinutes?: number | null | undefined;
@@ -58,12 +65,18 @@ export type EditorDraft = {
   roots?: EditorRoot[] | null | undefined;
   schedules?: EditorAttributes[] | null | undefined;
   calendars?: EditorAttributes[] | null | undefined;
+  localSources?: SourceEvidence[] | null | undefined;
 }
 
 export type EditorEdge = {
   from: string;
   to: string;
   conditional: boolean;
+}
+
+export type EditorLocalRequest = {
+  sources?: SourceEvidence[] | null | undefined;
+  zipBase64?: string | null | undefined;
 }
 
 export type EditorNetwork = {
@@ -308,4 +321,11 @@ export type SchedulePoint = {
   rule?: number | undefined;
   businessDate?: string | undefined;
   due?: string | undefined;
+}
+
+export type SourceEvidence = {
+  mapping?: DefinitionSource | undefined;
+  contentHash?: string | undefined;
+  eTag?: string | undefined;
+  base64?: string | undefined;
 }

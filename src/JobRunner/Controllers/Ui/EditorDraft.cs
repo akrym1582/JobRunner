@@ -1,3 +1,5 @@
+using JobRunner.Models;
+
 namespace JobRunner.Controllers.Ui;
 
 /// <summary>保存済み版を基にした下書きです。</summary>
@@ -7,4 +9,5 @@ namespace JobRunner.Controllers.Ui;
 /// <param name="Roots">版3のルートネットと原文所属です。</param>
 /// <param name="Schedules">版4のネット予定属性です。IDはネットの安定IDです。</param>
 /// <param name="Calendars">版4の既存グループのカレンダー属性です。IDは完全名です。</param>
-public sealed record EditorDraft(string DefinitionHash, List<EditorNetwork> Networks, int? EditorVersion = null, List<EditorRoot>? Roots = null, List<EditorAttributes>? Schedules = null, List<EditorAttributes>? Calendars = null);
+/// <param name="LocalSources">ローカル入力の原文です。省略時は保存済み版から読みます。</param>
+public sealed record EditorDraft(string DefinitionHash, List<EditorNetwork> Networks, int? EditorVersion = null, List<EditorRoot>? Roots = null, List<EditorAttributes>? Schedules = null, List<EditorAttributes>? Calendars = null, List<SourceEvidence>? LocalSources = null);
