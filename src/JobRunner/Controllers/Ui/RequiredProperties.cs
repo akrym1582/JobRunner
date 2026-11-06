@@ -19,6 +19,12 @@ public sealed class RequiredProperties : ISchemaFilter
             {
                 // 旧下書きの要求には版がないため、省略可能な契約を公開します。
                 schema.Required.Remove("editorVersion");
+                schema.Required.Remove("roots");
+            }
+
+            if (context.Type == typeof(EditorDocument))
+            {
+                schema.Required.Remove("containers");
             }
 
             foreach (var property in context.Type.GetProperties())

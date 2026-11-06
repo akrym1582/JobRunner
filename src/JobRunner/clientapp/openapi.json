@@ -540,6 +540,23 @@
         },
         "additionalProperties": false
       },
+      "EditorContainer": {
+        "required": [
+          "parentPath",
+          "sourceIndex"
+        ],
+        "type": "object",
+        "properties": {
+          "sourceIndex": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "parentPath": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "EditorDocument": {
         "required": [
           "draft",
@@ -555,6 +572,13 @@
             "items": {
               "$ref": "#/components/schemas/EditorSource"
             }
+          },
+          "containers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorContainer"
+            },
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -578,6 +602,13 @@
           "editorVersion": {
             "type": "integer",
             "format": "int32",
+            "nullable": true
+          },
+          "roots": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorRoot"
+            },
             "nullable": true
           }
         },
@@ -700,6 +731,27 @@
             "items": {
               "$ref": "#/components/schemas/EditorSource"
             }
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorRoot": {
+        "required": [
+          "node",
+          "parentPath",
+          "sourceIndex"
+        ],
+        "type": "object",
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/EditorNode"
+          },
+          "sourceIndex": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "parentPath": {
+            "type": "string"
           }
         },
         "additionalProperties": false

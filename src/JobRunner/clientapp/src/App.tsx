@@ -38,6 +38,7 @@ export function App() {
   const [view, setView] = useState<"graph" | "monthly" | "editor">("graph");
   const [readError, setReadError] = useState("");
   const [network, setNetwork] = useState("");
+  const [editorNetwork, setEditorNetwork] = useState("");
   const [rootId, setRootId] = useState("");
   const [selected, setSelected] = useState("");
   const [statuses, setStatuses] = useState<string[]>([]);
@@ -59,6 +60,7 @@ export function App() {
   const catalog = useAspidaSWR(client.ui.jobnets, { refreshInterval: 5000 });
   const networks = catalog.data?.networks ?? [];
   const path = network || networks[0]?.path || "";
+  const navigationPath = view === "editor" ? editorNetwork || path : path;
   const rootPath =
     networks
       .filter((n) => path === n.path || path.startsWith(n.path + "/"))
@@ -123,6 +125,10 @@ export function App() {
     };
   }, [error]);
   function changeNetwork(value: string) {
+    if (view === "editor") {
+      setEditorNetwork(value);
+      return;
+    }
     setNetwork(value);
     setSelected("");
     if (!value.startsWith(rootPath + "/")) {
@@ -213,7 +219,7 @@ export function App() {
             .map((n) => (
               <button
                 key={n.path}
-                className={`network-item ${path === n.path ? "active" : ""}`}
+                className={`network-item ${navigationPath === n.path ? "active" : ""}`}
                 style={{
                   paddingLeft:
                     18 + Math.max(0, n.path.split("/").length - 2) * 12,
@@ -222,7 +228,7 @@ export function App() {
               >
                 <FolderTree size={16} />
                 <span>{n.name}</span>
-                {path === n.path && <span className="active-dot" />}
+                {navigationPath === n.path && <span className="active-dot" />}
               </button>
             ))}
         </nav>
@@ -266,8 +272,8 @@ export function App() {
           {view === "editor" ? (
             <DefinitionEditor
               activeHash={catalog.data?.definitionHash}
-              path={path}
-              onNavigate={changeNetwork}
+              path={editorNetwork || path}
+              onNavigate={setEditorNetwork}
             />
           ) : (
             <>

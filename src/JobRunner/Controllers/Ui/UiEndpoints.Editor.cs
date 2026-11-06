@@ -16,7 +16,7 @@ public static partial class UiEndpoints
         {
             string hash = definitionHash ?? (await ActiveAsync(storage, token)).DefinitionHash;
             var bundle = await definitions.ReadSourcesAsync(hash, token);
-            return new EditorDocument(DefinitionEditor.Project(bundle), DefinitionEditor.Describe(bundle.Sources, bundle.Sources));
+            return new EditorDocument(DefinitionEditor.Project(bundle), DefinitionEditor.Describe(bundle.Sources, bundle.Sources), DefinitionEditor.Containers(bundle));
         });
         group.MapPost("/definition-editor/preview", async (EditorDraft draft, DefinitionService definitions, CancellationToken token) =>
         {

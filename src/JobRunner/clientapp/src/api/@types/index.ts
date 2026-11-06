@@ -30,15 +30,22 @@ export type Edge = {
   kind: string;
 }
 
+export type EditorContainer = {
+  sourceIndex: number;
+  parentPath: string;
+}
+
 export type EditorDocument = {
   draft: EditorDraft;
   sources: EditorSource[];
+  containers?: EditorContainer[] | null | undefined;
 }
 
 export type EditorDraft = {
   definitionHash: string;
   networks: EditorNetwork[];
   editorVersion?: number | null | undefined;
+  roots?: EditorRoot[] | null | undefined;
 }
 
 export type EditorEdge = {
@@ -71,6 +78,12 @@ export type EditorPreview = {
   errors: string[];
   layoutErrors: string[];
   sources: EditorSource[];
+}
+
+export type EditorRoot = {
+  node: EditorNode;
+  sourceIndex: number;
+  parentPath: string;
 }
 
 export type EditorSource = {

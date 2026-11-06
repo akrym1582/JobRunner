@@ -4,4 +4,5 @@ namespace JobRunner.Controllers.Ui;
 /// <param name="DefinitionHash">原文を固定する版です。</param>
 /// <param name="Networks">全ネットの編集投影です。</param>
 /// <param name="EditorVersion">投影の版です。未指定は判定属性を持たない旧下書きです。</param>
-public sealed record EditorDraft(string DefinitionHash, List<EditorNetwork> Networks, int? EditorVersion = null);
+/// <param name="Roots">版3のルートネットと原文所属です。</param>
+public sealed record EditorDraft(string DefinitionHash, List<EditorNetwork> Networks, int? EditorVersion = null, List<EditorRoot>? Roots = null);

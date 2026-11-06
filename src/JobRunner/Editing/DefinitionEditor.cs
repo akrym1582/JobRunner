@@ -7,17 +7,18 @@ using JobRunner.Models;
 namespace JobRunner.Editing;
 
 /// <summary>原文の局所置換だけで下書きを生成します。Storageへの書込みは行いません。</summary>
-public static class DefinitionEditor
+public static partial class DefinitionEditor
 {
     private static readonly HashSet<string> EditableKeys = ["cm", "te", "sc", "prm", "wkp", "env"];
     private static readonly HashSet<string> JudgmentKeys = ["cm", "ej", "ejc", "ejl", "ejh", "ejm", "eju", "ejf", "ejv", "ejt", "eji", "ejs", "ejg", "ha"];
     private static readonly HashSet<string> QuotedKeys = ["cm", "te", "sc", "prm", "wkp", "env", "ejf", "ejt"];
+    private static readonly HashSet<string> NetworkKeys = ["cm"];
 
     /// <summary>原文に存在するネットと編集項目を投影します。</summary>
     /// <param name="bundle">原文検証済みの版です。</param>
     /// <param name="editorVersion">旧要求の欠落属性を削除と解釈しないための投影版です。</param>
     /// <returns>元パスで識別する下書きです。</returns>
-    public static EditorDraft Project(DefinitionBundle bundle, int editorVersion = 2) => new(
+    public static EditorDraft Project(DefinitionBundle bundle, int editorVersion = 3) => new(
         bundle.Hash,
         bundle.Units.Flatten().Where(u => u.IsNetwork()).Select(network => new EditorNetwork(
         network.Path,
@@ -27,7 +28,8 @@ public static class DefinitionEditor
             return new EditorNode(unit.Path, unit.Name, unit.Type, unit.Attributes.Where(a => Keys(unit.Type, editorVersion).Contains(a.Key)).ToDictionary(a => a.Key, a => a.Value.ToList(), StringComparer.Ordinal), position?.X, position?.Y);
         }).ToList(),
         DefinitionValidator.Edges(network).Select(e => new EditorEdge(e.From, e.To, e.Conditional)).ToList())).ToList(),
-        editorVersion);
+        editorVersion,
+        editorVersion >= 3 ? ProjectRoots(bundle) : null);
 
     /// <summary>元の文字コードで原文を表示します。</summary>
     /// <param name="sources">対象原文です。</param>
@@ -47,6 +49,11 @@ public static class DefinitionEditor
         }
 
         int editorVersion = draft.EditorVersion ?? 1;
+        if (editorVersion == 3)
+        {
+            return RenderHierarchy(bundle, draft);
+        }
+
         if (editorVersion is not (1 or 2))
         {
             throw new ArgumentException("未対応の下書き形式です。");
@@ -236,7 +243,7 @@ public static class DefinitionEditor
 
     private static bool CanEdit(string type, int version) => IsJob(type) || (version >= 2 && type is "jdj" or "rjdj");
 
-    private static HashSet<string> Keys(string type, int version) => version >= 2 && type is "jdj" or "rjdj" ? JudgmentKeys : EditableKeys;
+    private static HashSet<string> Keys(string type, int version) => version >= 3 && type is "n" or "rn" ? NetworkKeys : version >= 2 && type is "jdj" or "rjdj" ? JudgmentKeys : EditableKeys;
 
     private static string FormatValue(string key, string value)
     {

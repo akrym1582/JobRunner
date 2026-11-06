@@ -48,7 +48,7 @@ public sealed class DefinitionEditorApiTests
             var originalBundle = await new DefinitionService(scope.Repository, scope.Options).ReadSourcesAsync(document.Draft.DefinitionHash, CancellationToken.None);
             var before = await OperationalStateAsync(scope.Repository);
             var exact = await app.Client.GetFromJsonAsync<EditorDocument>("/api/jobrunner/ui/definition-editor?definitionHash=" + document.Draft.DefinitionHash);
-            Assert.Equal(2, exact!.Draft.EditorVersion);
+            Assert.Equal(3, exact!.Draft.EditorVersion);
             Assert.Equal("7", exact.Draft.Networks[0].Nodes.Single(n => n.Type == "jdj").Attributes["ejc"][0]);
             var legacy = DefinitionEditor.Project(originalBundle, 1) with { EditorVersion = null };
             var legacyPreview = await (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/preview", new { legacy.DefinitionHash, legacy.Networks })).Content.ReadFromJsonAsync<EditorPreview>();
@@ -94,6 +94,16 @@ public sealed class DefinitionEditorApiTests
             preview = await (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/preview", document.Draft)).Content.ReadFromJsonAsync<EditorPreview>();
             Assert.True(preview!.Valid);
             Assert.Contains(preview.Sources, s => s.Text.Contains("ejc=4294967295;ha=n;", StringComparison.Ordinal));
+            response = await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/export", document.Draft);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            document.Draft.Roots![0] = document.Draft.Roots[0] with { Node = document.Draft.Roots[0].Node with { Name = "renamed" } };
+            document.Draft.Roots.Add(new(new("new:root", "newroot", "n", new(), null, null), 0, "/"));
+            document.Draft.Networks.Add(new("new:root", [], []));
+            net.Nodes.Add(new("new:nested", "nested", "rn", new(), 400, 48));
+            document.Draft.Networks.Add(new("new:nested", [], []));
+            preview = await (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/preview", document.Draft)).Content.ReadFromJsonAsync<EditorPreview>();
+            Assert.True(preview!.Valid);
+            Assert.Contains(preview.Sources, s => s.Text.Contains("sd=0,ud;ha=y;", StringComparison.Ordinal));
             response = await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/export", document.Draft);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             net.Edges.Add(new EditorEdge(net.Nodes[0].Id, net.Nodes[0].Id, false));

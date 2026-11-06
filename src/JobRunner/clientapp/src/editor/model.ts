@@ -2,16 +2,20 @@ import type { EditorDraft, EditorNetwork, EditorNode } from "../api/@types";
 
 export const isJob = (type: string) => ["j", "pj", "rj", "rp"].includes(type);
 export const isJudgment = (type: string) => ["jdj", "rjdj"].includes(type);
+export const isNetwork = (type: string) => ["n", "rn"].includes(type);
 export const canEdit = (type: string, version: number) =>
-  isJob(type) || (version === 2 && isJudgment(type));
+  isJob(type) ||
+  (version >= 2 && isJudgment(type)) ||
+  (version === 3 && isNetwork(type));
 
 export function upgradeDraft(
   draft: EditorDraft,
   baseline: EditorDraft,
 ): EditorDraft {
   if (
-    (draft.editorVersion ?? 1) !== 1 ||
-    baseline.editorVersion !== 2 ||
+    ![1, 2].includes(draft.editorVersion ?? 1) ||
+    baseline.editorVersion !== 3 ||
+    !baseline.roots ||
     draft.definitionHash !== baseline.definitionHash
   )
     throw new Error("下書きの形式または元版が一致しません。");
@@ -20,11 +24,12 @@ export function upgradeDraft(
   );
   return {
     ...draft,
-    editorVersion: 2,
+    editorVersion: 3,
+    roots: structuredClone(baseline.roots),
     networks: draft.networks.map((n) => ({
       ...n,
       nodes: n.nodes.map((node) => {
-        if (!isJudgment(node.type)) return node;
+        if (!isJudgment(node.type) || draft.editorVersion === 2) return node;
         const original = originals.get(node.id);
         if (!original || original.type !== node.type)
           throw new Error("元版の判定ジョブを確認できません。");
@@ -70,8 +75,12 @@ export function removeNode(network: EditorNetwork, id: string): EditorNetwork {
   };
 }
 export function newJob(network: EditorNetwork, type: string): EditorNode {
-  if (!canEdit(type, 2)) throw new Error("追加できないジョブ種別です。");
-  const prefix = isJudgment(type) ? "判定" : "ジョブ";
+  if (!canEdit(type, 3)) throw new Error("追加できないジョブ種別です。");
+  const prefix = isNetwork(type)
+    ? "ネット"
+    : isJudgment(type)
+      ? "判定"
+      : "ジョブ";
   let number = 1;
   while (network.nodes.some((n) => n.name === `${prefix}${number}`)) number++;
   // 空いているグリッドに新しいジョブだけを配置します。
@@ -90,9 +99,11 @@ export function newJob(network: EditorNetwork, type: string): EditorNode {
     id: `new:${crypto.randomUUID()}`,
     name: `${prefix}${number}`,
     type,
-    attributes: isJudgment(type)
-      ? { ej: ["gt"], ejc: ["0"] }
-      : { te: ["true"] },
+    attributes: isNetwork(type)
+      ? {}
+      : isJudgment(type)
+        ? { ej: ["gt"], ejc: ["0"] }
+        : { te: ["true"] },
     x: 80 + (cell % 100) * 160,
     y: 48 + Math.floor(cell / 100) * 96,
   };

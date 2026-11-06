@@ -1,5 +1,5 @@
 import type { EditorNode } from "../api/@types";
-import { canEdit, isJob, isJudgment } from "./model";
+import { canEdit, isJob, isJudgment, isNetwork } from "./model";
 import { JudgmentProperties } from "./JudgmentProperties";
 
 export function EditorProperties({
@@ -41,7 +41,7 @@ export function EditorProperties({
         <span className="outline-pill">{node.type}</span>
       </div>
       <label>
-        ジョブ名
+        {isNetwork(node.type) ? "子ネット名" : "ジョブ名"}
         <input
           disabled={!editable}
           value={node.name}
@@ -182,14 +182,11 @@ export function EditorProperties({
         </div>
         <small>ドラッグするとJP1のグリッドに配置します。</small>
       </fieldset>
-      {editable ? (
+      {isNetwork(node.type) && <button onClick={onOpen}>子ネットを編集</button>}
+      {editable && (
         <button className="editor-delete" onClick={onDelete}>
-          ジョブを削除
+          {isNetwork(node.type) ? "子ネットを削除" : "ジョブを削除"}
         </button>
-      ) : (
-        (node.type === "n" || node.type === "rn") && (
-          <button onClick={onOpen}>子ネットを編集</button>
-        )
       )}
       {!editable && (
         <p className="editor-muted">

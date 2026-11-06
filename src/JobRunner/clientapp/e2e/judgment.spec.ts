@@ -181,6 +181,7 @@ async function seedLegacy(page: Page, request: APIRequestContext) {
   await page.evaluate(async (document) => {
     const old = (value: EditorDraft) => {
       delete (value as Partial<EditorDraft>).editorVersion;
+      delete value.roots;
       for (const network of value.networks)
         for (const node of network.nodes)
           if (["jdj", "rjdj"].includes(node.type))
@@ -272,7 +273,7 @@ test("旧下書きの原文取得失敗でも編集を保持し、読み直し�
   );
   await page.getByRole("button", { name: "定義編集", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText(
-    "旧下書きの判定属性を読み込めません",
+    "旧下書きの編集情報を読み込めません",
   );
   await page.getByLabel("編集ネット").selectOption("/判定検証");
   await select(page, "先行");

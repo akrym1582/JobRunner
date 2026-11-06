@@ -21,12 +21,14 @@ import type {
 import { client, errorMessage } from "../client";
 import { EditorGraph } from "./EditorGraph";
 import { EditorProperties } from "./EditorProperties";
+import { NetworkProperties } from "./NetworkProperties";
+import { networkNames, removeHierarchyNode, subtreeIds } from "./hierarchy";
 import {
   change,
   canEdit,
+  isNetwork,
   newJob,
   redo,
-  removeNode,
   replaceNetwork,
   replaceNode,
   undo,
@@ -42,7 +44,7 @@ import {
 import "./editor.css";
 
 async function upgradeSaved(saved: SavedDraft): Promise<SavedDraft> {
-  if (saved.draft.editorVersion === 2) return saved;
+  if (saved.draft.editorVersion === 3) return saved;
   const base = await client.ui.definition_editor.$get({
     query: { definitionHash: saved.draft.definitionHash },
   });
@@ -87,7 +89,10 @@ export function DefinitionEditor({
   const conflict = useRef(false);
   const draft = history?.present;
   const network =
-    draft?.networks.find((n) => n.path === path) ?? draft?.networks[0];
+    draft?.networks.find((n) => n.path === path) ??
+    draft?.networks[0] ??
+    (draft ? { path: "", nodes: [], edges: [] } : undefined);
+  const names = draft ? networkNames(draft) : new Map<string, string>();
   const node = network?.nodes.find((n) => n.id === selected);
   const changed =
     !!draft && JSON.stringify(base?.draft) !== JSON.stringify(draft);
@@ -138,7 +143,7 @@ export function DefinitionEditor({
             if (!current) return;
             setSaveAllowed(false);
             setSaveError(
-              `旧下書きの判定属性を読み込めません。編集内容は保持しています: ${String(error)}`,
+              `旧下書きの編集情報を読み込めません。編集内容は保持しています: ${String(error)}`,
             );
           }
           if (!current) return;
@@ -450,6 +455,15 @@ export function DefinitionEditor({
       )}
       {draft && network && history ? (
         <>
+          {base && (
+            <NetworkProperties
+              base={base}
+              draft={draft}
+              current={network.path}
+              onChange={update}
+              onNavigate={onNavigate}
+            />
+          )}
           <div className="editor-toolbar">
             <div>
               <button
@@ -470,28 +484,46 @@ export function DefinitionEditor({
               <select
                 aria-label="追加するジョブ種別"
                 value={kind}
+                disabled={!network.path}
                 onChange={(e) => setKind(e.target.value)}
               >
                 <option value="j">UNIXジョブ</option>
                 <option value="pj">PCジョブ</option>
                 <option value="rj">リカバリー UNIX</option>
                 <option value="rp">リカバリー PC</option>
-                <option value="jdj" disabled={draft.editorVersion !== 2}>
+                <option value="jdj" disabled={(draft.editorVersion ?? 1) < 2}>
                   判定ジョブ
                 </option>
-                <option value="rjdj" disabled={draft.editorVersion !== 2}>
+                <option value="rjdj" disabled={(draft.editorVersion ?? 1) < 2}>
                   リカバリー判定
+                </option>
+                <option value="n" disabled={draft.editorVersion !== 3}>
+                  子ネット
+                </option>
+                <option value="rn" disabled={draft.editorVersion !== 3}>
+                  リカバリーネット
                 </option>
               </select>
               <button
+                disabled={!network.path}
                 onClick={() => {
                   try {
+                    if (!network.path) return;
                     if (!canEdit(kind, draft.editorVersion ?? 1))
                       throw new Error(
-                        "判定属性を読み直してから追加してください。",
+                        "編集情報を読み直してから追加してください。",
                       );
                     const added = newJob(network, kind);
-                    edit({ ...network, nodes: [...network.nodes, added] });
+                    const next = replaceNetwork(draft, {
+                      ...network,
+                      nodes: [...network.nodes, added],
+                    });
+                    if (isNetwork(added.type))
+                      next.networks = [
+                        ...next.networks,
+                        { path: added.id, nodes: [], edges: [] },
+                      ];
+                    update(next);
                     setSelected(added.id);
                   } catch (e) {
                     setMessage(String(e));
@@ -499,9 +531,10 @@ export function DefinitionEditor({
                 }}
               >
                 <Plus size={16} />
-                ジョブ追加
+                {isNetwork(kind) ? "子ネット追加" : "ジョブ追加"}
               </button>
               <button
+                disabled={!network.path}
                 aria-pressed={connecting}
                 onClick={() => {
                   setConnecting(!connecting);
@@ -550,7 +583,7 @@ export function DefinitionEditor({
               >
                 {draft.networks.map((n) => (
                   <option key={n.path} value={n.path}>
-                    {n.path}
+                    {names.get(n.path) ?? n.path}
                   </option>
                 ))}
               </select>
@@ -564,7 +597,12 @@ export function DefinitionEditor({
               </strong>
             )}
           </div>
-          <div className="editor-workspace">
+          {!network.path && (
+            <p className="empty">
+              ネットがありません。ルートネットを作成できます。
+            </p>
+          )}
+          <div className="editor-workspace" hidden={!network.path}>
             <EditorGraph
               key={network.path}
               network={network}
@@ -591,10 +629,10 @@ export function DefinitionEditor({
                 );
                 if (
                   window.confirm(
-                    `「${node.name}」と関連する接続 ${edges.length} 件を削除しますか？`,
+                    `「${node.name}」${isNetwork(node.type) ? `と子孫を含む${subtreeIds(draft, node.id).size}ユニット` : ""}と関連する接続 ${edges.length} 件を削除しますか？`,
                   )
                 ) {
-                  edit(removeNode(network, node.id));
+                  update(removeHierarchyNode(draft, node.id));
                   setSelected("");
                 }
               }}
