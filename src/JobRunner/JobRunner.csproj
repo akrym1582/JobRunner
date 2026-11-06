@@ -3,4 +3,30 @@
     <PackageReference Include="Azure.Storage.Blobs" Version="12.26.0" />
     <PackageReference Include="Azure.Data.Tables" Version="12.11.0" />
   </ItemGroup>
+  <PropertyGroup>
+    <SpaRoot>clientapp/</SpaRoot>
+    <DefaultItemExcludes>$(DefaultItemExcludes);clientapp/**</DefaultItemExcludes>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.6" />
+    <Content Remove="clientapp/**" />
+    <None Remove="clientapp/**" />
+    <Watch Remove="clientapp/**" />
+  </ItemGroup>
+  <Target Name="ExcludeClientAppFromWatch" AfterTargets="_CoreCollectWatchItems">
+    <ItemGroup>
+      <Watch Remove="$(MSBuildProjectDirectory)/clientapp/**" />
+    </ItemGroup>
+  </Target>
+  <Target Name="BuildClientForPublish" AfterTargets="ComputeFilesToPublish">
+    <Exec WorkingDirectory="$(SpaRoot)" Command="npm ci" />
+    <Exec WorkingDirectory="$(SpaRoot)" Command="npm run build" />
+    <ItemGroup>
+      <ClientDist Include="$(SpaRoot)dist/**" />
+      <ResolvedFileToPublish Include="@(ClientDist->'%(FullPath)')" Exclude="@(ResolvedFileToPublish)">
+        <RelativePath>wwwroot/%(ClientDist.RecursiveDir)%(ClientDist.Filename)%(ClientDist.Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
 </Project>
