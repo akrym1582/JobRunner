@@ -1,0 +1,909 @@
+{
+  "openapi": "3.0.4",
+  "info": {
+    "title": "JobRunner",
+    "version": "1.0"
+  },
+  "paths": {
+    "/api/jobrunner/operations/{id}": {
+      "get": {
+        "tags": [
+          "JobRunner"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/jobrunner/ui/jobnets": {
+      "get": {
+        "tags": [
+          "JobRunner"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Catalog"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobrunner/ui/executions": {
+      "get": {
+        "tags": [
+          "JobRunner"
+        ],
+        "parameters": [
+          {
+            "name": "rootPath",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionPage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobrunner/ui/graph": {
+      "get": {
+        "tags": [
+          "JobRunner"
+        ],
+        "parameters": [
+          {
+            "name": "unitPath",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "rootId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Graph"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobrunner/operations": {
+      "post": {
+        "tags": [
+          "Program"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Operation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobrunner/ui/monthly": {
+      "get": {
+        "tags": [
+          "UiEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "rootPath",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonthlySchedule"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Catalog": {
+        "required": [
+          "definitionHash",
+          "namespace",
+          "networks",
+          "phase",
+          "timeZone"
+        ],
+        "type": "object",
+        "properties": {
+          "namespace": {
+            "type": "string"
+          },
+          "definitionHash": {
+            "type": "string"
+          },
+          "timeZone": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "networks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Network"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "DelayMonitorSettings": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string",
+            "nullable": true
+          },
+          "startMinutes": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "end": {
+            "type": "string",
+            "nullable": true
+          },
+          "endMinutes": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "duration": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "durationMinutes": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Edge": {
+        "required": [
+          "from",
+          "id",
+          "kind",
+          "to"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExecutionPage": {
+        "required": [
+          "items",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Occurrence"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Graph": {
+        "required": [
+          "canChange",
+          "canRestore",
+          "definitionHash",
+          "edges",
+          "nodes",
+          "root",
+          "unitPath"
+        ],
+        "type": "object",
+        "properties": {
+          "unitPath": {
+            "type": "string"
+          },
+          "definitionHash": {
+            "type": "string"
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Node"
+            }
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Edge"
+            }
+          },
+          "root": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Occurrence"
+              }
+            ],
+            "nullable": true
+          },
+          "canChange": {
+            "type": "boolean"
+          },
+          "canRestore": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MonthlyEntry": {
+        "required": [
+          "calendarDate",
+          "comment",
+          "execution",
+          "executionId",
+          "exitCode",
+          "networkPath",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "execution": {
+            "$ref": "#/components/schemas/Occurrence"
+          },
+          "status": {
+            "type": "string"
+          },
+          "executionId": {
+            "type": "string"
+          },
+          "networkPath": {
+            "type": "string"
+          },
+          "calendarDate": {
+            "type": "string"
+          },
+          "comment": {
+            "type": "string"
+          },
+          "exitCode": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MonthlySchedule": {
+        "required": [
+          "entries",
+          "month",
+          "timeZone",
+          "units"
+        ],
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string"
+          },
+          "timeZone": {
+            "type": "string"
+          },
+          "units": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonthlyUnit"
+            }
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonthlyEntry"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "MonthlyUnit": {
+        "required": [
+          "comment",
+          "isNetwork",
+          "name",
+          "parent",
+          "path",
+          "type"
+        ],
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "comment": {
+            "type": "string"
+          },
+          "isNetwork": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Network": {
+        "required": [
+          "name",
+          "parent",
+          "path"
+        ],
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Node": {
+        "required": [
+          "execution",
+          "exitCode",
+          "isNetwork",
+          "isRecovery",
+          "name",
+          "path",
+          "status",
+          "type",
+          "x",
+          "y"
+        ],
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "isNetwork": {
+            "type": "boolean"
+          },
+          "isRecovery": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          },
+          "execution": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Occurrence"
+              }
+            ],
+            "nullable": true
+          },
+          "exitCode": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "x": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "y": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Occurrence": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "registrationId": {
+            "type": "string"
+          },
+          "rootId": {
+            "type": "string"
+          },
+          "unitPath": {
+            "type": "string"
+          },
+          "rootPath": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "businessDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "due": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "originalDue": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "state": {
+            "type": "string"
+          },
+          "started": {
+            "type": "boolean"
+          },
+          "attemptId": {
+            "type": "string",
+            "nullable": true
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "finishedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "archivePath": {
+            "type": "string",
+            "nullable": true
+          },
+          "jp1ExecutionId": {
+            "type": "string",
+            "nullable": true
+          },
+          "materialized": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "definitionHash": {
+            "type": "string",
+            "nullable": true
+          },
+          "bypassedPredecessors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "standaloneRerun": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "scheduleExcluded": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "conditionMatched": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "statusDetail": {
+            "type": "string",
+            "nullable": true
+          },
+          "scheduleChangeId": {
+            "type": "string",
+            "nullable": true
+          },
+          "addedByChangeId": {
+            "type": "string",
+            "nullable": true
+          },
+          "beforeChangeDue": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "beforeChangeState": {
+            "type": "string",
+            "nullable": true
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "restartedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "holdOverride": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "beforeChangeHoldOverride": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "interruptRequested": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "manualExitCode": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "delayMonitor": {
+            "$ref": "#/components/schemas/DelayMonitorSettings"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Operation": {
+        "type": "object",
+        "properties": {
+          "stateNamespace": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "requestHash": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "result": {
+            "type": "string",
+            "nullable": true
+          },
+          "attemptId": {
+            "type": "string",
+            "nullable": true
+          },
+          "expectedState": {
+            "type": "string",
+            "nullable": true
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "resolution": {
+            "type": "string",
+            "nullable": true
+          },
+          "due": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "registrationKind": {
+            "type": "string"
+          },
+          "end": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "archivePath": {
+            "type": "string",
+            "nullable": true
+          },
+          "holding": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "futureGenerations": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "rerunMethod": {
+            "type": "string",
+            "nullable": true
+          },
+          "mutationPath": {
+            "type": "string",
+            "nullable": true
+          },
+          "definitionHash": {
+            "type": "string",
+            "nullable": true
+          },
+          "expectedDefinitionHash": {
+            "type": "string",
+            "nullable": true
+          },
+          "start": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "fixedDue": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "passedDaemonStarts": {
+            "type": "string",
+            "nullable": true
+          },
+          "intervalMinutes": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "intervalUntil": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "rerunOptions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "changeLower": {
+            "type": "string",
+            "nullable": true
+          },
+          "pushedAhead": {
+            "type": "string",
+            "nullable": true
+          },
+          "relativeMinutes": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "dateType": {
+            "type": "string",
+            "nullable": true
+          },
+          "errorCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "newStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "newReturnCode": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "delayMonitor": {
+            "$ref": "#/components/schemas/DelayMonitorSettings"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": { }
+      }
+    }
+  }
+}

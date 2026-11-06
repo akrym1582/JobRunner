@@ -10,7 +10,7 @@ using Operation = JobRunner.Models.Operation;
 
 namespace JobRunner;
 
-/// <summary>認証や画面を持たない管理APIと、稼働系のみの実行サービスを起動します。</summary>
+/// <summary>監視画面・管理APIと、稼働系のみの実行サービスを起動します。</summary>
 public static class Program
 {
     /// <summary>構成を読み取り、HTTP受付とスケジューラーを同じホストで実行します。</summary>
@@ -18,7 +18,16 @@ public static class Program
     /// <returns>ホスト停止時に完了します。</returns>
     public static async Task Main(string[] args)
     {
-        var builder = WebApplication.CreateBuilder(args);
+        bool exportSchema = args.Contains("--export-openapi", StringComparer.Ordinal);
+        var builder = WebApplication.CreateBuilder(args.Where(a => a != "--export-openapi").ToArray());
+        builder.Services.AddEndpointsApiExplorer();
+        builder.Services.AddSwaggerGen(options =>
+        {
+            options.SupportNonNullableReferenceTypes();
+            options.SchemaFilter<Controllers.Ui.RequiredProperties>();
+            options.DocInclusionPredicate((_, api) =>
+            api.RelativePath?.StartsWith("api/jobrunner/ui", StringComparison.Ordinal) == true || api.RelativePath?.StartsWith("api/jobrunner/operations", StringComparison.Ordinal) == true);
+        });
         var options = builder.Configuration.GetSection("JobRunner").Get<RunnerOptions>() ?? new RunnerOptions();
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton(TimeProvider.System);
@@ -27,7 +36,15 @@ public static class Program
         builder.Services.AddSingleton<ProcessJobExecutor>();
         builder.Services.AddSingleton<SchedulerEngine>();
         builder.Services.AddSingleton<SchedulerWorker>();
-        builder.Services.AddHostedService(p => p.GetRequiredService<SchedulerWorker>());
+        if (!exportSchema)
+        {
+            builder.Services.AddHostedService(p => p.GetRequiredService<SchedulerWorker>());
+            if (builder.Environment.IsDevelopment() && builder.Configuration.GetValue<bool>("ClientApp:StartDevServer"))
+            {
+                builder.Services.AddHostedService<ClientAppDevServer>();
+            }
+        }
+
         var app = builder.Build();
         app.Use(async (context, next) =>
         {
@@ -45,6 +62,15 @@ public static class Program
             }
         });
         Controllers.Jp1.Jp1Endpoints.Map(app);
+        Controllers.Ui.UiEndpoints.Map(app);
+        if (app.Environment.IsDevelopment())
+        {
+            app.UseSwagger();
+            app.UseSwaggerUI();
+        }
+
+        app.UseDefaultFiles();
+        app.UseStaticFiles();
         app.MapGet("/health/live", () => Results.Ok(new { status = "live" }));
         app.MapGet("/health/ready", async (StorageRepository storage, CancellationToken token) =>
         {
@@ -74,7 +100,7 @@ public static class Program
             await definitions.SaveAsync(bundle, token);
             return Results.Ok(new { version = bundle.Hash });
         });
-        app.MapPost("/api/jobrunner/operations", EnqueueAsync);
+        app.MapPost("/api/jobrunner/operations", EnqueueAsync).Produces<Operation>(202).Produces<Operation>(200).Produces(400).Produces(409).ProducesProblem(503);
         app.MapPost("/api/jobrunner/definitions/{version}/activate", (string version, Operation operation, StorageRepository storage, CancellationToken token) =>
         {
             operation.Kind = "Activate";
@@ -91,7 +117,7 @@ public static class Program
         {
             var row = await storage.GetAsync("command:" + StorageRepository.Hash(id), token);
             return row is null ? Results.NotFound() : Results.Ok(await HistoryRetentionService.ReadOperationAsync(row, storage, token));
-        });
+        }).Produces<Operation>().Produces(404);
         app.MapGet("/api/jobrunner/executions", async (StorageRepository storage, CancellationToken token) =>
             (await storage.ListAsync("occurrence:", token)).Select(StorageRepository.Read<Occurrence>));
         app.MapGet("/api/jobrunner/executions/{id}/archive", async (string id, StorageRepository storage, CancellationToken token) =>
@@ -137,6 +163,37 @@ public static class Program
             var registration = new Registration { RootPath = request.UnitPath, Anchor = request.Anchor };
             return Scheduling.ScheduleCalculator.Calculate(all[request.UnitPath], all, registration, request.From, request.Until, options).ToList();
         });
+        app.MapFallback(async context =>
+        {
+            if (context.Request.Method is not ("GET" or "HEAD") || context.Request.Path.StartsWithSegments("/api") || context.Request.Path.StartsWithSegments("/ajs/api") || context.Request.Path.StartsWithSegments("/health") || Path.HasExtension(context.Request.Path))
+            {
+                context.Response.StatusCode = 404;
+                return;
+            }
+
+            string index = Path.Combine(app.Environment.WebRootPath ?? "wwwroot", "index.html");
+            if (!File.Exists(index))
+            {
+                context.Response.StatusCode = 404;
+                return;
+            }
+
+            context.Response.ContentType = "text/html";
+            await context.Response.SendFileAsync(index);
+        });
+        if (exportSchema)
+        {
+            // スキーマ出力ではWorkerを登録せず、Storageやジョブを起動しません。
+            app.Urls.Clear();
+            app.Urls.Add("http://127.0.0.1:0");
+            await app.StartAsync();
+            var document = app.Services.GetRequiredService<Swashbuckle.AspNetCore.Swagger.ISwaggerProvider>().GetSwagger("v1");
+            using var writer = File.CreateText(Path.Combine(app.Environment.ContentRootPath, "clientapp", "openapi.json"));
+            document.SerializeAsV3(new Microsoft.OpenApi.Writers.OpenApiJsonWriter(writer));
+            await app.StopAsync();
+            return;
+        }
+
         await app.RunAsync();
     }
 

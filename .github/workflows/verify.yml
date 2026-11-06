@@ -13,6 +13,17 @@ jobs:
         with:
           node-version: '22'
       - run: ./scripts/verify.sh
+      - run: npm ci
+        working-directory: src/JobRunner/clientapp
+      - run: npm run export-api && npm run generate-api
+        working-directory: src/JobRunner/clientapp
+      - run: git diff --exit-code -- src/JobRunner/clientapp/openapi.json src/JobRunner/clientapp/src/api
+      - run: npm run lint && npm run format:check && npm test && npm run build
+        working-directory: src/JobRunner/clientapp
+      - run: npx playwright install --with-deps chromium
+        working-directory: src/JobRunner/clientapp
+      - run: npm run test:e2e
+        working-directory: src/JobRunner/clientapp
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -20,3 +31,6 @@ jobs:
           path: |
             tests/JobRunner.Tests/TestResults/*.trx
             tests/JobRunner.Tests/TestResults/scale.json
+            tests/JobRunner.Tests/TestResults/ui-projection.json
+            src/JobRunner/clientapp/playwright-report/
+            src/JobRunner/clientapp/test-results/

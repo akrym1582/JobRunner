@@ -2,6 +2,9 @@
 unit=daily;
 {
     ty=n;
+    sz=2x1;
+    el=first,j,+80 +48;
+    el=second,j,+240 +48;
     jc=/business;
     sd=1,en;
     st=1,12:00;

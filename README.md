@@ -1,18 +1,34 @@
 # JobRunner
 
-.NET 10 / ASP.NET Coreで動く、JP1/AJS3 V12定義を入力とする非公式のジョブスケジューラーです。Web APIのみを提供し、同じマシン上のプロセスを実行します。状態はAzure Blob/Table Storageへ保存します。
+.NET 10 / ASP.NET Coreで動く、JP1/AJS3 V12定義を入力とする非公式のジョブスケジューラーです。Web APIと監視用Web UIを提供し、同じマシン上のプロセスを実行します。状態はAzure Blob/Table Storageへ保存します。
 
 **実装計画全体は未完了です。** 現在の実装・テスト済み範囲と未達項目は [検証結果](docs/verification-results.md)、JP1仕様との対応は [互換表](docs/compatibility-v12.md) を参照してください。完全互換や業務処理のexactly-onceは保証しません。
 
-## ビルドと全テスト
+## 画面でできること
 
-.NET 10 SDK、Node.js 22、npm、Python 3、curlがあるLinux環境で実行します。Node.jsはAzuriteのテスト用途だけで、アプリの実行依存ではありません。
+ジョブネットの依存関係と実行状態をSVGで表示します。ジョブを選ぶと予定・開始・終了日時や終了コードを確認でき、子ネットへ移動できます。状態は5秒ごとに更新します。
+
+![ジョブネット監視：依存関係、ユニット詳細、実行予定・履歴](docs/spec/scheduler/web-ui/images/execution-status.png)
+
+マンスリースケジュールでは、階層と日付を並べて生成済みの確定予定・実績を確認できます。日付セルを選ぶと同日の実行回が下の一覧に表示され、そこから実行状況の図を開けます。
+
+![マンスリースケジュール：階層別の予定と実行回の詳細](docs/spec/scheduler/web-ui/images/monthly-schedule.png)
+
+ルート実行回を選ぶと、開始前の日時変更・予定取消・変更解除を行えます。定義編集と未生成の将来予定の予測は対象外です。画面は認証なしで利用できます。
+
+[Web UIの起動手順](#web-ui) / [予定変更などの画面画像](docs/spec/scheduler/web-ui/spec.md#画面イメージ) / [UIの検証記録](docs/spec/scheduler/web-ui/verification.md)
+
+## バックエンドのビルドとテスト
+
+.NET 10 SDK、Node.js 22、npm、Python 3、curlがあるLinux環境で実行します。Node.jsはUIの開発・ビルドとAzuriteのテストに使用します。本番アプリの実行依存ではありません。
 
 ```bash
 ./scripts/verify.sh
 ```
 
 Azurite 3.35.0を一時領域へ導入し、Blob/Tableの起動確認、Releaseビルド、StyleCop解析、xUnit、テスト検出数の確認まで実行します。10000〜10002番ポートは空けてください。実Azureの契約・資格情報は不要です。統合テストはアプリを実OSプロセスとして2つ起動し、リース失効を待つため約1分以上かかります。Azurite未起動時のテストスキップはありません。
+
+Web UIの型検査・単体試験・Playwrightの手順は[Web UI](#web-ui)を参照してください。CIでは両方を実行します。
 
 既存Azuriteへ接続してテストする場合:
 
@@ -58,4 +74,53 @@ dotnet run --project src/JobRunner --no-launch-profile
 - [JP1 V12対応表](docs/compatibility-v12.md)
 - [検証結果・未達項目](docs/verification-results.md)
 
-本体は1つのcsproj、xUnitテストは別の1つのcsprojです。UI、API認証、リモート実行、SQLite、Quartz、Hangfireは導入していません。
+本体は1つのcsproj、xUnitテストは別の1つのcsprojです。API認証、リモート実行、SQLite、Quartz、Hangfireは導入していません。
+
+## Web UI
+
+`src/JobRunner/clientapp` に監視画面を同梱しています。JP1定義のel座標を使ってReactのSVGでジョブネットを表示し、状態取得にaspidaの生成クライアントと`@aspida/swr`を使用します。認証はありません。定義編集は行わず、ルート実行回の日時変更・予定取消・変更解除を提供します。
+
+.NET 10 SDKとNode.js 22.12以降を用意し、初回は依存関係をインストールします。Storageと入力定義の設定は上記の起動手順と共通です。
+
+```bash
+cd src/JobRunner/clientapp
+npm ci
+cd ..
+dotnet watch run
+```
+
+Viteは自動起動します。`http://localhost:5173`を開くと、`/api`を.NETの5080番へプロキシします。APIポートを変更する場合は`JOBRUNNER_API_URL`も合わせてください。Swagger UIは開発時の`http://localhost:5080/swagger`です。
+
+APIを変更した場合は、次の順序でスキーマとクライアントを更新します。スキーマ出力ではSchedulerWorkerを起動せず、Storageには接続しません。
+
+```bash
+cd src/JobRunner/clientapp
+npm run export-api
+npm run generate-api
+npm run lint
+npm run format:check
+npm test
+npm run build
+```
+
+実APIと専用Azuriteを使用するブラウザ試験:
+
+```bash
+dotnet build JobRunner.slnx -c Release
+cd src/JobRunner/clientapp
+npx playwright install chromium
+npm run test:e2e
+npm run screenshots
+```
+
+試験は11300〜11302・5181・5174番ポートと一時ディレクトリを使用します。実Azureは使用しません。`PLAYWRIGHT_CHROMIUM_EXECUTABLE`で既存Chromiumを指定できます。画像は[Web UI仕様](docs/spec/scheduler/web-ui/spec.md)から参照できます。通常試験では文書画像を上書きせず、`screenshots`で明示更新します。
+
+```bash
+dotnet publish src/JobRunner -c Release -o artifacts/publish
+cd artifacts/publish
+dotnet JobRunner.dll
+```
+
+publish時にフロントエンドをビルドし、`wwwroot`へ同梱します。配信サーバーにNode.jsは不要です。APIと画面は同じ.NETホストから配信されます。
+
+図の表示には親ネットの `el=ユニット名,種別,+H +V;` が必須です。座標がない・不正な場合は図にエラーを表示します（ジョブ実行には影響しません）。ELKによる自動配置は行いません。マンスリー画面では、サービスのタイムゾーンで日付ごとに生成済みの確定予定・実績を表示します。セルを選択して一覧を確認し、実行回の図へ移動できます。未生成の将来予定の予測は行いません。
