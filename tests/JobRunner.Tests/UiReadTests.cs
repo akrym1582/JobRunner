@@ -24,6 +24,7 @@ public sealed class UiReadTests
         var container = scope.Repository.Blobs.GetBlobContainerClient(inputName);
         await container.CreateAsync();
         await container.GetBlobClient("jobs").UploadAsync(BinaryData.FromString("unit=net;{ty=n;sd=0,ud;el=current,j,+80 +48;unit=current;{ty=j;te=\"true\";}}"));
+        await TestDefinitions.SeedHttpAsync(scope.Repository, scope.Options);
         using var app = new AppProcess(scope.Options);
         try
         {
@@ -71,6 +72,47 @@ public sealed class UiReadTests
         }
     }
 
+    /// <summary>運用版から削除したネットも旧図と実行回の両方を参照できます。</summary>
+    /// <returns>旧定義の案内と読み取りモデルの確認です。</returns>
+    [Fact]
+    public async Task DeletedNetworkCanBeOpenedBeforeSelectingItsHistory()
+    {
+        await using var scope = new StorageScope();
+        using var app = new AppProcess(scope.Options);
+        await WaitForCatalogAsync(app);
+        var definitions = new DefinitionService(scope.Repository, scope.Options);
+        var current = definitions.Validate([new SourceEvidence { Mapping = new DefinitionSource { BlobPath = "current.ajs" }, Base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("unit=current;{ty=n;sd=0,ud;}")) }]);
+        var previous = definitions.Validate([new SourceEvidence { Mapping = new DefinitionSource { BlobPath = "old.ajs" }, Base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("unit=removed;{ty=n;sd=0,ud;el=job,j,+80 +48;unit=job;{ty=j;te=\"true\";}}")) }]);
+        await definitions.SaveAsync(current, CancellationToken.None);
+        await definitions.SaveAsync(previous, CancellationToken.None);
+        var operation = new Operation { Id = "first", Kind = "Activate", Target = current.Hash };
+        await app.Client.PostAsJsonAsync("/api/jobrunner/operations", operation);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        while ((await app.Client.GetFromJsonAsync<Operation>("/api/jobrunner/operations/first", deadline.Token))!.Status == "Pending")
+        {
+            await Task.Delay(100, deadline.Token);
+        }
+
+        var catalog = (await app.Client.GetFromJsonAsync<Catalog>("/api/jobrunner/ui/jobnets"))!;
+        var root = new Occurrence { Id = "retired", RootId = "retired", Namespace = catalog.Namespace, RootPath = "/removed", UnitPath = "/removed", DefinitionHash = previous.Hash, State = "Unknown", Started = true, Materialized = true, Due = DateTimeOffset.Parse("2030-01-02T00:00:00Z") };
+        var child = new Occurrence { Id = "retired-child", RootId = root.Id, Namespace = catalog.Namespace, RootPath = root.RootPath, UnitPath = "/removed/job", DefinitionHash = previous.Hash, State = "Unknown", Started = true, Due = root.Due };
+        await scope.Repository.Table.AddEntityAsync(scope.Repository.Entity("occurrence:" + root.Id, root));
+        await scope.Repository.Table.AddEntityAsync(scope.Repository.Entity("occurrence:" + child.Id, child));
+        catalog = (await app.Client.GetFromJsonAsync<Catalog>("/api/jobrunner/ui/jobnets"))!;
+        Assert.Contains(catalog.Networks, n => n.Path == "/removed");
+        var graph = (await app.Client.GetFromJsonAsync<Graph>("/api/jobrunner/ui/graph?unitPath=%2Fremoved"))!;
+        Assert.Equal(previous.Hash, graph.DefinitionHash);
+        Assert.Null(graph.Root);
+        Assert.False(graph.CanChange);
+        Assert.Equal("job", Assert.Single(graph.Nodes).Name);
+        graph = (await app.Client.GetFromJsonAsync<Graph>("/api/jobrunner/ui/graph?unitPath=%2Fremoved&rootId=retired"))!;
+        Assert.Equal("Unknown", graph.Root!.State);
+        Assert.Equal(previous.Hash, graph.DefinitionHash);
+        var monthly = (await app.Client.GetFromJsonAsync<MonthlySchedule>("/api/jobrunner/ui/monthly?month=2030-01&rootPath=%2Fremoved"))!;
+        Assert.Equal(2, monthly.Entries.Count);
+        Assert.Contains(monthly.Units, u => u.Path == "/removed/job");
+    }
+
     /// <summary>同じパスの複数世代・試行を分離し、子だけが月をまたぐ場合も最新値を読みます。</summary>
     /// <returns>要求間で古い状態を再利用しない実HTTP検証です。</returns>
     [Fact]
@@ -83,6 +125,7 @@ public sealed class UiReadTests
         var container = scope.Repository.Blobs.GetBlobContainerClient(inputName);
         await container.CreateAsync();
         await container.GetBlobClient("jobs").UploadAsync(BinaryData.FromString("unit=net;{ty=n;sd=0,ud;el=job,j,+80 +48;unit=job;{ty=j;te=\"true\";}}"));
+        await TestDefinitions.SeedHttpAsync(scope.Repository, scope.Options);
         using var app = new AppProcess(scope.Options);
         try
         {

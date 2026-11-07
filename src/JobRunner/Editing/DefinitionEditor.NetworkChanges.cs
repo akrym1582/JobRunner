@@ -18,7 +18,7 @@ public static partial class DefinitionEditor
 
     private static string MapNetworkPath(EditorDraft draft, string path)
     {
-        if (draft.EditorVersion != 8)
+        if (draft.EditorVersion is not (8 or 9))
         {
             return path;
         }

@@ -15,4 +15,6 @@ namespace JobRunner.Controllers.Ui;
 /// <param name="NewFiles">版6の追加ローカルファイルです。</param>
 /// <param name="GroupChanges">版7のグループ改名・削除です。</param>
 /// <param name="NetworkChanges">版8のルート移動と子ネット種別切替です。</param>
-public sealed record EditorDraft(string DefinitionHash, List<EditorNetwork> Networks, int? EditorVersion = null, List<EditorRoot>? Roots = null, List<EditorAttributes>? Schedules = null, List<EditorAttributes>? Calendars = null, List<SourceEvidence>? LocalSources = null, List<EditorAttributes>? Execution = null, List<EditorGroupCreation>? NewGroups = null, List<EditorFileCreation>? NewFiles = null, List<EditorGroupChange>? GroupChanges = null, List<EditorNetworkChange>? NetworkChanges = null);
+/// <param name="WorkingSources">版9の複製後の原文。一つの履歴に含め、undoで元バイトへ戻します。</param>
+/// <param name="WorkingContainers">複製後の原文に対応する配置先です。</param>
+public sealed record EditorDraft(string DefinitionHash, List<EditorNetwork> Networks, int? EditorVersion = null, List<EditorRoot>? Roots = null, List<EditorAttributes>? Schedules = null, List<EditorAttributes>? Calendars = null, List<SourceEvidence>? LocalSources = null, List<EditorAttributes>? Execution = null, List<EditorGroupCreation>? NewGroups = null, List<EditorFileCreation>? NewFiles = null, List<EditorGroupChange>? GroupChanges = null, List<EditorNetworkChange>? NetworkChanges = null, List<SourceEvidence>? WorkingSources = null, List<EditorContainer>? WorkingContainers = null);

@@ -58,7 +58,7 @@ test("ローカル原文のBOMと文字コードを保ち、編集ZIPを再度�
   await load(page);
   await expect(page.getByLabel("編集ネット")).toHaveValue("/local");
   await expect(
-    page.getByText("ローカル入力（未採用）・2ファイル", { exact: true }),
+    page.getByText("ローカル入力を基にした下書き・2ファイル", { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "編集 job", exact: true }).click();
   await page

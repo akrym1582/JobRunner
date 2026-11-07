@@ -86,6 +86,35 @@ describe("判定属性がない旧下書き", () => {
       upgradeDraft({ ...old, editorVersion: 5 }, baseline),
     ).toThrow();
   });
+  it("版8の移動・グループ変更と明示削除を版9へ保持する", () => {
+    const old: EditorDraft = {
+      ...structuredClone(baseline),
+      editorVersion: 8,
+      execution: [
+        { id: "/net", type: "n", attributes: {} },
+        { id: "/net/a", type: "j", attributes: {} },
+        { id: "/net/judge", type: "jdj", attributes: {} },
+      ],
+      networkChanges: [{ id: "/net", parentPath: "/target" }],
+      groupChanges: [{ id: "/unused", delete: true }],
+      newGroups: [],
+      newFiles: [],
+    };
+    old.networks[0].nodes[1].attributes = {};
+    const current: EditorDraft = {
+      ...structuredClone(baseline),
+      editorVersion: 9,
+      execution: old.execution!.map((entry) => ({
+        ...entry,
+        attributes: { ha: ["y"] },
+      })),
+      networkChanges: [],
+      groupChanges: [],
+      newGroups: [],
+      newFiles: [],
+    };
+    expect(upgradeDraft(old, current)).toEqual({ ...old, editorVersion: 9 });
+  });
   it("判定とリカバリー判定にコマンド属性を混入しない", () => {
     for (const kind of ["jdj", "rjdj"]) {
       const node = newJob(baseline.networks[0], kind);

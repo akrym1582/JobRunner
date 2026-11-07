@@ -45,6 +45,9 @@ public sealed class Registration
     /// </summary>
     public bool Disabled { get; set; } = false;
 
+    /// <summary>Gets or sets a value indicating whether. 定義削除では補充だけを止め、保護した旧世代は継続します。</summary>
+    public bool ReplenishmentStopped { get; set; }
+
     /// <summary>Gets or sets. ルートの保留を登録時に明示上書きする指定。nullは定義に従います。</summary>
     public bool? Holding { get; set; } = null;
 
@@ -88,4 +91,7 @@ public sealed class Registration
     /// <summary>Gets or sets. 期間解除の除外範囲。補充時にも適用します。</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public List<RegistrationExclusion>? Exclusions { get; set; }
+
+    /// <summary>Gets or sets. 通常予定を再計算する版。0は旧世代IDを維持します。</summary>
+    public long GenerationRevision { get; set; }
 }

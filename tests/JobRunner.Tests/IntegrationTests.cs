@@ -31,6 +31,7 @@ public sealed class IntegrationTests
         const string calendarSource = "unit=calendar;{ty=g;cl=su;}";
         await input.GetBlobClient("jobs").UploadAsync(BinaryData.FromString(jobSource));
         await input.GetBlobClient("calendar").UploadAsync(BinaryData.FromString(calendarSource));
+        await TestDefinitions.SeedHttpAsync(storage, options);
         using var first = new AppProcess(options);
         using var second = new AppProcess(options);
         try

@@ -8,6 +8,7 @@ export function EditorGraph({
   network,
   typeOf = (n) => n.type,
   selected,
+  selection = [selected],
   connecting,
   onSelect,
   onMove,
@@ -16,8 +17,9 @@ export function EditorGraph({
   network: EditorNetwork;
   typeOf?: (node: EditorNode) => string;
   selected: string;
+  selection?: string[];
   connecting: boolean;
-  onSelect: (id: string) => void;
+  onSelect: (id: string, multiple?: boolean) => void;
   onMove: (node: EditorNode, x: number, y: number) => void;
   onOpen: (id: string) => void;
 }) {
@@ -119,7 +121,7 @@ export function EditorGraph({
                     current.node.y! + (p.y - current.y) / 1.5,
                   );
                   onMove(current.node, next.x, next.y);
-                } else onSelect(current.node.id);
+                } else onSelect(current.node.id, e.ctrlKey || e.metaKey);
               }}
               onPointerCancel={() => {
                 drag.current = undefined;
@@ -191,8 +193,8 @@ export function EditorGraph({
                     role="button"
                     tabIndex={0}
                     aria-label={`編集 ${node.name}`}
-                    aria-pressed={selected === node.id}
-                    className={`editor-node ${selected === node.id ? "selected" : ""}`}
+                    aria-pressed={selection.includes(node.id)}
+                    className={`editor-node ${selection.includes(node.id) ? "selected" : ""}`}
                     transform={`translate(${position.x + shift.dx},${position.y + shift.dy})`}
                     onPointerDown={(e) => {
                       if (e.button !== 0) return;
@@ -208,7 +210,7 @@ export function EditorGraph({
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        onSelect(node.id);
+                        onSelect(node.id, e.ctrlKey || e.metaKey);
                       } else if (e.key.startsWith("Arrow")) {
                         e.preventDefault();
                         const next = snap(

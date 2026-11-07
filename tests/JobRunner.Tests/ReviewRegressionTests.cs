@@ -38,10 +38,10 @@ public sealed class ReviewRegressionTests
         Assert.Single(await scenario.Scope.Repository.ListAsync("attempt:", CancellationToken.None));
     }
 
-    /// <summary>プロセスがなくても実行中ネットの保留子を残して定義を切り替えません。</summary>
-    /// <returns>切替拒否後も元の保留を解除して完了できることを確認します。</returns>
+    /// <summary>実行中ネットの保留子を旧版に固定し、採用領域を維持して新版を反映します。</summary>
+    /// <returns>反映後も元の保留を解除して旧版で完了できることを確認します。</returns>
     [Fact]
-    public async Task ActivationRejectsRunningNetworkWithHeldChild()
+    public async Task PublicationPinsRunningNetworkWithHeldChild()
     {
         await using var scenario = new EngineScenario();
         await scenario.StartAsync("unit=net;{ty=n;sd=0,ud;unit=j;{ty=j;ha=y;te=\"true\";}}");
@@ -63,13 +63,13 @@ public sealed class ReviewRegressionTests
         await scenario.EnqueueAsync(new Operation { Id = "activate", Kind = "Activate", Target = bundle.Hash });
         await scenario.Engine.TickAsync(CancellationToken.None);
         var operation = StorageRepository.Read<Operation>((await scenario.Scope.Repository.GetAsync("command:" + StorageRepository.Hash("activate"), CancellationToken.None))!);
-        Assert.Equal("Rejected", operation.Status);
+        Assert.Equal("Completed", operation.Status);
         Assert.Equal(originalNamespace, scenario.Engine.Namespace);
         await scenario.EnqueueAsync(new Operation { Id = "release", Kind = "Release", Target = child.Id });
         await scenario.AdvanceUntilAsync(rows => rows.Any(o => o.Id == root.Id && o.State == "Succeeded"));
         await scenario.EnqueueAsync(new Operation { Id = "activate-after-completion", Kind = "Activate", Target = bundle.Hash });
         await scenario.Engine.TickAsync(CancellationToken.None);
-        Assert.NotEqual(originalNamespace, scenario.Engine.Namespace);
+        Assert.Equal(originalNamespace, scenario.Engine.Namespace);
     }
 
     /// <summary>開始月に指定日がなくても月・年サイクルの位相を維持して後の有効日を生成します。</summary>

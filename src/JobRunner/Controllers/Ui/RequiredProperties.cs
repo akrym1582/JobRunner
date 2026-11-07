@@ -28,6 +28,8 @@ public sealed class RequiredProperties : ISchemaFilter
                 schema.Required.Remove("newFiles");
                 schema.Required.Remove("groupChanges");
                 schema.Required.Remove("networkChanges");
+                schema.Required.Remove("workingSources");
+                schema.Required.Remove("workingContainers");
             }
 
             if (context.Type == typeof(EditorGroupChange))

@@ -24,6 +24,7 @@ public sealed class AdditionalHttpTests
         var input = storage.Blobs.GetBlobContainerClient(inputName);
         await input.CreateAsync();
         await input.GetBlobClient("jobs").UploadAsync(BinaryData.FromString("unit=net;{ty=n;sd=0,ud;sy=C5;ey=25:00;fd=10;unit=j;{ty=j;te=\"printf output; printf error >&2\";}}"));
+        await TestDefinitions.SeedHttpAsync(storage, scope.Options);
         using var app = new AppProcess(scope.Options);
         try
         {

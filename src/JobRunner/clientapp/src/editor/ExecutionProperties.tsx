@@ -91,7 +91,7 @@ export function ExecutionProperties({
 }) {
   const [selected, setSelected] = useState(current);
   const targets = useMemo(() => executionTargets(draft), [draft]);
-  if (![5, 6, 7, 8].includes(draft.editorVersion ?? 1) || !draft.execution)
+  if (![5, 6, 7, 8, 9].includes(draft.editorVersion ?? 1) || !draft.execution)
     return null;
   const target = targets.find((t) => t.id === selected) ?? targets[0];
   const entry = draft.execution.find((e) => e.id === target?.id);

@@ -15,7 +15,7 @@ export function GroupProperties({
 }) {
   const [selected, setSelected] = useState("");
   const [name, setName] = useState("");
-  if (![7, 8].includes(draft.editorVersion ?? 1)) return null;
+  if (![7, 8, 9].includes(draft.editorVersion ?? 1)) return null;
   const groups = (draft.calendars ?? []).filter(
     (c) => groupPath(draft, c.id) !== null,
   );

@@ -21,16 +21,29 @@ public static partial class UiEndpoints
         var zone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
         var active = await ActiveAsync(storage, token);
         var current = (await definitions.ReadAsync(active.DefinitionHash, token)).Units.Flatten().ToDictionary(u => u.Path, StringComparer.Ordinal);
+        var stored = (await storage.ListAsync("occurrence:", token)).Select(StorageRepository.Read<Occurrence>).Where(o => o.Namespace == active.Id).ToList();
         if (rootPath != "/" && !current.ContainsKey(rootPath))
         {
-            throw new KeyNotFoundException("対象ユニットがありません。");
+            bool known = false;
+            foreach (string hash in stored.Where(o => o.Id == o.RootId && o.DefinitionHash is not null).Select(o => o.DefinitionHash!).Distinct(StringComparer.Ordinal))
+            {
+                if ((await definitions.ReadAsync(hash, token)).Units.Flatten().Any(u => u.Path == rootPath))
+                {
+                    known = true;
+                    break;
+                }
+            }
+
+            if (!known)
+            {
+                throw new KeyNotFoundException("対象ユニットがありません。");
+            }
         }
 
         bool InScope(string path) => rootPath == "/" || path == rootPath || path.StartsWith(rootPath + "/", StringComparison.Ordinal);
         MonthlyUnit ToUnit(UnitDefinition unit) => new(unit.Path, unit.Name, ScheduleCalculator.Parent(unit.Path), unit.Type, unit.Get("cm"), unit.IsNetwork());
         var rows = current.Values.Where(u => InScope(u.Path)).ToDictionary(u => u.Path, ToUnit, StringComparer.Ordinal);
         var versions = new Dictionary<string, Dictionary<string, UnitDefinition>>(StringComparer.Ordinal) { [active.DefinitionHash] = current };
-        var stored = (await storage.ListAsync("occurrence:", token)).Select(StorageRepository.Read<Occurrence>).Where(o => o.Namespace == active.Id).ToList();
         var byRoot = stored.ToLookup(o => o.RootId, StringComparer.Ordinal);
         Dictionary<string, JobAttempt>? liveAttempts = null;
         var now = DateTimeOffset.UtcNow;

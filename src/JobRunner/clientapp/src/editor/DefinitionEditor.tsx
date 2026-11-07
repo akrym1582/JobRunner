@@ -17,8 +17,11 @@ import type {
   EditorDraft,
   EditorNetwork,
   EditorPreview,
+  SharedEditorDraft,
 } from "../api/@types";
 import { client, errorMessage } from "../client";
+import { DefinitionLifecycleControls } from "./DefinitionLifecycleControls";
+import { CopyControls } from "./CopyControls";
 import { EditorGraph } from "./EditorGraph";
 import { EditorProperties } from "./EditorProperties";
 import { ExecutionProperties } from "./ExecutionProperties";
@@ -52,7 +55,7 @@ import {
 import "./editor.css";
 
 async function upgradeSaved(saved: SavedDraft): Promise<SavedDraft> {
-  if (saved.draft.editorVersion === 8) return saved;
+  if (saved.draft.editorVersion === 9) return saved;
   const base = saved.draft.localSources
     ? await client.ui.definition_editor.local.$post({
         body: { sources: saved.draft.localSources },
@@ -73,6 +76,7 @@ export function DefinitionEditor({
   onNavigate: (path: string) => void;
 }) {
   const source = useAspidaSWR(client.ui.definition_editor, {
+    enabled: !!activeHash,
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
   });
@@ -84,6 +88,7 @@ export function DefinitionEditor({
   const [saveAllowed, setSaveAllowed] = useState(true);
   const [conflicted, setConflicted] = useState(false);
   const [selected, setSelected] = useState("");
+  const [selection, setSelection] = useState<string[]>([]);
   const [kind, setKind] = useState("j");
   const [connecting, setConnecting] = useState(false);
   const [connectFrom, setConnectFrom] = useState("");
@@ -217,6 +222,7 @@ export function DefinitionEditor({
   }, [base, draft, saveAllowed, persist]);
   useEffect(() => {
     setSelected("");
+    setSelection([]);
     setConnectFrom("");
   }, [network?.path]);
 
@@ -236,9 +242,16 @@ export function DefinitionEditor({
     setConnectFrom("");
     setHistory((h) => (h ? (direction === "undo" ? undo(h) : redo(h)) : h));
   }
-  function select(id: string) {
+  function select(id: string, multiple = false) {
     if (!network) return;
     setSelected(id);
+    setSelection((previous) =>
+      multiple
+        ? previous.includes(id)
+          ? previous.filter((value) => value !== id)
+          : [...previous, id]
+        : [id],
+    );
     if (!connecting) return;
     if (!connectFrom) {
       setConnectFrom(id);
@@ -299,7 +312,9 @@ export function DefinitionEditor({
         link = document.createElement("a");
       link.href = url;
       link.download =
-        base.sources.length + (draft.newFiles?.length ?? 0) === 1
+        (draft.workingSources?.length ?? base.sources.length) +
+          (draft.newFiles?.length ?? 0) ===
+        1
           ? base.sources[0].fileName.split("/").at(-1)!
           : "jobrunner-definitions.zip";
       link.click();
@@ -423,6 +438,30 @@ export function DefinitionEditor({
       setBusy(false);
     }
   }
+  async function restoreShared(saved: SharedEditorDraft) {
+    const started = revision.current;
+    const restored = await upgradeSaved({
+      version: 1,
+      base: saved.base,
+      draft: saved.draft,
+    });
+    if (started !== revision.current)
+      throw new Error(
+        "読込中の編集を保持しました。もう一度読み込んでください。",
+      );
+    await persist(restored, true);
+    if (started !== revision.current)
+      throw new Error(
+        "保存中の編集を保持しました。もう一度読み込んでください。",
+      );
+    revision.current++;
+    setBase(restored.base);
+    setHistory({ past: [], present: restored.draft, future: [] });
+    setPreview(undefined);
+    setShowPreview(false);
+    setSelected("");
+    setSelection([]);
+  }
   async function reloadSaved() {
     if (
       !window.confirm(
@@ -544,14 +583,20 @@ export function DefinitionEditor({
         )}
       <div className="editor-scope-note">
         <FileCode2 size={16} />
-        この下書きは実行中の定義や予定に反映されません。ダウンロード後、既存の取込・採用手順で適用します。
+        下書きの編集・保存だけでは実行中の定義や予定は変わりません。「運用反映の差分を確認」から反映できます。
       </div>
       {draft?.localSources && (
         <p role="status">
-          ローカル入力（未採用）・
+          ローカル入力を基にした下書き・
           {draft.localSources.length + (draft.newFiles?.length ?? 0)}ファイル
         </p>
       )}
+      <DefinitionLifecycleControls
+        base={base}
+        draft={draft}
+        disabled={busy || !loaded}
+        onRestore={restoreShared}
+      />
       <LocalDefinitionInput disabled={busy || !loaded} onImport={importLocal} />
       <CreationProperties
         base={base}
@@ -737,6 +782,23 @@ export function DefinitionEditor({
               </button>
             </div>
           </div>
+          {base && (
+            <CopyControls
+              draft={draft}
+              current={network.path}
+              selected={selection.filter((id) =>
+                network.nodes.some((n) => n.id === id),
+              )}
+              base={creationBase!}
+              disabled={busy || !saveAllowed}
+              onPaste={(next, path) => {
+                update(next);
+                setSelection([]);
+                setSelected("");
+                onNavigate(path);
+              }}
+            />
+          )}
           <div className="editor-network-bar">
             <GitBranch size={16} />
             <label>
@@ -773,6 +835,7 @@ export function DefinitionEditor({
               network={network}
               typeOf={(n) => networkType(draft, n)}
               selected={selected}
+              selection={selection}
               connecting={connecting}
               onSelect={select}
               onMove={(node, x, y) =>

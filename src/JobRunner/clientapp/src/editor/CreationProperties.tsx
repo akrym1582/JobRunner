@@ -32,7 +32,7 @@ export function CreationProperties({
   });
   const document = base && draft ? creationDocument(base, draft) : undefined;
   const containers = document?.containers ?? [];
-  const enabled = [6, 7, 8].includes(draft?.editorVersion ?? 0);
+  const enabled = [6, 7, 8, 9].includes(draft?.editorVersion ?? 0);
   return (
     <section
       className="editor-network-tools"

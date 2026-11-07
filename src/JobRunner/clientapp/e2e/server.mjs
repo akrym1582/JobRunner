@@ -109,7 +109,9 @@ launch(
     JobRunner__ManagementContainer: "ui-management",
     JobRunner__TableName: "UiTest",
     JobRunner__SchedulerId: "ui-test",
-    JobRunner__ConfirmedFutureGenerations: "2",
+    JobRunner__ConfirmedFutureGenerations: process.env.LIFECYCLE_BENCH
+      ? "1"
+      : "2",
     JobRunner__LocalAgents__0: "local",
     JobRunner__DefinitionSources__0__Kind: "Unit",
     JobRunner__DefinitionSources__0__TargetPath: "/",
@@ -127,6 +129,56 @@ for (let i = 0; ; i++) {
   if (i > 120) throw new Error("API initialization timed out");
   await new Promise((r) => setTimeout(r, 500));
 }
+// 通常起動はStorageのみを読みます。試験の初回定義は管理APIで明示的に反映します。
+const apiBase = "http://127.0.0.1:5181/api/jobrunner";
+async function post(path, value) {
+  const response = await fetch(apiBase + path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(value),
+  });
+  if (!response.ok)
+    throw new Error(
+      `Fixture API ${path}: ${response.status} ${await response.text()}`,
+    );
+  return response.json();
+}
+const imported = await post("/definitions/import", [
+  {
+    mapping: {
+      kind: "Unit",
+      targetPath: "/",
+      blobPath: "ui-definitions/jobs",
+      encoding: "utf-8",
+    },
+    base64: Buffer.from(definition).toString("base64"),
+  },
+]);
+async function completeOperation(operation) {
+  await post("/operations", operation);
+  for (let i = 0; i < 120; i++) {
+    const response = await fetch(`${apiBase}/operations/${operation.id}`);
+    const value = await response.json();
+    if (value.status === "Completed") return;
+    if (value.status === "Rejected")
+      throw new Error(`Fixture rejected: ${value.result}`);
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error("Fixture operation timed out");
+}
+await completeOperation({
+  id: "fixture-publish",
+  kind: "Activate",
+  target: imported.version,
+  expectedDefinitionRevision: 0,
+});
+await completeOperation({
+  id: "fixture-resume",
+  kind: "ResumeAll",
+  target: "",
+  expectedControlRevision: 0,
+});
+
 launch(
   process.execPath,
   [

@@ -28,6 +28,7 @@ public sealed class DefinitionEditorApiTests
         var container = scope.Repository.Blobs.GetBlobContainerClient(containerName);
         await container.CreateAsync();
         await container.GetBlobClient("active.ajs").UploadAsync(BinaryData.FromString("unit=active;{ty=n;sd=0,ud;}"));
+        await TestDefinitions.SeedHttpAsync(scope.Repository, scope.Options);
         using var app = new AppProcess(scope.Options);
         try
         {
@@ -175,6 +176,7 @@ public sealed class DefinitionEditorApiTests
             await container.GetBlobClient("calendar.ajs").UploadAsync(BinaryData.FromString("unit=calendar;{ty=g;op=mo;}"));
         }
 
+        await TestDefinitions.SeedHttpAsync(scope.Repository, scope.Options);
         using var app = new AppProcess(scope.Options);
         try
         {
@@ -182,7 +184,7 @@ public sealed class DefinitionEditorApiTests
             var originalBundle = await new DefinitionService(scope.Repository, scope.Options).ReadSourcesAsync(document.Draft.DefinitionHash, CancellationToken.None);
             var before = await OperationalStateAsync(scope.Repository);
             var exact = await app.Client.GetFromJsonAsync<EditorDocument>("/api/jobrunner/ui/definition-editor?definitionHash=" + document.Draft.DefinitionHash);
-            Assert.Equal(8, exact!.Draft.EditorVersion);
+            Assert.Equal(9, exact!.Draft.EditorVersion);
             Assert.Equal("7", exact.Draft.Networks[0].Nodes.Single(n => n.Type == "jdj").Attributes["ejc"][0]);
             var legacy = DefinitionEditor.Project(originalBundle, 1) with { EditorVersion = null };
             var legacyPreview = await (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/preview", new { legacy.DefinitionHash, legacy.Networks })).Content.ReadFromJsonAsync<EditorPreview>();

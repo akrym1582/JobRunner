@@ -18,6 +18,7 @@ public sealed class DefinitionVersionTests
     [InlineData(2)]
     [InlineData(3)]
     [InlineData(4)]
+    [InlineData(5)]
     public async Task UpgradesLegacyActivationWithoutReplacingNamespace(int format)
     {
         await using var scenario = new EngineScenario();
@@ -31,9 +32,38 @@ public sealed class DefinitionVersionTests
         var before = (await scenario.OccurrencesAsync()).Select(o => o.Id).Order().ToList();
         await scenario.RestartAsync();
         var upgraded = StorageRepository.Read<Activation>((await storage.GetAsync("definition-active", CancellationToken.None))!);
-        Assert.Equal(5, upgraded.FormatVersion);
+        Assert.Equal(6, upgraded.FormatVersion);
         Assert.Equal(legacy.Id, upgraded.Id);
         Assert.Equal(before, (await scenario.OccurrencesAsync()).Select(o => o.Id).Order().ToList());
+    }
+
+    /// <summary>旧形式の個別監視変更と待機中登録を、移行後の定義切替から保護します。</summary>
+    /// <returns>省略定義の固定と旧運用指定の保持を確認します。</returns>
+    [Fact]
+    public async Task MigrationPreservesIndividualMonitorAndPendingRegistrationRevision()
+    {
+        await using var scenario = new EngineScenario();
+        await scenario.StartAsync("unit=net;{ty=n;sd=2026/11/5;st=10:00;sh=no;sy=C5;}");
+        var storage = scenario.Scope.Repository;
+        var activeRow = (await storage.GetAsync("definition-active", CancellationToken.None))!;
+        var activation = StorageRepository.Read<Activation>(activeRow);
+        activation.FormatVersion = 5;
+        await storage.Table.UpdateEntityAsync(storage.Entity(activeRow.RowKey, activation), activeRow.ETag, Azure.Data.Tables.TableUpdateMode.Replace);
+        var row = Assert.Single(await storage.ListAsync("occurrence:", CancellationToken.None));
+        var root = StorageRepository.Read<Occurrence>(row);
+        root.DefinitionHash = null;
+        root.DelayMonitor!.StartMinutes = 25;
+        root.IndividuallyModified = false;
+        await storage.Table.UpdateEntityAsync(storage.Entity(row.RowKey, root), row.ETag, Azure.Data.Tables.TableUpdateMode.Replace);
+        await scenario.EnqueueAsync(new Operation { Id = "legacy-register", StateNamespace = activation.Id, Kind = "Register", Target = "/net", RegistrationKind = "Immediate" });
+        await scenario.RestartAsync();
+        var restored = Assert.Single(await scenario.OccurrencesAsync());
+        Assert.Equal(activation.DefinitionHash, restored.DefinitionHash);
+        Assert.True(restored.IndividuallyModified);
+        Assert.Equal(25, restored.DelayMonitor!.StartMinutes);
+        var pending = StorageRepository.Read<Operation>((await storage.GetAsync("command:" + StorageRepository.Hash("legacy-register"), CancellationToken.None))!);
+        Assert.Equal(activation.Revision, pending.AcceptedDefinitionRevision);
+        Assert.Equal("Pending", pending.Status);
     }
 
     /// <summary>生成済みの部分世代は旧版で補完し、次の補充だけ新版を使用します。</summary>

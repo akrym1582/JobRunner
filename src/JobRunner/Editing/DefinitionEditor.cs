@@ -52,7 +52,11 @@ public static partial class DefinitionEditor
     /// <param name="sources">対象原文です。</param>
     /// <param name="original">変更比較の基点です。</param>
     /// <returns>読取専用の表示です。</returns>
-    public static List<EditorSource> Describe(List<SourceEvidence> sources, List<SourceEvidence> original) => sources.Select((source, index) => new EditorSource(source.Mapping.BlobPath, source.Mapping.Encoding, source.Mapping.TargetPath, Decode(source), index >= original.Count || source.Base64 != original[index].Base64)).ToList();
+    public static List<EditorSource> Describe(List<SourceEvidence> sources, List<SourceEvidence> original)
+    {
+        var originals = original.ToDictionary(s => (s.Mapping.Kind, s.Mapping.TargetPath, s.Mapping.BlobPath, s.Mapping.Encoding), s => s.Base64);
+        return sources.Select(source => new EditorSource(source.Mapping.BlobPath, source.Mapping.Encoding, source.Mapping.TargetPath, Decode(source), originals.GetValueOrDefault((source.Mapping.Kind, source.Mapping.TargetPath, source.Mapping.BlobPath, source.Mapping.Encoding)) != source.Base64)).ToList();
+    }
 
     /// <summary>下書きを原文へ適用します。意味検証は既存DefinitionServiceで別途行います。</summary>
     /// <param name="bundle">基点版です。</param>
@@ -66,6 +70,18 @@ public static partial class DefinitionEditor
         }
 
         int editorVersion = draft.EditorVersion ?? 1;
+        if (editorVersion == 9)
+        {
+            if (draft.WorkingSources is not null)
+            {
+                bundle = new DefinitionBundle { Hash = bundle.Hash, Sources = EditorLocalFiles.ValidateSources(draft.WorkingSources) };
+                bundle.Units.AddRange(bundle.Sources.SelectMany(s => Jp1DefinitionParser.Parse(Decode(s).TrimStart('\uFEFF'), s.Mapping)));
+                CompleteEditorParents(bundle);
+            }
+
+            return Render(bundle, draft with { EditorVersion = 8 });
+        }
+
         if (editorVersion == 8)
         {
             return RenderNetworkChanges(bundle, draft);
@@ -266,19 +282,23 @@ public static partial class DefinitionEditor
             var movedNodes = network.Nodes.Where(node => !oldNodes.TryGetValue(node.Id, out var old) || node.X != old.X || node.Y != old.Y).ToList();
             if (movedNodes.Count > 0)
             {
-                // elの座標上限とszのアイコン数上限は別です。非グリッド座標は保持し、表示領域だけを100まで広げます。
-                int columns = Math.Clamp(movedNodes.Select(n => ((n.X ?? 0) / 160) + 1).Max(), 1, 100);
-                int rows = Math.Clamp(movedNodes.Select(n => ((n.Y ?? 0) / 96) + 1).Max(), 1, 100);
-                string size = units[network.Path].Get("sz", "10*8");
-                var match = Regex.Match(size, @"^(\d+)[*x＊](\d+)$", RegexOptions.CultureInvariant);
-                if (match.Success && int.TryParse(match.Groups[1].Value, out int oldColumns) && int.TryParse(match.Groups[2].Value, out int oldRows) && (columns > oldColumns || rows > oldRows))
-                {
-                    document.SetValues(syntax, "sz", [$"{Math.Max(columns, oldColumns)}*{Math.Max(rows, oldRows)}"], false);
-                }
+                ExpandLayout(document, syntax, units[network.Path], movedNodes.Max(n => n.X ?? 0), movedNodes.Max(n => n.Y ?? 0));
             }
         }
 
         return documents.Select(d => d.Render()).ToList();
+    }
+
+    private static void ExpandLayout(Document document, DefinitionSyntax syntax, UnitDefinition unit, int x, int y)
+    {
+        // elの座標上限とszのアイコン数上限は別です。移動・複製で同じ境界を使用します。
+        int columns = Math.Clamp((x / 160) + 1, 1, 100);
+        int rows = Math.Clamp((y / 96) + 1, 1, 100);
+        var match = Regex.Match(unit.Get("sz", "10*8"), @"^(\d+)[*x＊](\d+)$", RegexOptions.CultureInvariant);
+        if (match.Success && int.TryParse(match.Groups[1].Value, out int oldColumns) && int.TryParse(match.Groups[2].Value, out int oldRows) && (columns > oldColumns || rows > oldRows))
+        {
+            document.SetValues(syntax, "sz", [$"{Math.Max(columns, oldColumns)}*{Math.Max(rows, oldRows)}"], false);
+        }
     }
 
     private static bool IsJob(string type) => type is "j" or "pj" or "rj" or "rp";

@@ -51,7 +51,7 @@ public static class Program
         {
             try
             {
-                if (HttpMethods.IsPost(context.Request.Method) && context.Request.Path == "/api/jobrunner/ui/definition-editor/local")
+                if ((HttpMethods.IsPost(context.Request.Method) || HttpMethods.IsPut(context.Request.Method)) && context.Request.Path.StartsWithSegments("/api/jobrunner/ui/definition-editor"))
                 {
                     const long editorLimit = 12 * 1024 * 1024;
                     if (context.Request.ContentLength > editorLimit)
@@ -104,7 +104,7 @@ public static class Program
             supportedJp1Reads = new[] { "statuses (search)", "statuses/unitName:execID", "execResultDetails", "version (JobRunner)" },
             supportedJp1Search = new[] { "unitName RE (*, ?, escape)", "GRP_WAIT/RUN/ABNORMAL/NORMAL", "maximum 1000; partial all=false" },
             supportedDefinitionMonitoring = new[] { "network sy/ey by rule", "network fd", "generation-specific API override" },
-            storageFormat = 5,
+            storageFormat = 6,
             supportedJp1ErrorIds = new[] { "KNAK3201-E", "KNAK3202-E", "KNAK3203-E", "KNAK3204-E", "KNAK3206-E", "KNAK3207-E", "KNAK3209-E" },
             compatibilityDetails = "docs/compatibility-v12.md。各APIの対応引数・状態・エラー条件に限定します。変数受渡しは専用JSON方式です。",
             unsupported = new[] { "列挙外のJP1 HTTP操作・全エラーID/全状態表現の互換", "別形式Schedule/Calendar", "イベント", "待ち合わせ", "AJSVAR", "JP1 ManagerのprotocolVersion", "認証・Agent通信", "24時間制の24時以降", "欠落月の基準日境界", "一般ジョブのfd・監視の外部通知", "OSユーザー切り替え" },
@@ -218,7 +218,7 @@ public static class Program
     /// <param name="storage">同じ制御Tableを共有するアダプターです。</param>
     /// <param name="token">HTTP要求中断の通知です。</param>
     /// <returns>既存結果または202の操作照会先です。</returns>
-    private static async Task<IResult> EnqueueAsync(Operation operation, StorageRepository storage, CancellationToken token)
+    internal static async Task<IResult> EnqueueAsync(Operation operation, StorageRepository storage, CancellationToken token)
     {
         if (string.IsNullOrWhiteSpace(operation.Id) || operation.Id.Length > 128)
         {
@@ -231,6 +231,8 @@ public static class Program
         operation.CompletedAt = null;
         operation.ArchivePath = null;
         operation.MutationPath = null;
+        operation.MutationApplied = null;
+        operation.AcceptedDefinitionRevision = null;
         operation.ErrorCode = null;
         operation.RequestHash = string.Empty;
         operation.StateNamespace = string.Empty;
@@ -238,12 +240,13 @@ public static class Program
         operation.CreatedAt = DateTimeOffset.UtcNow;
         string key = "command:" + StorageRepository.Hash(operation.Id);
         var active = await storage.GetAsync("definition-active", token);
-        if (active is null)
+        if (active is null && operation.Kind is not ("Activate" or "PauseAll" or "ResumeAll"))
         {
-            return Results.Problem("初期化が完了していません。", statusCode: 503);
+            return Results.Problem("運用定義が未登録です。", statusCode: 409);
         }
 
-        operation.StateNamespace = StorageRepository.Read<Activation>(active).Id;
+        operation.StateNamespace = active is null ? string.Empty : StorageRepository.Read<Activation>(active).Id;
+        operation.AcceptedDefinitionRevision = active is null ? null : StorageRepository.Read<Activation>(active).Revision;
         try
         {
             await storage.Table.AddEntityAsync(storage.Entity(key, operation), token);

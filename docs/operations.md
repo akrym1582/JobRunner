@@ -10,7 +10,7 @@
 | ManagementContainer | `jobrunner-management`。全入力コンテナーと分離必須 |
 | TableName | `JobRunner` |
 | SchedulerId | `default`。同じ排他と状態を共有する全インスタンスで一致させる |
-| DefinitionSources | 空。1件以上必須。Kind、TargetPath、BlobPath、Encoding |
+| DefinitionSources | 通常起動では不要・読取なし。明示取込用ライブラリのBlobマッピングとしてのみ使用 |
 | DefinitionSources[].Kind | `Unit`のみ。カレンダー属性を持つユニット定義もUnitとして入力 |
 | DefinitionSources[].TargetPath | 最上位ユニットの親のJP1完全名。ファイルシステムパスではない |
 | DefinitionSources[].BlobPath | `container/blob`。大小文字を保持。ワイルドカードなし |
@@ -27,7 +27,7 @@
 | LogRetentionDays | 未指定。結果が確定した試行ログを削除する正の保持日数 |
 | OperationArchiveAfterDays | 未指定。完了・拒否した操作本文をBlobへ退避する正の保持日数 |
 
-Blobの内容変更、配置先・入力一覧変更、時間制等の設定変更は新しい採用IDに分離します。同内容への切り戻しも別採用です。同じ入力・設定の通常再起動では採用ID、登録、保留、変更済み予定、履歴を維持します。入力のETagだけが変わっても再登録しません。文字コードは解釈を変えるため定義ハッシュへ含めます。
+通常起動は管理Storageの採用行、不変の定義・原文、登録・世代を復元します。入力Blobの変更では運用は変わりません。定義反映は同じ採用IDのRevisionを進め、通常の未開始予定だけを再計算します。開始済み・結果不明・個別操作済みは旧版に固定します。時間制・タイムゾーン等のSettingsHashが変わる起動は拒否し、別領域へ自動分離しません。切り戻しも明示的な定義反映として扱い、消化済み・取消済みの原予定枠を復活させません。
 
 ## 管理API
 
@@ -42,9 +42,9 @@ Blobの内容変更、配置先・入力一覧変更、時間制等の設定変�
 | GET `/api/jobrunner/compatibility` | 未対応分類と実機未比較の表示 |
 | POST `/api/jobrunner/definitions/validate` | 原文を解析・検証。登録しない |
 | POST `/api/jobrunner/definitions/import` | 検証済み不変版の保存。登録しない |
-| POST `/api/jobrunner/definitions/{version}/activate` | 採用要求。本文には操作Idを指定 |
+| POST `/api/jobrunner/definitions/{version}/activate` | 運用反映要求。本文には操作Idを指定。同じ領域での反映・復旧経路を使用 |
 | POST `/api/jobrunner/schedules/preview` | 保存済み版、unitPath、anchor、from、untilで予定照会 |
-| POST `/api/jobrunner/operations` | 状態変更の受付。初期化前は503 |
+| POST `/api/jobrunner/operations` | 状態変更の受付。定義未登録ではActivate/PauseAll/ResumeAll以外は409 |
 | GET `/api/jobrunner/operations/{id}` | Pending/Completed/Rejectedと結果 |
 | GET `/api/jobrunner/registrations` | 全採用領域の登録 |
 | GET `/api/jobrunner/executions` | 全採用領域の世代 |
@@ -86,7 +86,7 @@ Blobの内容変更、配置先・入力一覧変更、時間制等の設定変�
 
 世代IDをtargetとする操作はHold、Release、Move（DueまたはRelativeMinutes必須）、RunNow、Restore、Cancel、Stop、Rerun、Resolveです。状態が適合しない操作はRejectedとなります。保留解除や再実行では先行・親の状態も開始条件になります。Stop後の副作用を判定できない場合はUnknownとします。RerunはFailed/TimedOutの末端ジョブに新しいattemptIdを発行し、以前の試行を保存します。失敗した祖先ネットをRunningへ戻しますが、完了した兄弟は再実行しません。ネットの一括再実行は `rerunMethod: "TOP"` を明示すると全子孫を先頭から再実行します。成功したネットも対象ですが、結果不明・実行中の子孫がある場合は拒否します。選択再実行方式とHOLD/WARNINGも対応します。対応範囲は互換表を参照してください。
 
-要求Idは1〜128文字。同じId・同じ内容は保存済み結果を返し、異なる内容は409です。新規受付は202と照会URLを返します。変更は稼働系で行います。受付時の採用IDをサーバーが固定し、処理前に版が変わった要求を別版へ誤適用しません。HTTPタイムアウトだけで未実行とは判断せず、同じIdで照会してください。
+要求Idは1〜128文字。同じId・同じ内容は保存済み結果を返し、異なる内容は409です。新規受付は202と照会URLを返します。変更は稼働系で行います。受付時の採用IDをサーバーが固定し、登録要求には受付時の運用Revisionも記録します。反映をまたいだ登録要求は再確認を求め、別定義を起動しません。HTTPタイムアウトだけで未実行とは判断せず、同じIdで照会してください。
 
 Unknownの解決には`id`、`expectedState: "Unknown"`、`attemptId`、`reason`、`resolution: "Succeeded"`または`"Failed"`を指定します。元の試行結果を上書きせず、操作行と世代に解決の根拠を残します。
 
@@ -149,7 +149,7 @@ LogRetentionDaysは既知の終了試行だけに適用し、履歴退避とは�
 
 自動登録と個別API登録は別登録です。同じネットへの追加登録で予定を重複させたくない場合は、既存の自動登録をUnregisterしてから追加してください。
 
-1〜99以外は拒否します。Start/Endとの併用では指定期間内だけを補充します。初回の予定は受付時刻以降から選びます。生成済み予定や一時変更は保持し、同じ採用領域の固定定義で未来分を補充します。探索範囲は最大100年で、予定が不足した場合は存在する分だけ生成し、翌業務日以降に再確認します。元の入力Blob変更は新しい採用領域への切り替えとなり、既存登録への定義変更反映ではありません。予定枠の自動補充は登録解除で停止します。
+1〜99以外は拒否します。Start/Endとの併用では指定期間内だけを補充します。初回の予定は受付時刻以降から選びます。生成済み予定や一時変更は保持し、同じ採用領域の固定定義で未来分を補充します。探索範囲は最大100年で、予定が不足した場合は存在する分だけ生成し、翌業務日以降に再確認します。元の入力Blob変更は運用に反映されません。運用反映APIは通常予定を再計算し、UpdateRegistrationDefinitionは従来どおり未生成分だけを変更します。予定枠の自動補充は登録解除で停止します。
 
 JP1形式では次のPOSTを提供します。
 
@@ -206,7 +206,9 @@ Windows専用のコマンド構文・パス・exe/batをLinux用に変換する�
 
 ### 保存形式の更新と切り戻し
 
-現行版は稼働系取得時に採用情報のFormatVersionを1/2/3/4から5へ更新する。採用ID、既存世代IDと入力ハッシュは維持する。不変の旧activation.json、activation-v2.json、activation-v3.json、activation-v4.jsonは上書きせず、activation-v5.jsonを保存する。形式5を理解できない旧実行器は再選出時の検査で停止する。
+現行版は全API・実行器を停止してから導入してください。保存形式1〜5を6へ更新し、採用ID・既存世代ID・履歴を維持します。定義版が省略されていた登録・世代を旧版へ固定してから形式を進めます。旧形式の保留上書きは個別操作との判別ができないため、安全側に旧世代を保護します。定義と異なる個別の遅延監視値も保持し、待機中の実行登録要求を受付時の版へ固定します。新しい不変採用記録は`activation-v6-{Revision}.json`で保存します。
+
+停止前にTableと管理Blob（原文、定義、管理鏡、操作ジャーナル、ログ・履歴を含む）を同じ時点でバックアップしてください。旧バイナリと新バイナリの混在・ローリング更新は非対応です。形式番号だけを書き戻してはいけません。旧バイナリへ戻す場合は全インスタンス停止後に対応するバックアップ一式へ戻し、バックアップ以後の実行の副作用を確認してください。定義だけの切り戻しは新版上で過去の不変定義を明示反映する方法を使います。
 
 導入時は旧バージョンのAPIと実行器をすべて停止してから新版を起動する。旧APIは新しい要求フィールドを理解できないため、バージョン混在のローリング更新は行わない。旧バイナリへ戻す場合はバイナリだけを戻さず、停止した状態で導入前のTable/管理Blob一式を復元し、導入後の業務実行結果を照合する。形式番号だけを書き戻して新形式の登録を旧実行器に読ませてはいけない。
 
@@ -222,7 +224,7 @@ Windows専用のコマンド構文・パス・exe/batをLinux用に変換する�
 
 ## Web API一覧から追加した運用
 
-[Web API照合表](jp1-webapi-matrix.md)に全19 APIの対応範囲を記載しています。Interruptは稼働中のプロセスを停止せず後続を抑止します。ChangeStatusは元試行を保持した手動結果であり、Unknownには従来のResolveを使います。ChangeDelayMonitorは監視状態の評価であり、タイムアウトや外部通知ではありません。保存形式5への更新は全API・実行器を停止して実施してください。
+[Web API照合表](jp1-webapi-matrix.md)に全19 APIの対応範囲を記載しています。Interruptは稼働中のプロセスを停止せず後続を抑止します。ChangeStatusは元試行を保持した手動結果であり、Unknownには従来のResolveを使います。ChangeDelayMonitorは監視状態の評価であり、タイムアウトや外部通知ではありません。保存形式6への更新は全API・実行器を停止して実施してください。
 
 
 ### 定義監視と参照の変更点
@@ -230,3 +232,16 @@ Windows専用のコマンド構文・パス・exe/batをLinux用に変換する�
 ネットの`sy=[N,]hh:mm|M/U/C分数`、`ey`と`fd=分数`を読み込み、採用ルールの監視設定を世代へ固定する。M=ROOT、U=TOP、C=OWN。M/Uのルート指定と一般ジョブのfdは未対応。補充用定義更新は既存世代やAPIで変更した設定に遡及しない。再実行・MOVE/ADD・復元では世代の設定を保持する。外部通知やプロセス強制終了を行う機能ではない。
 
 statuses一覧は1000件超でもHTTP 200で返り、`all=false`なら検索条件を絞って再取得する。GETの相対監視時間・所要時間は分数文字列へ変更するため、従来hh:mmを期待していた呼出元は更新する。POSTの監視変更は従来のhh:mm入力を維持する。REはJP1のワイルドカードであり、正規表現のグループや文字クラスは扱わない。
+
+
+## 共有下書き・運用反映・全体停止
+
+- `GET /api/jobrunner/ui/runtime`: 適用済みのRuntimeControl、運用Activation、応答したWorkerのPhase、受付済み操作を返します。初回はActive=null、Paused=trueです。
+- `GET/PUT /api/jobrunner/ui/definition-editor/shared`: SchedulerIdごとの共有下書き1件。未保存は204。PUTのRevisionは読み出した版（初回0）、BaseRevisionは編集の基点にした運用版です。古い版は409。保存成功後の同一本文再送は同じ結果を返します。意味エラーがある編集中の値も保存できます。元原文は検証し、本文は不変Blobへ、Tableには版と参照だけを置きます。HTTP/保存本文は12MiBまでです。
+- `POST /api/jobrunner/ui/definition-editor/publication-preview`: EditorDraftを完全検証し、不変定義を保存して差分と世代への影響を返します。運用・登録・世代は変えません。
+- `POST /api/jobrunner/ui/definition-editor/publish`: 操作Id、Target（確認済みDefinitionHash）、ExpectedDefinitionRevision、ExpectedImpactHashを指定します。反映前に版・登録・世代のETagを再確認します。202は受付であり完了ではありません。操作照会のCompletedを確認してください。旧activate APIも同じ反映エンジンを使用します。
+- `POST /api/jobrunner/operations`: Kind=PauseAll/ResumeAll、Id、ExpectedControlRevisionを指定します。操作完了後に停止/再開が適用されています。停止中も監視、編集、保存、反映、プロセスの結果回収を続けます。再開時刻未満の未開始ルートは保留を含めSkippedとなり、補充による復活も防ぎます。
+
+アップロードと反映は定義一式の置換です。アップロードした一部ファイルを現在の運用定義へ暗黙にマージしません。追加ルートは自動確定登録、改名は削除と追加として扱います。削除ルートの通常予定はSuperseded、補充は停止しますが、開始済み・個別操作済みの旧世代は残り、旧定義で完了・操作できます。登録解除行を再有効化しません。原予定枠は登録・ルール・業務日（日時/間隔/即時登録は元日時も）で区別し、保護・取消・消化済み枠を再反映で重複作成しません。
+
+反映計画はリーダーのETag・Epoch付き99行バッチで保存します。適用印より前は同じ行差分、適用印の後は未完了の世代生成を再開します。計画がPendingの間は新規開始や図の完成表示へ進みません。ETag競合、原文欠損、未知の形式は自動上書きせず停止します。Unknownの実行を推測で再実行しません。

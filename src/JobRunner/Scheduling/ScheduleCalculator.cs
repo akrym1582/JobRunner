@@ -31,7 +31,14 @@ public static class ScheduleCalculator
     /// <param name="unit">カレンダーを適用するユニットです。</param>
     /// <param name="all">参照と親グループを解決する辞書です。</param>
     /// <returns>稼働日ならtrueです。明示日付は曜日指定より優先します。</returns>
-    public static bool IsWorking(DateOnly date, UnitDefinition unit, IReadOnlyDictionary<string, UnitDefinition> all)
+    public static bool IsWorking(DateOnly date, UnitDefinition unit, IReadOnlyDictionary<string, UnitDefinition> all) => EvaluateCalendar(date, unit, all).Working;
+
+    /// <summary>実行と画面で同じ評価を行い、継承元も返します。</summary>
+    /// <param name="date">業務日です。</param>
+    /// <param name="unit">参照を持つネットまたはカレンダーです。</param>
+    /// <param name="all">定義の参照先です。</param>
+    /// <returns>実効値と採用した指定の出所です。</returns>
+    public static CalendarEvaluation EvaluateCalendar(DateOnly date, UnitDefinition unit, IReadOnlyDictionary<string, UnitDefinition> all)
     {
         string reference = unit.Get("jc");
         if (reference.Length > 0)
@@ -46,28 +53,28 @@ public static class ScheduleCalculator
             string day = date.ToString("yyyy/M/d", CultureInfo.InvariantCulture);
             if (open.Any(v => DateMatches(v, day)))
             {
-                return true;
+                return new(true, unit.Path, "op日付");
             }
 
             if (closed.Any(v => DateMatches(v, day)))
             {
-                return false;
+                return new(false, unit.Path, "cl日付");
             }
 
             string weekday = Weekdays[(int)date.DayOfWeek];
             if (open.Contains(weekday))
             {
-                return true;
+                return new(true, unit.Path, "op曜日");
             }
 
             if (closed.Contains(weekday))
             {
-                return false;
+                return new(false, unit.Path, "cl曜日");
             }
 
             if (!all.TryGetValue(Parent(unit.Path), out var parent))
             {
-                return true;
+                return new(true, null, "既定値");
             }
 
             unit = parent;

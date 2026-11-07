@@ -19,8 +19,9 @@ public sealed class OperationMutationService(StorageRepository storage, TimeProv
     /// <param name="ensure">Blob保存前の権限確認です。</param>
     /// <param name="stop">この所有者のプロセスだけに停止を通知します。</param>
     /// <param name="token">権限喪失または停止の通知です。</param>
+    /// <param name="finalize">再開可能な補充を操作完了前に実施します。</param>
     /// <returns>変更と操作完了の保存を表します。</returns>
-    public async Task ApplyAsync(TableEntity row, Operation operation, OperationMutation plan, Func<IEnumerable<TableTransactionAction>, CancellationToken, Task> commit, Action ensure, Func<string, Task> stop, CancellationToken token)
+    public async Task ApplyAsync(TableEntity row, Operation operation, OperationMutation plan, Func<IEnumerable<TableTransactionAction>, CancellationToken, Task> commit, Action ensure, Func<string, Task> stop, CancellationToken token, Func<CancellationToken, Task>? finalize = null)
     {
         var data = BinaryData.FromObjectAsJson(plan);
         string path = $"mutations/{storage.Partition}/{StorageRepository.Hash(operation.Id)}/{StorageRepository.Hash(data.ToArray())}.json";
@@ -28,7 +29,7 @@ public sealed class OperationMutationService(StorageRepository storage, TimeProv
         await storage.PutImmutableAsync(path, data, token);
         operation.MutationPath = path;
         await commit([new TableTransactionAction(TableTransactionActionType.UpdateReplace, storage.Entity(row.RowKey, operation), row.ETag)], token);
-        await ResumeAsync((await storage.GetAsync(row.RowKey, token))!, commit, stop, token);
+        await ResumeAsync((await storage.GetAsync(row.RowKey, token))!, commit, stop, token, finalize);
     }
 
     /// <summary>更新済み行を識別して残りだけ適用し、ETag不一致を無視しません。</summary>
@@ -36,8 +37,9 @@ public sealed class OperationMutationService(StorageRepository storage, TimeProv
     /// <param name="commit">leader行を含める更新経路です。</param>
     /// <param name="stop">所有するプロセスの停止通知です。</param>
     /// <param name="token">権限喪失または停止の通知です。</param>
+    /// <param name="finalize">再開可能な補充を操作完了前に実施します。</param>
     /// <returns>分割操作の完了を表します。</returns>
-    public async Task ResumeAsync(TableEntity row, Func<IEnumerable<TableTransactionAction>, CancellationToken, Task> commit, Func<string, Task> stop, CancellationToken token)
+    public async Task ResumeAsync(TableEntity row, Func<IEnumerable<TableTransactionAction>, CancellationToken, Task> commit, Func<string, Task> stop, CancellationToken token, Func<CancellationToken, Task>? finalize = null)
     {
         var operation = StorageRepository.Read<Operation>(row);
         var data = await storage.Container.GetBlobClient(operation.MutationPath).DownloadContentAsync(token);
@@ -53,7 +55,7 @@ public sealed class OperationMutationService(StorageRepository storage, TimeProv
         }
 
         var batch = new List<TableTransactionAction>();
-        foreach (var change in plan.Changes)
+        foreach (var change in operation.MutationApplied == true ? [] : plan.Changes)
         {
             var current = await storage.GetAsync(change.Key, token);
             if (current is null && (plan.FormatVersion != 2 || change.ETag.Length != 0))
@@ -96,6 +98,18 @@ public sealed class OperationMutationService(StorageRepository storage, TimeProv
         if (batch.Count > 0)
         {
             await commit(batch, token);
+        }
+
+        if (finalize is not null && operation.MutationApplied != true)
+        {
+            operation.MutationApplied = true;
+            await commit([new TableTransactionAction(TableTransactionActionType.UpdateReplace, storage.Entity(row.RowKey, operation), row.ETag)], token);
+            row = (await storage.GetAsync(row.RowKey, token))!;
+        }
+
+        if (finalize is not null)
+        {
+            await finalize(token);
         }
 
         operation.Status = "Completed";

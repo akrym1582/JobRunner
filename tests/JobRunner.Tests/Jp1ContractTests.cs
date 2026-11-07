@@ -24,6 +24,7 @@ public sealed class Jp1ContractTests
         var input = storage.Blobs.GetBlobContainerClient(inputName);
         await input.CreateAsync();
         await input.GetBlobClient("jobs").UploadAsync(BinaryData.FromString("unit=net;{ty=n;sd=0,ud;unit=j;{ty=j;te=\"printf jp1-contract\";}}"));
+        await TestDefinitions.SeedHttpAsync(storage, scope.Options);
         using var app = new AppProcess(scope.Options);
         try
         {
@@ -95,6 +96,7 @@ public sealed class Jp1ContractTests
         await input.CreateAsync();
         string day = DateTimeOffset.UtcNow.AddDays(2).ToString("yyyy/M/d", System.Globalization.CultureInfo.InvariantCulture);
         await input.GetBlobClient("jobs").UploadAsync(BinaryData.FromString($"unit=net;{{ty=n;sd={day};st=10:00;cy=(1,d);sh=no;}}"));
+        await TestDefinitions.SeedHttpAsync(storage, scope.Options);
         using var app = new AppProcess(scope.Options);
         try
         {

@@ -45,6 +45,7 @@ public sealed class ScaleTests(ITestOutputHelper output)
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
         try
         {
+            await TestDefinitions.SeedAsync(storage, scope.Options, TimeProvider.System);
             await engine.InitializeAsync(leader, timeout.Token);
             var command = new Operation { Id = "scale", Kind = "Register", RegistrationKind = "Immediate", Target = "/net", Due = DateTimeOffset.UtcNow, StateNamespace = engine.Namespace! };
             await storage.Table.AddEntityAsync(storage.Entity("command:scale", command), timeout.Token);

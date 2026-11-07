@@ -10,7 +10,7 @@ namespace JobRunner.Tests;
 /// <summary>メモリを捨てて再構築し、ハッシュと永続状態による復旧を検証します。</summary>
 public sealed class RecoveryTests
 {
-    /// <summary>再起動は同じ採用IDを維持し、内容変更と切り戻しは別IDへ分離します。</summary>
+    /// <summary>再起動は同じ採用IDを維持し、入力変更と切り戻しでも保存済み定義を維持します。</summary>
     /// <returns>入力と管理状態の一貫性を確認するタスクです。</returns>
     [Fact]
     public async Task RestartChangeRollbackAndMissingState()
@@ -33,6 +33,7 @@ public sealed class RecoveryTests
         await input.GetBlobClient("jobs").UploadAsync(BinaryData.FromString(original));
         try
         {
+            await TestDefinitions.SeedAsync(storage, options, clock);
             string first = await InitializeAsync(storage, options, clock);
             var initial = (await storage.ListAsync("occurrence:", CancellationToken.None)).Select(StorageRepository.Read<Occurrence>).ToList();
             Assert.Equal(4, initial.Count);
@@ -44,13 +45,14 @@ public sealed class RecoveryTests
             Assert.All(restored.Where(o => o.Id != o.RootId), o => Assert.Equal("Waiting", o.State));
             await input.GetBlobClient("jobs").UploadAsync(BinaryData.FromString(original.Replace("true", "printf changed", StringComparison.Ordinal)), overwrite: true);
             string changed = await InitializeAsync(storage, options, clock);
-            Assert.NotEqual(first, changed);
+            Assert.Equal(first, changed);
             await input.GetBlobClient("jobs").UploadAsync(BinaryData.FromString(original), overwrite: true);
             string rollback = await InitializeAsync(storage, options, clock);
-            Assert.NotEqual(first, rollback);
-            Assert.NotEqual(changed, rollback);
+            Assert.Equal(first, rollback);
+            Assert.Equal(changed, rollback);
             options.ScheduleTimeMode = 24;
-            Assert.NotEqual(rollback, await InitializeAsync(storage, options, clock));
+            await Assert.ThrowsAsync<InvalidDataException>(() => InitializeAsync(storage, options, clock));
+            options.ScheduleTimeMode = 48;
             var active = await storage.GetAsync("definition-active", CancellationToken.None);
             await storage.Table.DeleteEntityAsync(storage.Partition, "definition-active", active!.ETag);
             await Assert.ThrowsAsync<InvalidDataException>(() => InitializeAsync(storage, options, clock));
@@ -83,6 +85,7 @@ public sealed class RecoveryTests
         try
         {
             var clock = new TestClock();
+            await TestDefinitions.SeedAsync(storage, options, clock);
             string state = await InitializeAsync(storage, options, clock);
             var occurrence = new Occurrence { Id = "test-job", Namespace = state, RootId = "root", RootPath = "/net", UnitPath = "/net/job", State = "Starting", AttemptId = "old-attempt" };
             await storage.Table.AddEntityAsync(storage.Entity("occurrence:test-job", occurrence));

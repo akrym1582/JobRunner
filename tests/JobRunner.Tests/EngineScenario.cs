@@ -44,6 +44,7 @@ internal sealed class EngineScenario : IAsyncDisposable
         var input = Scope.Repository.Blobs.GetBlobContainerClient(inputName);
         await input.CreateAsync();
         await input.GetBlobClient("jobs").UploadAsync(BinaryData.FromString(source));
+        await TestDefinitions.SeedAsync(Scope.Repository, Scope.Options, Clock);
         Assert.True(await Leader.AcquireAsync(CancellationToken.None));
         await Engine.InitializeAsync(Leader, CancellationToken.None);
     }
