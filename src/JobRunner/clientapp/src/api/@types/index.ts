@@ -209,6 +209,7 @@ export type EditorSource = {
   targetPath: string;
   text: string;
   changed: boolean;
+  kind?: string | undefined;
 }
 
 export type ExecutionPage = {

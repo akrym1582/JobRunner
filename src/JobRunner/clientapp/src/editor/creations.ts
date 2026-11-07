@@ -41,6 +41,7 @@ export function creationDocument(
 ): EditorDocument {
   const workingSources =
     draft.workingSources?.map((s) => ({
+      kind: s.mapping!.kind ?? "Unit",
       fileName: s.mapping!.blobPath!,
       encoding: s.mapping!.encoding!,
       targetPath: s.mapping!.targetPath!,
@@ -50,6 +51,7 @@ export function creationDocument(
   const sources = [
     ...workingSources,
     ...(draft.newFiles ?? []).map((f) => ({
+      kind: "Unit",
       fileName: f.fileName,
       encoding: f.encoding,
       targetPath: f.targetPath,

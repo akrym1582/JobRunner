@@ -213,3 +213,106 @@ test("undoとredoの現在の内容だけを保存済みと表示し、遅い書
     page.getByLabel("変更後の原文", { exact: true }),
   ).not.toContainText("unit=z");
 });
+
+test("同じサーバーファイルの異なる配置先と文字コードを原文比較で区別する", async ({
+  page,
+  request,
+}) => {
+  const api = "http://127.0.0.1:5181/api/jobrunner";
+  const endpoint = api + "/ui/definition-editor";
+  const active = await (await request.get(endpoint)).json();
+  // 同じUTF-8バイト列はCP932でも有効ですが、コメントのéは別の文字へ復号されます。
+  const raw =
+    '/* café */\nunit=net;{ty=n;sd=0,ud;sz=2*1;el=job,j,+80 +48;unit=job;{ty=j;te="echo original";}}';
+  const sources = [
+    {
+      mapping: {
+        kind: "Unit",
+        targetPath: "/alpha",
+        blobPath: "input/shared.ajs",
+        encoding: "utf-8",
+      },
+      base64: Buffer.from(raw).toString("base64"),
+    },
+    {
+      mapping: {
+        kind: "Unit",
+        targetPath: "/beta",
+        blobPath: "input/shared.ajs",
+        encoding: "shift_jis",
+      },
+      base64: Buffer.from(raw).toString("base64"),
+    },
+  ];
+  const imported = await request.post(api + "/definitions/import", {
+    data: sources,
+  });
+  expect(imported.ok(), await imported.text()).toBe(true);
+  const hash = (await imported.json()).version;
+  const response = await request.get(endpoint, {
+    params: { definitionHash: hash },
+  });
+  expect(response.ok(), await response.text()).toBe(true);
+  const document = await response.json();
+  expect(document.sources[0].text).not.toBe(document.sources[1].text);
+  // 既存の基点にkindがない下書きでも、新APIのプレビューと対応できることを確認します。
+  for (const source of document.sources) delete source.kind;
+  // 未採用のサーバー版を表示するだけで、共通の運用定義・登録・実行状態は切り替えません。
+  await page.route("**/ui/definition-editor", (route) =>
+    route.fulfill({ json: document }),
+  );
+  await page.goto("/");
+  await page.getByRole("button", { name: "定義編集", exact: true }).click();
+  await page.getByLabel("編集ネット").selectOption("/beta/net");
+  await page.getByRole("button", { name: "編集 job", exact: true }).click();
+  await page
+    .getByRole("textbox", { name: "コマンド", exact: true })
+    .fill("echo changed-beta");
+  await preview(page);
+  const files = page.getByRole("combobox", {
+    name: "原文ファイル",
+    exact: true,
+  });
+  await files.selectOption("1");
+  await expect(page.getByLabel("変更前の原文", { exact: true })).toHaveText(
+    document.sources[1].text,
+    { timeout: 1000 },
+  );
+  await expect(page.getByLabel("変更後の原文", { exact: true })).toContainText(
+    "echo changed-beta",
+  );
+  await expect(files.locator('option[value="1"]')).toContainText("/beta");
+  await files.selectOption("0");
+  await expect(page.getByLabel("変更前の原文", { exact: true })).toHaveText(
+    document.sources[0].text,
+  );
+  await expect(page.getByLabel("変更後の原文", { exact: true })).toHaveText(
+    document.sources[0].text,
+  );
+  await saved(page);
+  await page.reload();
+  await page.getByRole("button", { name: "定義編集", exact: true }).click();
+  await preview(page);
+  await files.selectOption("1");
+  await expect(page.getByLabel("変更前の原文", { exact: true })).toHaveText(
+    document.sources[1].text,
+  );
+  await page
+    .getByRole("button", { name: "運用反映の差分を確認", exact: true })
+    .click();
+  const publication = page.getByRole("dialog", { name: "運用反映の確認" });
+  await publication.getByText("反映後のファイル一式", { exact: true }).click();
+  await expect(
+    publication
+      .locator("summary")
+      .filter({ hasText: "input/shared.ajs → /alpha" }),
+  ).toContainText("Unit · utf-8");
+  await expect(
+    publication
+      .locator("summary")
+      .filter({ hasText: "input/shared.ajs → /beta" }),
+  ).toContainText("Unit · shift_jis");
+  expect(
+    (await (await request.get(endpoint)).json()).draft.definitionHash,
+  ).toBe(active.draft.definitionHash);
+});

@@ -55,7 +55,7 @@ public static partial class DefinitionEditor
     public static List<EditorSource> Describe(List<SourceEvidence> sources, List<SourceEvidence> original)
     {
         var originals = original.ToDictionary(s => (s.Mapping.Kind, s.Mapping.TargetPath, s.Mapping.BlobPath, s.Mapping.Encoding), s => s.Base64);
-        return sources.Select(source => new EditorSource(source.Mapping.BlobPath, source.Mapping.Encoding, source.Mapping.TargetPath, Decode(source), originals.GetValueOrDefault((source.Mapping.Kind, source.Mapping.TargetPath, source.Mapping.BlobPath, source.Mapping.Encoding)) != source.Base64)).ToList();
+        return sources.Select(source => new EditorSource(source.Mapping.BlobPath, source.Mapping.Encoding, source.Mapping.TargetPath, Decode(source), originals.GetValueOrDefault((source.Mapping.Kind, source.Mapping.TargetPath, source.Mapping.BlobPath, source.Mapping.Encoding)) != source.Base64, source.Mapping.Kind)).ToList();
     }
 
     /// <summary>下書きを原文へ適用します。意味検証は既存DefinitionServiceで別途行います。</summary>

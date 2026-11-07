@@ -1506,6 +1506,9 @@
           },
           "changed": {
             "type": "boolean"
+          },
+          "kind": {
+            "type": "string"
           }
         },
         "additionalProperties": false

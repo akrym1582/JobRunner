@@ -30,6 +30,7 @@ import { LocalDefinitionInput } from "./LocalDefinitionInput";
 import { GroupProperties } from "./GroupProperties";
 import { CreationProperties } from "./CreationProperties";
 import { creationDocument } from "./creations";
+import { findOriginalSource, sourceKey, sourceLabel } from "./source-identity";
 import { NetworkChangeProperties } from "./NetworkChangeProperties";
 import { networkType } from "./network-changes";
 import { NetworkProperties } from "./NetworkProperties";
@@ -133,10 +134,8 @@ export function DefinitionEditor({
     [base, draft],
   );
   const previewSource = preview?.sources[previewFile];
-  // 貼付は原文を再構成して順序も変えるため、不変のファイル対応で開始時の原文を探します。
-  const originalSource = base?.sources.find(
-    (file) => file.fileName === previewSource?.fileName,
-  );
+  // 同じBlobの別配置や別文字コードを含め、バックエンドと同じマッピングで照合します。
+  const originalSource = findOriginalSource(base?.sources ?? [], previewSource);
 
   const persist = useCallback(
     (value: SavedDraft, compareEvenIfUnchanged = false) => {
@@ -969,8 +968,8 @@ export function DefinitionEditor({
                       onChange={(e) => setPreviewFile(Number(e.target.value))}
                     >
                       {preview.sources.map((file, i) => (
-                        <option key={file.fileName + file.targetPath} value={i}>
-                          {file.fileName} · {file.encoding}{" "}
+                        <option key={sourceKey(file)} value={i}>
+                          {sourceLabel(file)}{" "}
                           {file.changed ? "（変更あり）" : "（変更なし）"}
                         </option>
                       ))}

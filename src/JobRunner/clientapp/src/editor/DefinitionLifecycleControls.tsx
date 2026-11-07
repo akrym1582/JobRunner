@@ -1,3 +1,4 @@
+import { sourceKey, sourceLabel } from "./source-identity";
 import { useRef, useState } from "react";
 import useAspidaSWR from "@aspida/swr";
 import type {
@@ -240,16 +241,14 @@ export function DefinitionLifecycleControls({
           <details>
             <summary>反映前のファイル一式（削除対象を含む）</summary>
             {shown.previousSources.map((s) => (
-              <details key={s.fileName}>
+              <details key={sourceKey(s)}>
                 <summary>
                   {shown.sources.some(
-                    (next) =>
-                      next.fileName === s.fileName &&
-                      next.targetPath === s.targetPath,
+                    (next) => sourceKey(next) === sourceKey(s),
                   )
                     ? "反映前"
                     : "削除"}
-                  : {s.fileName} → {s.targetPath}
+                  : {sourceLabel(s)}
                 </summary>
                 <pre>{s.text}</pre>
               </details>
@@ -258,9 +257,9 @@ export function DefinitionLifecycleControls({
           <details>
             <summary>反映後のファイル一式</summary>
             {shown.sources.map((s) => (
-              <details key={s.fileName}>
+              <details key={sourceKey(s)}>
                 <summary>
-                  {s.changed ? "変更" : "同一"}: {s.fileName} → {s.targetPath}
+                  {s.changed ? "変更" : "同一"}: {sourceLabel(s)}
                 </summary>
                 <pre>{s.text}</pre>
               </details>

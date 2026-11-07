@@ -61,6 +61,12 @@ public sealed class RequiredProperties : ISchemaFilter
                 schema.Required.Remove("scheduleTimeMode");
             }
 
+            if (context.Type == typeof(EditorSource))
+            {
+                // 既存のブラウザー/共有下書きの基点には種別がなく、Unitだけが対応済みでした。
+                schema.Required.Remove("kind");
+            }
+
             foreach (var property in context.Type.GetProperties())
             {
                 string name = System.Text.Json.JsonNamingPolicy.CamelCase.ConvertName(property.Name);
