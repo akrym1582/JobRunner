@@ -8,7 +8,7 @@ public sealed class Activation
     /// <summary>
     /// Gets or sets. 復旧処理が理解できる保存形式か確認する番号です。
     /// </summary>
-    public int FormatVersion { get; set; } = 6;
+    public int FormatVersion { get; set; } = 7;
 
     /// <summary>
     /// Gets or sets. 初回に発行する状態領域。定義反映でも登録・履歴の領域を維持します。
@@ -37,4 +37,8 @@ public sealed class Activation
     /// Gets or sets. 初期化開始時に一度固定するUTC基準時刻です。
     /// </summary>
     public DateTimeOffset Baseline { get; set; } = default;
+
+    /// <summary>Gets or sets. 作成時の所属と固定グループIDを保持する不変カタログです。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? GroupCatalogHash { get; set; }
 }

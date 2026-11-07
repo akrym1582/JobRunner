@@ -229,6 +229,17 @@ export function DefinitionLifecycleControls({
             ))}
           </ul>
           <details>
+            <summary>グループの停止・所属への影響</summary>
+            <p>
+              全体と既存グループの停止状態は維持します。開始済み世代は旧所属の停止制御に従います。削除後も実行回が残る所属は運用グループ欄から操作できます。
+            </p>
+            <ul>
+              {shown.groupChanges?.map((message) => (
+                <li key={message}>{message}</li>
+              ))}
+            </ul>
+          </details>
+          <details>
             <summary>実行回への影響（{shown.generations.length}件）</summary>
             <ul>
               {shown.generations.map((g) => (
@@ -275,6 +286,7 @@ export function DefinitionLifecycleControls({
                 target: shown.definitionHash,
                 expectedDefinitionRevision: shown.expectedRevision,
                 expectedImpactHash: shown.impactHash,
+                groupOrigins: shown.groupOrigins,
               } as Operation)
             }
           >

@@ -8,6 +8,17 @@ namespace JobRunner.Editing;
 /// <summary>ファイル境界と参照を保つグループ操作を、既存の原文編集後に適用します。</summary>
 public static partial class DefinitionEditor
 {
+    /// <summary>再投影や運用反映で改名元の所属を失わないための対応を作ります。</summary>
+    /// <param name="bundle">編集前の原文です。</param>
+    /// <param name="draft">適用する下書きです。</param>
+    /// <returns>変更後のグループ完全名から元の完全名への対応です。</returns>
+    public static Dictionary<string, string> GroupOrigins(DefinitionBundle bundle, EditorDraft draft)
+    {
+        var origins = draft.GroupOrigins ?? bundle.Units.Flatten().Where(u => u.Type == "g").ToDictionary(u => u.Path, u => u.Path, StringComparer.Ordinal);
+        var changes = (draft.GroupChanges ?? []).ToDictionary(c => c.Id, StringComparer.Ordinal);
+        return origins.Select(p => (Path: MapGroupPath(p.Key, changes), Origin: p.Value)).Where(p => p.Path is not null).ToDictionary(p => p.Path!, p => p.Origin, StringComparer.Ordinal);
+    }
+
     private static string? MapGroupPath(string path, IReadOnlyDictionary<string, EditorGroupChange> changes)
     {
         string result = string.Empty;

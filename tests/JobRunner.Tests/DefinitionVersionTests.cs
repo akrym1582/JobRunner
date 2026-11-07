@@ -10,8 +10,8 @@ namespace JobRunner.Tests;
 /// <summary>補充定義の切替が確定済み世代と復旧を変更しないことを検証します。</summary>
 public sealed class DefinitionVersionTests
 {
-    /// <summary>旧形式を同じ採用領域で昇格し、旧バイナリの再選出時には形式検査で停止させます。</summary>
-    /// <param name="format">移行元の保存形式です。</param>
+    /// <summary>旧形式は自動変換せず、保存済み状態を維持して停止します。</summary>
+    /// <param name="format">未対応の保存形式です。</param>
     /// <returns>採用IDと既存世代の維持を確認します。</returns>
     [Theory]
     [InlineData(1)]
@@ -19,7 +19,8 @@ public sealed class DefinitionVersionTests
     [InlineData(3)]
     [InlineData(4)]
     [InlineData(5)]
-    public async Task UpgradesLegacyActivationWithoutReplacingNamespace(int format)
+    [InlineData(6)]
+    public async Task RejectsLegacyActivationWithoutChangingData(int format)
     {
         await using var scenario = new EngineScenario();
         await scenario.StartAsync("unit=net;{ty=n;sd=2026/11/5;st=10:00;sh=no;}");
@@ -30,40 +31,12 @@ public sealed class DefinitionVersionTests
         await storage.Table.UpdateEntityAsync(storage.Entity(row.RowKey, legacy), row.ETag, Azure.Data.Tables.TableUpdateMode.Replace);
         await storage.Container.GetBlobClient($"management/{storage.Partition}/active.json").UploadAsync(BinaryData.FromObjectAsJson(legacy), overwrite: true);
         var before = (await scenario.OccurrencesAsync()).Select(o => o.Id).Order().ToList();
-        await scenario.RestartAsync();
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => scenario.RestartAsync());
+        Assert.Contains("保存形式", error.Message, StringComparison.Ordinal);
         var upgraded = StorageRepository.Read<Activation>((await storage.GetAsync("definition-active", CancellationToken.None))!);
-        Assert.Equal(6, upgraded.FormatVersion);
+        Assert.Equal(format, upgraded.FormatVersion);
         Assert.Equal(legacy.Id, upgraded.Id);
         Assert.Equal(before, (await scenario.OccurrencesAsync()).Select(o => o.Id).Order().ToList());
-    }
-
-    /// <summary>旧形式の個別監視変更と待機中登録を、移行後の定義切替から保護します。</summary>
-    /// <returns>省略定義の固定と旧運用指定の保持を確認します。</returns>
-    [Fact]
-    public async Task MigrationPreservesIndividualMonitorAndPendingRegistrationRevision()
-    {
-        await using var scenario = new EngineScenario();
-        await scenario.StartAsync("unit=net;{ty=n;sd=2026/11/5;st=10:00;sh=no;sy=C5;}");
-        var storage = scenario.Scope.Repository;
-        var activeRow = (await storage.GetAsync("definition-active", CancellationToken.None))!;
-        var activation = StorageRepository.Read<Activation>(activeRow);
-        activation.FormatVersion = 5;
-        await storage.Table.UpdateEntityAsync(storage.Entity(activeRow.RowKey, activation), activeRow.ETag, Azure.Data.Tables.TableUpdateMode.Replace);
-        var row = Assert.Single(await storage.ListAsync("occurrence:", CancellationToken.None));
-        var root = StorageRepository.Read<Occurrence>(row);
-        root.DefinitionHash = null;
-        root.DelayMonitor!.StartMinutes = 25;
-        root.IndividuallyModified = false;
-        await storage.Table.UpdateEntityAsync(storage.Entity(row.RowKey, root), row.ETag, Azure.Data.Tables.TableUpdateMode.Replace);
-        await scenario.EnqueueAsync(new Operation { Id = "legacy-register", StateNamespace = activation.Id, Kind = "Register", Target = "/net", RegistrationKind = "Immediate" });
-        await scenario.RestartAsync();
-        var restored = Assert.Single(await scenario.OccurrencesAsync());
-        Assert.Equal(activation.DefinitionHash, restored.DefinitionHash);
-        Assert.True(restored.IndividuallyModified);
-        Assert.Equal(25, restored.DelayMonitor!.StartMinutes);
-        var pending = StorageRepository.Read<Operation>((await storage.GetAsync("command:" + StorageRepository.Hash("legacy-register"), CancellationToken.None))!);
-        Assert.Equal(activation.Revision, pending.AcceptedDefinitionRevision);
-        Assert.Equal("Pending", pending.Status);
     }
 
     /// <summary>生成済みの部分世代は旧版で補完し、次の補充だけ新版を使用します。</summary>

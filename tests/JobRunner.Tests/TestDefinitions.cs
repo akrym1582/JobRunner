@@ -20,7 +20,15 @@ internal static class TestDefinitions
         var bundle = await service.LoadSourcesAsync(CancellationToken.None);
         await service.SaveAsync(bundle, CancellationToken.None);
         await storage.Table.AddEntityAsync(storage.Entity("runtime-control", new RuntimeControl { Paused = false }));
-        await storage.Table.AddEntityAsync(storage.Entity("definition-active", new Activation { Id = Guid.NewGuid().ToString("N"), DefinitionHash = bundle.Hash, SettingsHash = service.SettingsHash(), Baseline = clock.GetUtcNow() }));
+        var activation = new Activation { Id = Guid.NewGuid().ToString("N"), DefinitionHash = bundle.Hash, SettingsHash = service.SettingsHash(), Baseline = clock.GetUtcNow() };
+        var catalog = GroupCatalogService.Create(bundle, activation, null);
+        activation.GroupCatalogHash = await new GroupCatalogService(storage).SaveAsync(catalog, CancellationToken.None);
+        foreach (string id in catalog.Groups.Values)
+        {
+            await storage.Table.AddEntityAsync(storage.Entity("group-control:" + id, new RuntimeControl { Paused = false }));
+        }
+
+        await storage.Table.AddEntityAsync(storage.Entity("definition-active", activation));
     }
 
     /// <summary>HTTP試験プロセスが使う時間制と先読み設定で初回状態を作ります。</summary>

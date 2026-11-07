@@ -7,6 +7,7 @@ export type Activation = {
   settingsHash?: string | undefined;
   phase?: string | undefined;
   baseline?: string | undefined;
+  groupCatalogHash?: string | null | undefined;
 }
 
 export type AttemptPage = {
@@ -102,6 +103,10 @@ export type EditorDraft = {
   networkChanges?: EditorNetworkChange[] | null | undefined;
   workingSources?: SourceEvidence[] | null | undefined;
   workingContainers?: EditorContainer[] | null | undefined;
+
+  groupOrigins?: {
+    [key: string]: string;
+  } | null | undefined;
 }
 
 export type EditorEdge = {
@@ -128,6 +133,14 @@ export type EditorGroupCreation = {
   sourceIndex: number;
   parentPath: string;
   name: string;
+}
+
+export type EditorGroupPackageRequest = {
+  draft: EditorDraft;
+  path: string;
+  zipBase64: string | null;
+  parentPath: string | null;
+  name: string | null;
 }
 
 export type EditorLocalRequest = {
@@ -227,6 +240,15 @@ export type Graph = {
 
   canChange: boolean;
   canRestore: boolean;
+}
+
+export type GroupStatus = {
+  id: string;
+  path: string;
+  definitionRevision: number;
+  control: RuntimeControl;
+  pausedBy: string[];
+  retired: boolean;
 }
 
 export type JobAttempt = {
@@ -349,6 +371,7 @@ export type Occurrence = {
   delayMonitor?: DelayMonitorSettings | undefined;
   generationRevision?: number | undefined;
   individuallyModified?: boolean | undefined;
+  groupCatalogHash?: string | null | undefined;
 }
 
 export type Operation = {
@@ -394,6 +417,10 @@ export type Operation = {
   expectedDefinitionRevision?: number | null | undefined;
   expectedImpactHash?: string | null | undefined;
   acceptedDefinitionRevision?: number | null | undefined;
+
+  groupOrigins?: {
+    [key: string]: string;
+  } | null | undefined;
 }
 
 export type ProblemDetails = {
@@ -420,6 +447,12 @@ export type PublicationPreview = {
   generations: PublicationGeneration[];
   sources: EditorSource[];
   previousSources: EditorSource[];
+
+  groupOrigins: {
+    [key: string]: string;
+  } | null;
+
+  groupChanges: string[] | null;
 }
 
 export type RuntimeControl = {

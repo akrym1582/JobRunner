@@ -160,4 +160,8 @@ public sealed class Occurrence
 
     /// <summary>Gets or sets a value indicating whether. 個別運用操作を含む世代は定義反映で置換しません。</summary>
     public bool IndividuallyModified { get; set; }
+
+    /// <summary>Gets or sets. 作成時の所属と固定グループIDを保持する不変カタログです。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? GroupCatalogHash { get; set; }
 }

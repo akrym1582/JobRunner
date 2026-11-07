@@ -25,12 +25,15 @@ public sealed partial class SchedulerEngine
         }
 
         var now = clock.GetUtcNow();
-        if (operation.ExpectedImpactHash is not null && operation.ExpectedImpactHash != DefinitionPublication.ImpactHash(activeRow, registrations, occurrences, now))
+        if (operation.ExpectedImpactHash is not null && operation.ExpectedImpactHash != DefinitionPublication.ImpactHash(activeRow, registrations, occurrences, now, await storage.ListAsync("group-control:", token)))
         {
             throw new FormatException("確認後に登録・実行状態が変わりました。反映の影響を再確認してください。");
         }
 
-        if (active?.DefinitionHash == next.Hash)
+        var updated = new Activation { Id = active?.Id ?? Guid.NewGuid().ToString("N"), Revision = (active?.Revision ?? 0) + 1, DefinitionHash = next.Hash, SettingsHash = definitions.SettingsHash(), Phase = "Ready", Baseline = active?.Baseline ?? now };
+        var plan = new OperationMutation { FormatVersion = 2, OperationId = operation.Id };
+        await PreparePublicationGroupsAsync(updated, next, operation, plan, token);
+        if (active?.DefinitionHash == next.Hash && active.GroupCatalogHash == updated.GroupCatalogHash)
         {
             operation.Status = "Completed";
             operation.CompletedAt = clock.GetUtcNow();
@@ -39,10 +42,15 @@ public sealed partial class SchedulerEngine
             return;
         }
 
-        var updated = new Activation { Id = active?.Id ?? Guid.NewGuid().ToString("N"), Revision = (active?.Revision ?? 0) + 1, DefinitionHash = next.Hash, SettingsHash = definitions.SettingsHash(), Phase = "Ready", Baseline = active?.Baseline ?? now };
-        var plan = new OperationMutation { FormatVersion = 2, OperationId = operation.Id };
         var roots = DefinitionPublication.Roots(next);
+        var nextGroupPaths = (await ReadGroupsAsync(updated.GroupCatalogHash, token)).Groups.ToDictionary(p => p.Value, p => p.Key, StringComparer.Ordinal);
         var byRegistration = registrations.ToDictionary(r => StorageRepository.Read<Registration>(r).Id, r => StorageRepository.Read<Registration>(r), StringComparer.Ordinal);
+        var disabledRoots = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var registration in byRegistration.Values.Where(r => r.Disabled && r.Id == StorageRepository.Hash(r.RootPath)))
+        {
+            disabledRoots.Add(await MapGroupRootAsync(new Occurrence { RootPath = registration.RootPath, GroupCatalogHash = registration.GroupCatalogHash }, nextGroupPaths, token));
+        }
+
         var slotChanges = new HashSet<string>(StringComparer.Ordinal);
         foreach (var group in occurrences.GroupBy(r => StorageRepository.Read<Occurrence>(r).RootId))
         {
@@ -68,6 +76,22 @@ public sealed partial class SchedulerEngine
                 {
                     plan.Changes.Add(new ArchivedRow(key, string.Empty, JsonSerializer.Serialize(root.Id)));
                 }
+
+                // 改名で登録キーが変わっても、開始済み・個別保留した旧世代と同じ予定枠を二重生成しません。
+                // 世代の固定IDから追うため、複数回の改名後も最初の所属まで遡れます。
+                if (registration.Id == StorageRepository.Hash(root.RootPath))
+                {
+                    string mappedRoot = await MapGroupRootAsync(root, nextGroupPaths, token);
+                    if (mappedRoot != root.RootPath && roots.ContainsKey(mappedRoot))
+                    {
+                        var mappedRegistration = new Registration { Namespace = updated.Id, Id = StorageRepository.Hash(mappedRoot), RootPath = mappedRoot };
+                        string mappedKey = DefinitionPublication.SlotKey(mappedRegistration, root.Rule, root.BusinessDate, root.OriginalDue);
+                        if (slotChanges.Add(mappedKey) && await storage.GetAsync(mappedKey, token) is null)
+                        {
+                            plan.Changes.Add(new ArchivedRow(mappedKey, string.Empty, JsonSerializer.Serialize(root.Id)));
+                        }
+                    }
+                }
             }
         }
 
@@ -85,8 +109,14 @@ public sealed partial class SchedulerEngine
             }
             else
             {
+                if (value.ReplenishmentStopped && value.Id == StorageRepository.Hash(value.RootPath))
+                {
+                    value.GenerationNotBefore = now;
+                }
+
                 value.ReplenishmentStopped = false;
                 value.DefinitionHash = next.Hash;
+                value.GroupCatalogHash = updated.GroupCatalogHash;
                 value.GenerationRevision = updated.Revision;
                 value.Through = value.Start ?? BusinessToday(now).AddDays(-3);
                 value.ExhaustedOn = null;
@@ -107,7 +137,7 @@ public sealed partial class SchedulerEngine
             }
 
             var day = BusinessToday(now);
-            var value = new Registration { Id = id, Namespace = updated.Id, RootPath = root.Path, DefinitionHash = next.Hash, GenerationRevision = updated.Revision, Anchor = day, Through = day.AddDays(-1), FutureGenerations = options.ConfirmedFutureGenerations, CreatedAt = now };
+            var value = new Registration { Id = id, Namespace = updated.Id, RootPath = root.Path, Disabled = disabledRoots.Contains(root.Path), GenerationNotBefore = now, DefinitionHash = next.Hash, GroupCatalogHash = updated.GroupCatalogHash, GenerationRevision = updated.Revision, Anchor = day, Through = day.AddDays(-1), FutureGenerations = options.ConfirmedFutureGenerations, CreatedAt = now };
             plan.Changes.Add(new ArchivedRow($"registration:{updated.Id}:{id}", string.Empty, JsonSerializer.Serialize(value)));
         }
 
@@ -119,11 +149,12 @@ public sealed partial class SchedulerEngine
     private async Task FinalizePublicationAsync(CancellationToken token)
     {
         active = StorageRepository.Read<Activation>((await storage.GetAsync("definition-active", token)) ?? throw new InvalidDataException("反映先の採用行が欠損しています。"));
-        if (active.SettingsHash != definitions.SettingsHash() || active.FormatVersion != 6 || active.Phase != "Ready")
+        if (active.SettingsHash != definitions.SettingsHash() || active.FormatVersion != 7 || active.Phase != "Ready")
         {
             throw new InvalidDataException("反映計画の保存形式・実行設定が現在の実行器と一致しません。補充せず停止します。");
         }
 
+        await LoadGroupControlsAsync(token);
         bundle = await definitions.ReadAsync(active.DefinitionHash, token);
         await RepairIncompleteGenerationsAsync(token);
         foreach (var row in await storage.ListAsync($"registration:{active.Id}:", token))
@@ -147,7 +178,7 @@ public sealed partial class SchedulerEngine
         {
             var saved = await mirror.DownloadContentAsync(token);
             var previous = saved.Value.Content.ToObjectFromJson<Activation>();
-            if (previous is null || previous.FormatVersion is < 1 or > 6 || previous.Id != active.Id || previous.SettingsHash != active.SettingsHash || previous.Phase != "Ready")
+            if (previous is null || previous.FormatVersion != 7 || previous.Id != active.Id || previous.SettingsHash != active.SettingsHash || previous.Phase != "Ready")
             {
                 throw new InvalidDataException("管理Blobと反映先が一致しません。破損状態を上書きせず復元してください。");
             }
@@ -157,6 +188,6 @@ public sealed partial class SchedulerEngine
 
         leader!.Ensure();
         await mirror.UploadAsync(BinaryData.FromObjectAsJson(active), new BlobUploadOptions { Conditions = condition }, token);
-        await storage.PutImmutableAsync($"management/{storage.Partition}/{active.DefinitionHash}/{active.SettingsHash}/{active.Id}/activation-v6-{active.Revision}.json", BinaryData.FromObjectAsJson(active), token);
+        await storage.PutImmutableAsync($"management/{storage.Partition}/{active.DefinitionHash}/{active.SettingsHash}/{active.Id}/activation-v7-{active.Revision}.json", BinaryData.FromObjectAsJson(active), token);
     }
 }

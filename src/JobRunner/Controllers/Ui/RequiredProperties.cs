@@ -30,6 +30,7 @@ public sealed class RequiredProperties : ISchemaFilter
                 schema.Required.Remove("networkChanges");
                 schema.Required.Remove("workingSources");
                 schema.Required.Remove("workingContainers");
+                schema.Required.Remove("groupOrigins");
             }
 
             if (context.Type == typeof(EditorGroupChange))

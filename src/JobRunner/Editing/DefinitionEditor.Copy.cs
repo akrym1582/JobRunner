@@ -156,7 +156,7 @@ public static partial class DefinitionEditor
 
         var sources = documents.Select(d => d.Render()).ToList();
         var result = definitions.Validate(EditorLocalFiles.ValidateSources(sources));
-        var projected = Project(result, 9) with { DefinitionHash = request.Draft.DefinitionHash, LocalSources = request.Draft.LocalSources, WorkingSources = result.Sources, WorkingContainers = Containers(result) };
+        var projected = Project(result, 9) with { DefinitionHash = request.Draft.DefinitionHash, LocalSources = request.Draft.LocalSources, WorkingSources = result.Sources, WorkingContainers = Containers(result), GroupOrigins = GroupOrigins(bundle, request.Draft) };
         var cloned = selected.Select(u => targetPath.TrimEnd('/') + "/" + mappedNames[u.Path]).ToList();
         return new(new EditorDocument(projected, Describe(result.Sources, bundle.Sources), Containers(result), options.TimeZone, options.ScheduleTimeMode), cloned, roots ? cloned[0] : targetPath, warnings.Distinct(StringComparer.Ordinal).ToList());
     }

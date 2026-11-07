@@ -53,11 +53,12 @@ public static class DefinitionPublication
     /// <param name="registrations">対象領域の全登録です。</param>
     /// <param name="occurrences">対象領域の全世代です。</param>
     /// <param name="now">時刻経過による置換可否の変更も照合する基準時刻です。</param>
+    /// <param name="controls">停止状態の確認対象です。</param>
     /// <returns>確認以後の変更を検知するハッシュです。</returns>
-    public static string ImpactHash(TableEntity? activation, IEnumerable<TableEntity> registrations, IEnumerable<TableEntity> occurrences, DateTimeOffset now)
+    public static string ImpactHash(TableEntity? activation, IEnumerable<TableEntity> registrations, IEnumerable<TableEntity> occurrences, DateTimeOffset now, IEnumerable<TableEntity>? controls = null)
     {
         var rows = occurrences.ToList();
-        var versions = (activation is null ? [] : new[] { activation }).Concat(registrations).Concat(rows).OrderBy(r => r.RowKey, StringComparer.Ordinal).Select(r => new { r.RowKey, ETag = r.ETag.ToString() });
+        var versions = (activation is null ? [] : new[] { activation }).Concat(registrations).Concat(rows).Concat(controls ?? []).OrderBy(r => r.RowKey, StringComparer.Ordinal).Select(r => new { r.RowKey, ETag = r.ETag.ToString() });
         var protections = rows.Select(StorageRepository.Read<Occurrence>).GroupBy(o => o.RootId).OrderBy(g => g.Key, StringComparer.Ordinal).Select(g => new { RootId = g.Key, Reason = Protection(g, now) });
         return StorageRepository.Hash(JsonSerializer.Serialize(new { Versions = versions, Protections = protections }));
     }
