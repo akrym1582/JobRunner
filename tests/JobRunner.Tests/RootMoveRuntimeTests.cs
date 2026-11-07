@@ -158,4 +158,68 @@ public sealed class RootMoveRuntimeTests
         Assert.False(pending.Started);
         Assert.Empty(await storage.ListAsync("attempt:", CancellationToken.None));
     }
+
+    /// <summary>過去の移動先登録を移動元の制御状態で置き換えます。</summary>
+    /// <param name="sourceDisabled">移動元が解除済みかです。</param>
+    /// <param name="count">件数方式かです。</param>
+    /// <returns>別系統の枠と保留が新しい予定を妨げないことを確認します。</returns>
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task ReusedDestinationInheritsSourceControl(bool sourceDisabled, bool count)
+    {
+        await using var scenario = new EngineScenario();
+        scenario.Scope.Options.ConfirmedFutureGenerations = count ? 2 : null;
+        const string network = "unit=n;{ty=n;sd=1,en;st=10:00;cy=(1,d);sh=no;}";
+        await scenario.StartAsync("unit=a;{ty=g;" + network + "}unit=b;{ty=g;" + network + "}");
+        var storage = scenario.Scope.Repository;
+        var before = await scenario.OccurrencesAsync();
+        var oldDestination = before.Where(o => o.RootPath == "/b/n" && o.Id == o.RootId).OrderBy(o => o.Due).First();
+        if (sourceDisabled)
+        {
+            await scenario.EnqueueAsync(new Operation { Id = "disable-source", Kind = "Unregister", Target = StorageRepository.Hash("/a/n") });
+            await scenario.EnqueueAsync(new Operation { Id = "hold-old", Kind = "Hold", Target = oldDestination.Id });
+        }
+        else
+        {
+            await scenario.EnqueueAsync(new Operation { Id = "disable-old", Kind = "Unregister", Target = StorageRepository.Hash("/b/n") });
+        }
+
+        await scenario.Engine.TickAsync(CancellationToken.None);
+        var service = new DefinitionService(storage, scenario.Scope.Options);
+        async Task Publish(string id, string text, Dictionary<string, string>? origins)
+        {
+            var next = service.Validate([new SourceEvidence { Mapping = new() { BlobPath = "local/reuse" }, Base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(text)) }]);
+            await service.SaveAsync(next, CancellationToken.None);
+            await scenario.EnqueueAsync(new Operation { Id = id, Kind = "Activate", Target = next.Hash, RootOrigins = origins });
+            await scenario.Engine.TickAsync(CancellationToken.None);
+            Assert.Equal("Completed", StorageRepository.Read<Operation>((await storage.GetAsync("command:" + StorageRepository.Hash(id), CancellationToken.None))!).Status);
+        }
+
+        await Publish("remove-old", "unit=a;{ty=g;" + network + "}unit=b;{ty=g;}", null);
+        await Publish("move", "unit=a;{ty=g;}unit=b;{ty=g;" + network + "}", new() { ["/b/n"] = "/a/n" });
+        await scenario.RestartAsync();
+        await scenario.Engine.TickAsync(CancellationToken.None);
+        var registration = StorageRepository.Read<Registration>((await storage.GetAsync($"registration:{scenario.Engine.Namespace}:{StorageRepository.Hash("/b/n")}", CancellationToken.None))!);
+        Assert.Equal(sourceDisabled, registration.Disabled);
+        Assert.False(registration.ReplenishmentStopped);
+        Assert.NotNull(registration.SlotIdentity);
+        var current = (await scenario.OccurrencesAsync()).Where(o => o.RootPath == "/b/n" && o.GenerationRevision == 2 && o.Id == o.RootId).ToList();
+        if (sourceDisabled)
+        {
+            Assert.Empty(current);
+            Assert.Equal("Held", (await scenario.OccurrencesAsync()).Single(o => o.Id == oldDestination.Id).State);
+            await scenario.EnqueueAsync(new Operation { Id = "release-old", Kind = "Release", Target = oldDestination.Id, ExpectedState = "Held" });
+            scenario.Clock.Now = oldDestination.Due;
+            await scenario.AdvanceUntilAsync(values => values.Any(o => o.Id == oldDestination.Id && o.State == "Succeeded"));
+        }
+        else
+        {
+            Assert.Contains(current, o => o.Due == oldDestination.Due);
+            scenario.Clock.Now = oldDestination.Due;
+            await scenario.AdvanceUntilAsync(values => values.Any(o => o.RootPath == "/b/n" && o.GenerationRevision == 2 && o.Started));
+        }
+    }
 }

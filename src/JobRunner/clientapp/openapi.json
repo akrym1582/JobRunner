@@ -2119,6 +2119,10 @@
       "Occurrence": {
         "type": "object",
         "properties": {
+          "registrationDisabledSnapshot": {
+            "type": "boolean",
+            "nullable": true
+          },
           "id": {
             "type": "string"
           },

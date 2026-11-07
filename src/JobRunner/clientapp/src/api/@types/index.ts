@@ -351,6 +351,7 @@ export type Node = {
 }
 
 export type Occurrence = {
+  registrationDisabledSnapshot?: boolean | null | undefined;
   id?: string | undefined;
   namespace?: string | undefined;
   registrationId?: string | undefined;

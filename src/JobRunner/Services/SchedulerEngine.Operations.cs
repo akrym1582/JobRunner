@@ -59,6 +59,7 @@ public sealed partial class SchedulerEngine
         var root = units[registration.RootPath];
         var existing = (await storage.ListAsync("occurrence:", token)).Select(StorageRepository.Read<Occurrence>)
             .Where(o => o.Namespace == registration.Namespace && o.RegistrationId == registration.Id && o.Id == o.RootId).OrderBy(o => o.OriginalDue).ThenBy(o => o.Rule).ToList();
+        existing = await MatchingSlotIdentityAsync(existing, registration, token);
         var generation = JsonSerializer.Deserialize<Registration>(JsonSerializer.Serialize(registration))!;
         var first = existing.FirstOrDefault(o => o.State != "Superseded");
 
@@ -87,6 +88,25 @@ public sealed partial class SchedulerEngine
         }
     }
 
+    private async Task<List<Occurrence>> MatchingSlotIdentityAsync(List<Occurrence> roots, Registration registration, CancellationToken token)
+    {
+        if (registration.SlotIdentity is null)
+        {
+            return roots;
+        }
+
+        var result = new List<Occurrence>();
+        foreach (var root in roots)
+        {
+            if ((await ReadGroupsAsync(root.GroupCatalogHash, token)).Roots.GetValueOrDefault(root.RootPath) == registration.SlotIdentity)
+            {
+                result.Add(root);
+            }
+        }
+
+        return result;
+    }
+
     /// <summary>未開始世代の枠を保ち、開始済み・取消済みの履歴は枠に数えません。</summary>
     /// <param name="row">更新前の登録行です。</param>
     /// <param name="registration">未来世代数を持つ登録です。</param>
@@ -98,6 +118,7 @@ public sealed partial class SchedulerEngine
         var root = units[registration.RootPath];
         var roots = (await storage.ListAsync("occurrence:", token)).Select(StorageRepository.Read<Occurrence>)
             .Where(o => o.Namespace == registration.Namespace && o.RegistrationId == registration.Id && o.Id == o.RootId).ToList();
+        roots = await MatchingSlotIdentityAsync(roots, registration, token);
         foreach (var incomplete in roots.Where(o => o.Materialized == false))
         {
             var repairRegistration = JsonSerializer.Deserialize<Registration>(JsonSerializer.Serialize(registration))!;

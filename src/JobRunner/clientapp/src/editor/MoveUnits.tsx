@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { EditorDocument, EditorDraft, EditorSource } from "../api/@types";
 import { client } from "../client";
+import { rootParent } from "./network-changes";
 import { groupPath } from "./group-paths";
 
 export function MoveUnits({
@@ -34,7 +35,7 @@ export function MoveUnits({
     ),
   ];
   const roots = (draft.roots ?? []).flatMap((r) => {
-    const parent = groupPath(draft, r.parentPath);
+    const parent = groupPath(draft, rootParent(draft, r));
     return parent && r.node.type === "n"
       ? [parent.replace(/\/$/, "") + "/" + r.node.name]
       : [];

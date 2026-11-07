@@ -225,7 +225,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
                     throw new InvalidDataException("登録行が欠損しています。");
                 }
 
-                if (registration.Disabled && !all[occurrence.RootId].Value.Started)
+                if ((all[occurrence.RootId].Value.RegistrationDisabledSnapshot ?? registration.Disabled) && !all[occurrence.RootId].Value.Started)
                 {
                     continue;
                 }

@@ -5,6 +5,10 @@ namespace JobRunner.Models;
 /// </summary>
 public sealed class Occurrence
 {
+    /// <summary>Gets or sets. 同名の別ネットが登録行を再利用しても旧世代の解除状態を保ちます。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public bool? RegistrationDisabledSnapshot { get; set; }
+
     /// <summary>
     /// Gets or sets. 登録・ルール・業務日・ユニットから決定的に作る世代IDです。
     /// </summary>

@@ -374,3 +374,46 @@ test("所属の古い下書きは運用反映前に拒否して採用版を保�
     before.active,
   );
 });
+
+test("旧ルート移動の下書きから続けて移動し保存・再読込できる", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "定義編集", exact: true }).click();
+  await page.getByText("ローカル定義を開く", { exact: true }).click();
+  await page.getByLabel("定義ファイル", { exact: true }).setInputFiles({
+    name: "chain.ajs",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.from(
+      "unit=a;{ty=g;unit=n;{ty=n;sd=0,ud;}}unit=b;{ty=g;}unit=c;{ty=g;}",
+    ),
+  });
+  page.once("dialog", (d) => d.accept());
+  await page
+    .getByRole("button", { name: "ローカル定義を読み込む", exact: true })
+    .click();
+  await expect(page.getByLabel("編集ネット")).toHaveValue("/a/n");
+  await page.getByText("ネットの移動・種別切替", { exact: true }).click();
+  await page.getByLabel("ルートの移動先", { exact: true }).selectOption("/b");
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "移動を検証", exact: true }).click();
+  await expect(
+    page.getByLabel("編集ネット").locator('option[value="/a/n"]'),
+  ).toContainText("/b/n");
+  await page.getByText("グループ・ルートネットの移動", { exact: true }).click();
+  await page
+    .getByLabel("移動するユニット", { exact: true })
+    .selectOption("/b/n");
+  await page.getByLabel("移動先グループ", { exact: true }).selectOption("/c");
+  page.once("dialog", (d) => d.accept());
+  await page
+    .getByRole("button", { name: "移動候補を確認", exact: true })
+    .click();
+  await expect(page.getByLabel("編集ネット")).toHaveValue("/c/n");
+  await expect(
+    page.getByText("ブラウザーに保存済み", { exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: "定義編集", exact: true }).click();
+  await expect(page.getByLabel("編集ネット")).toHaveValue("/c/n");
+});

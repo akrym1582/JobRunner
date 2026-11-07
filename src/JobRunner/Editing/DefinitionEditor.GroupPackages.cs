@@ -42,7 +42,35 @@ public static partial class DefinitionEditor
             }
 
             using var metadata = archive.CreateEntry("manifest.json").Open();
-            JsonSerializer.Serialize(metadata, new { FormatVersion = 2, GroupRoot = request.Path, Sources = manifest, Dependencies = dependencies });
+
+            // 読込側と同じ非圧縮上限で判定します。原文内の参照は省略しません。
+            var included = new List<string>();
+            int diagnosticBytes = 0;
+            foreach (string dependency in dependencies)
+            {
+                int length = JsonSerializer.SerializeToUtf8Bytes(dependency).Length;
+                if (diagnosticBytes + length > 128 * 1024)
+                {
+                    break;
+                }
+
+                diagnosticBytes += length;
+                included.Add(dependency);
+            }
+
+            int omitted = dependencies.Count - included.Count;
+            if (omitted > 0)
+            {
+                included.Add($"依存診断 {omitted} 件を省略しました。参照は原文に保持し、取込時に再検証します。");
+            }
+
+            byte[] manifestBytes = JsonSerializer.SerializeToUtf8Bytes(new { FormatVersion = 2, GroupRoot = request.Path, Sources = manifest, Dependencies = included });
+            if (manifestBytes.Length > 256 * 1024)
+            {
+                throw new ArgumentException("グループZIPのmanifestは256KiBまでです。原文のファイル対応を分割してください。");
+            }
+
+            metadata.Write(manifestBytes);
         }
 
         if (output.Length > EditorLocalFiles.TotalLimit)
@@ -171,13 +199,10 @@ public static partial class DefinitionEditor
     private static List<string> GroupDependencies(Dictionary<string, UnitDefinition> all, string path)
     {
         var diagnostics = new List<string>();
-        foreach (var unit in all.Values.Where(u => Within(u.Path, path)))
+        foreach (var reference in all.Values.Where(u => Within(u.Path, path) && u.Get("jc").Length > 0 && !Within(u.Get("jc"), path)).GroupBy(u => u.Get("jc"), StringComparer.Ordinal))
         {
-            string reference = unit.Get("jc");
-            if (reference.Length > 0 && !Within(reference, path))
-            {
-                diagnostics.Add($"{unit.Path}: 外部カレンダー {reference}（{(all.TryGetValue(reference, out var dependency) && dependency.Type == "g" ? "参照先あり" : "参照先不足・運用反映不可")}）。依存先は同梱しません。");
-            }
+            string state = all.TryGetValue(reference.Key, out var dependency) && dependency.Type == "g" ? "参照先あり" : "参照先不足・運用反映不可";
+            diagnostics.Add($"外部カレンダー {reference.Key}（{state}）。参照元 {reference.Count()} 件、例: {string.Join(", ", reference.Take(3).Select(u => u.Path))}。依存先は同梱しません。");
         }
 
         string parent = ScheduleCalculator.Parent(path);
