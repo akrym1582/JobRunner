@@ -20,6 +20,7 @@ public sealed class DefinitionVersionTests
     [InlineData(4)]
     [InlineData(5)]
     [InlineData(6)]
+    [InlineData(7)]
     public async Task RejectsLegacyActivationWithoutChangingData(int format)
     {
         await using var scenario = new EngineScenario();

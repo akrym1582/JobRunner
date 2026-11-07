@@ -287,6 +287,7 @@ export function DefinitionLifecycleControls({
                 expectedDefinitionRevision: shown.expectedRevision,
                 expectedImpactHash: shown.impactHash,
                 groupOrigins: shown.groupOrigins,
+                rootOrigins: shown.rootOrigins,
               } as Operation)
             }
           >

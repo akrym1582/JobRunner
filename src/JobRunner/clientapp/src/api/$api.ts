@@ -10,6 +10,7 @@ import type { Methods as Methods_1r0i1hl } from './api/jobrunner/ui/definition-e
 import type { Methods as Methods_1y8qxgq } from './api/jobrunner/ui/definition-editor/groups/import';
 import type { Methods as Methods_i7i0m5 } from './api/jobrunner/ui/definition-editor/local';
 import type { Methods as Methods_s87h28 } from './api/jobrunner/ui/definition-editor/local/new';
+import type { Methods as Methods_1ntn8tf } from './api/jobrunner/ui/definition-editor/move';
 import type { Methods as Methods_nmo6j5 } from './api/jobrunner/ui/definition-editor/paste';
 import type { Methods as Methods_131cyve } from './api/jobrunner/ui/definition-editor/preview';
 import type { Methods as Methods_myrzod } from './api/jobrunner/ui/definition-editor/publication-preview';
@@ -35,19 +36,20 @@ const api = <T>({ baseURL, fetch }: AspidaClient<T>) => {
   const PATH6 = '/api/jobrunner/ui/definition-editor/groups/import';
   const PATH7 = '/api/jobrunner/ui/definition-editor/local';
   const PATH8 = '/api/jobrunner/ui/definition-editor/local/new';
-  const PATH9 = '/api/jobrunner/ui/definition-editor/paste';
-  const PATH10 = '/api/jobrunner/ui/definition-editor/preview';
-  const PATH11 = '/api/jobrunner/ui/definition-editor/publication-preview';
-  const PATH12 = '/api/jobrunner/ui/definition-editor/publish';
-  const PATH13 = '/api/jobrunner/ui/definition-editor/schedules';
-  const PATH14 = '/api/jobrunner/ui/definition-editor/shared';
-  const PATH15 = '/api/jobrunner/ui/executions';
-  const PATH16 = '/api/jobrunner/ui/graph';
-  const PATH17 = '/api/jobrunner/ui/groups';
-  const PATH18 = '/api/jobrunner/ui/jobnets';
-  const PATH19 = '/api/jobrunner/ui/logs';
-  const PATH20 = '/api/jobrunner/ui/monthly';
-  const PATH21 = '/api/jobrunner/ui/runtime';
+  const PATH9 = '/api/jobrunner/ui/definition-editor/move';
+  const PATH10 = '/api/jobrunner/ui/definition-editor/paste';
+  const PATH11 = '/api/jobrunner/ui/definition-editor/preview';
+  const PATH12 = '/api/jobrunner/ui/definition-editor/publication-preview';
+  const PATH13 = '/api/jobrunner/ui/definition-editor/publish';
+  const PATH14 = '/api/jobrunner/ui/definition-editor/schedules';
+  const PATH15 = '/api/jobrunner/ui/definition-editor/shared';
+  const PATH16 = '/api/jobrunner/ui/executions';
+  const PATH17 = '/api/jobrunner/ui/graph';
+  const PATH18 = '/api/jobrunner/ui/groups';
+  const PATH19 = '/api/jobrunner/ui/jobnets';
+  const PATH20 = '/api/jobrunner/ui/logs';
+  const PATH21 = '/api/jobrunner/ui/monthly';
+  const PATH22 = '/api/jobrunner/ui/runtime';
   const GET = 'GET';
   const POST = 'POST';
   const PUT = 'PUT';
@@ -181,93 +183,106 @@ const api = <T>({ baseURL, fetch }: AspidaClient<T>) => {
                 fetch<Methods_i7i0m5['post']['resBody'], BasicHeaders, Methods_i7i0m5['post']['status']>(prefix, PATH7, POST, option).json().then(r => r.body),
               $path: () => `${prefix}${PATH7}`,
             },
+            move: {
+              /**
+               * @returns OK
+               */
+              post: (option: { body: Methods_1ntn8tf['post']['reqBody'], config?: T | undefined }) =>
+                fetch<Methods_1ntn8tf['post']['resBody'], BasicHeaders, Methods_1ntn8tf['post']['status']>(prefix, PATH9, POST, option).json(),
+              /**
+               * @returns OK
+               */
+              $post: (option: { body: Methods_1ntn8tf['post']['reqBody'], config?: T | undefined }) =>
+                fetch<Methods_1ntn8tf['post']['resBody'], BasicHeaders, Methods_1ntn8tf['post']['status']>(prefix, PATH9, POST, option).json().then(r => r.body),
+              $path: () => `${prefix}${PATH9}`,
+            },
             paste: {
               /**
                * @returns OK
                */
               post: (option: { body: Methods_nmo6j5['post']['reqBody'], config?: T | undefined }) =>
-                fetch<Methods_nmo6j5['post']['resBody'], BasicHeaders, Methods_nmo6j5['post']['status']>(prefix, PATH9, POST, option).json(),
+                fetch<Methods_nmo6j5['post']['resBody'], BasicHeaders, Methods_nmo6j5['post']['status']>(prefix, PATH10, POST, option).json(),
               /**
                * @returns OK
                */
               $post: (option: { body: Methods_nmo6j5['post']['reqBody'], config?: T | undefined }) =>
-                fetch<Methods_nmo6j5['post']['resBody'], BasicHeaders, Methods_nmo6j5['post']['status']>(prefix, PATH9, POST, option).json().then(r => r.body),
-              $path: () => `${prefix}${PATH9}`,
+                fetch<Methods_nmo6j5['post']['resBody'], BasicHeaders, Methods_nmo6j5['post']['status']>(prefix, PATH10, POST, option).json().then(r => r.body),
+              $path: () => `${prefix}${PATH10}`,
             },
             preview: {
               /**
                * @returns OK
                */
               post: (option: { body: Methods_131cyve['post']['reqBody'], config?: T | undefined }) =>
-                fetch<Methods_131cyve['post']['resBody'], BasicHeaders, Methods_131cyve['post']['status']>(prefix, PATH10, POST, option).json(),
+                fetch<Methods_131cyve['post']['resBody'], BasicHeaders, Methods_131cyve['post']['status']>(prefix, PATH11, POST, option).json(),
               /**
                * @returns OK
                */
               $post: (option: { body: Methods_131cyve['post']['reqBody'], config?: T | undefined }) =>
-                fetch<Methods_131cyve['post']['resBody'], BasicHeaders, Methods_131cyve['post']['status']>(prefix, PATH10, POST, option).json().then(r => r.body),
-              $path: () => `${prefix}${PATH10}`,
+                fetch<Methods_131cyve['post']['resBody'], BasicHeaders, Methods_131cyve['post']['status']>(prefix, PATH11, POST, option).json().then(r => r.body),
+              $path: () => `${prefix}${PATH11}`,
             },
             publication_preview: {
               /**
                * @returns OK
                */
               post: (option: { body: Methods_myrzod['post']['reqBody'], config?: T | undefined }) =>
-                fetch<Methods_myrzod['post']['resBody'], BasicHeaders, Methods_myrzod['post']['status']>(prefix, PATH11, POST, option).json(),
+                fetch<Methods_myrzod['post']['resBody'], BasicHeaders, Methods_myrzod['post']['status']>(prefix, PATH12, POST, option).json(),
               /**
                * @returns OK
                */
               $post: (option: { body: Methods_myrzod['post']['reqBody'], config?: T | undefined }) =>
-                fetch<Methods_myrzod['post']['resBody'], BasicHeaders, Methods_myrzod['post']['status']>(prefix, PATH11, POST, option).json().then(r => r.body),
-              $path: () => `${prefix}${PATH11}`,
+                fetch<Methods_myrzod['post']['resBody'], BasicHeaders, Methods_myrzod['post']['status']>(prefix, PATH12, POST, option).json().then(r => r.body),
+              $path: () => `${prefix}${PATH12}`,
             },
             publish: {
               /**
                * @returns OK
                */
               post: (option: { body: Methods_13lui05['post']['reqBody'], config?: T | undefined }) =>
-                fetch<Methods_13lui05['post']['resBody'], BasicHeaders, Methods_13lui05['post']['status']>(prefix, PATH12, POST, option).json(),
+                fetch<Methods_13lui05['post']['resBody'], BasicHeaders, Methods_13lui05['post']['status']>(prefix, PATH13, POST, option).json(),
               /**
                * @returns OK
                */
               $post: (option: { body: Methods_13lui05['post']['reqBody'], config?: T | undefined }) =>
-                fetch<Methods_13lui05['post']['resBody'], BasicHeaders, Methods_13lui05['post']['status']>(prefix, PATH12, POST, option).json().then(r => r.body),
-              $path: () => `${prefix}${PATH12}`,
+                fetch<Methods_13lui05['post']['resBody'], BasicHeaders, Methods_13lui05['post']['status']>(prefix, PATH13, POST, option).json().then(r => r.body),
+              $path: () => `${prefix}${PATH13}`,
             },
             schedules: {
               /**
                * @returns OK
                */
               post: (option: { body: Methods_y20aq8['post']['reqBody'], config?: T | undefined }) =>
-                fetch<Methods_y20aq8['post']['resBody'], BasicHeaders, Methods_y20aq8['post']['status']>(prefix, PATH13, POST, option).json(),
+                fetch<Methods_y20aq8['post']['resBody'], BasicHeaders, Methods_y20aq8['post']['status']>(prefix, PATH14, POST, option).json(),
               /**
                * @returns OK
                */
               $post: (option: { body: Methods_y20aq8['post']['reqBody'], config?: T | undefined }) =>
-                fetch<Methods_y20aq8['post']['resBody'], BasicHeaders, Methods_y20aq8['post']['status']>(prefix, PATH13, POST, option).json().then(r => r.body),
-              $path: () => `${prefix}${PATH13}`,
+                fetch<Methods_y20aq8['post']['resBody'], BasicHeaders, Methods_y20aq8['post']['status']>(prefix, PATH14, POST, option).json().then(r => r.body),
+              $path: () => `${prefix}${PATH14}`,
             },
             shared: {
               /**
                * @returns OK
                */
               get: (option?: { config?: T | undefined } | undefined) =>
-                fetch<Methods_598igr['get']['resBody'], BasicHeaders, Methods_598igr['get']['status']>(prefix, PATH14, GET, option).json(),
+                fetch<Methods_598igr['get']['resBody'], BasicHeaders, Methods_598igr['get']['status']>(prefix, PATH15, GET, option).json(),
               /**
                * @returns OK
                */
               $get: (option?: { config?: T | undefined } | undefined) =>
-                fetch<Methods_598igr['get']['resBody'], BasicHeaders, Methods_598igr['get']['status']>(prefix, PATH14, GET, option).json().then(r => r.body),
+                fetch<Methods_598igr['get']['resBody'], BasicHeaders, Methods_598igr['get']['status']>(prefix, PATH15, GET, option).json().then(r => r.body),
               /**
                * @returns OK
                */
               put: (option: { body: Methods_598igr['put']['reqBody'], config?: T | undefined }) =>
-                fetch<Methods_598igr['put']['resBody'], BasicHeaders, Methods_598igr['put']['status']>(prefix, PATH14, PUT, option).json(),
+                fetch<Methods_598igr['put']['resBody'], BasicHeaders, Methods_598igr['put']['status']>(prefix, PATH15, PUT, option).json(),
               /**
                * @returns OK
                */
               $put: (option: { body: Methods_598igr['put']['reqBody'], config?: T | undefined }) =>
-                fetch<Methods_598igr['put']['resBody'], BasicHeaders, Methods_598igr['put']['status']>(prefix, PATH14, PUT, option).json().then(r => r.body),
-              $path: () => `${prefix}${PATH14}`,
+                fetch<Methods_598igr['put']['resBody'], BasicHeaders, Methods_598igr['put']['status']>(prefix, PATH15, PUT, option).json().then(r => r.body),
+              $path: () => `${prefix}${PATH15}`,
             },
             /**
              * @returns OK
@@ -287,95 +302,95 @@ const api = <T>({ baseURL, fetch }: AspidaClient<T>) => {
              * @returns OK
              */
             get: (option: { query: Methods_1t484rj['get']['query'], config?: T | undefined }) =>
-              fetch<Methods_1t484rj['get']['resBody'], BasicHeaders, Methods_1t484rj['get']['status']>(prefix, PATH15, GET, option).json(),
+              fetch<Methods_1t484rj['get']['resBody'], BasicHeaders, Methods_1t484rj['get']['status']>(prefix, PATH16, GET, option).json(),
             /**
              * @returns OK
              */
             $get: (option: { query: Methods_1t484rj['get']['query'], config?: T | undefined }) =>
-              fetch<Methods_1t484rj['get']['resBody'], BasicHeaders, Methods_1t484rj['get']['status']>(prefix, PATH15, GET, option).json().then(r => r.body),
+              fetch<Methods_1t484rj['get']['resBody'], BasicHeaders, Methods_1t484rj['get']['status']>(prefix, PATH16, GET, option).json().then(r => r.body),
             $path: (option?: { method?: 'get' | undefined; query: Methods_1t484rj['get']['query'] } | undefined) =>
-              `${prefix}${PATH15}${option && option.query ? `?${dataToURLString(option.query)}` : ''}`,
+              `${prefix}${PATH16}${option && option.query ? `?${dataToURLString(option.query)}` : ''}`,
           },
           graph: {
             /**
              * @returns OK
              */
             get: (option: { query: Methods_1atqv8k['get']['query'], config?: T | undefined }) =>
-              fetch<Methods_1atqv8k['get']['resBody'], BasicHeaders, Methods_1atqv8k['get']['status']>(prefix, PATH16, GET, option).json(),
+              fetch<Methods_1atqv8k['get']['resBody'], BasicHeaders, Methods_1atqv8k['get']['status']>(prefix, PATH17, GET, option).json(),
             /**
              * @returns OK
              */
             $get: (option: { query: Methods_1atqv8k['get']['query'], config?: T | undefined }) =>
-              fetch<Methods_1atqv8k['get']['resBody'], BasicHeaders, Methods_1atqv8k['get']['status']>(prefix, PATH16, GET, option).json().then(r => r.body),
+              fetch<Methods_1atqv8k['get']['resBody'], BasicHeaders, Methods_1atqv8k['get']['status']>(prefix, PATH17, GET, option).json().then(r => r.body),
             $path: (option?: { method?: 'get' | undefined; query: Methods_1atqv8k['get']['query'] } | undefined) =>
-              `${prefix}${PATH16}${option && option.query ? `?${dataToURLString(option.query)}` : ''}`,
+              `${prefix}${PATH17}${option && option.query ? `?${dataToURLString(option.query)}` : ''}`,
           },
           groups: {
             /**
              * @returns OK
              */
             get: (option?: { config?: T | undefined } | undefined) =>
-              fetch<Methods_cqn9ps['get']['resBody'], BasicHeaders, Methods_cqn9ps['get']['status']>(prefix, PATH17, GET, option).json(),
+              fetch<Methods_cqn9ps['get']['resBody'], BasicHeaders, Methods_cqn9ps['get']['status']>(prefix, PATH18, GET, option).json(),
             /**
              * @returns OK
              */
             $get: (option?: { config?: T | undefined } | undefined) =>
-              fetch<Methods_cqn9ps['get']['resBody'], BasicHeaders, Methods_cqn9ps['get']['status']>(prefix, PATH17, GET, option).json().then(r => r.body),
-            $path: () => `${prefix}${PATH17}`,
+              fetch<Methods_cqn9ps['get']['resBody'], BasicHeaders, Methods_cqn9ps['get']['status']>(prefix, PATH18, GET, option).json().then(r => r.body),
+            $path: () => `${prefix}${PATH18}`,
           },
           jobnets: {
             /**
              * @returns OK
              */
             get: (option?: { config?: T | undefined } | undefined) =>
-              fetch<Methods_8zm2qn['get']['resBody'], BasicHeaders, Methods_8zm2qn['get']['status']>(prefix, PATH18, GET, option).json(),
+              fetch<Methods_8zm2qn['get']['resBody'], BasicHeaders, Methods_8zm2qn['get']['status']>(prefix, PATH19, GET, option).json(),
             /**
              * @returns OK
              */
             $get: (option?: { config?: T | undefined } | undefined) =>
-              fetch<Methods_8zm2qn['get']['resBody'], BasicHeaders, Methods_8zm2qn['get']['status']>(prefix, PATH18, GET, option).json().then(r => r.body),
-            $path: () => `${prefix}${PATH18}`,
+              fetch<Methods_8zm2qn['get']['resBody'], BasicHeaders, Methods_8zm2qn['get']['status']>(prefix, PATH19, GET, option).json().then(r => r.body),
+            $path: () => `${prefix}${PATH19}`,
           },
           logs: {
             /**
              * @returns OK
              */
             get: (option: { query: Methods_vc4edf['get']['query'], config?: T | undefined }) =>
-              fetch<Methods_vc4edf['get']['resBody'], BasicHeaders, Methods_vc4edf['get']['status']>(prefix, PATH19, GET, option).json(),
+              fetch<Methods_vc4edf['get']['resBody'], BasicHeaders, Methods_vc4edf['get']['status']>(prefix, PATH20, GET, option).json(),
             /**
              * @returns OK
              */
             $get: (option: { query: Methods_vc4edf['get']['query'], config?: T | undefined }) =>
-              fetch<Methods_vc4edf['get']['resBody'], BasicHeaders, Methods_vc4edf['get']['status']>(prefix, PATH19, GET, option).json().then(r => r.body),
+              fetch<Methods_vc4edf['get']['resBody'], BasicHeaders, Methods_vc4edf['get']['status']>(prefix, PATH20, GET, option).json().then(r => r.body),
             $path: (option?: { method?: 'get' | undefined; query: Methods_vc4edf['get']['query'] } | undefined) =>
-              `${prefix}${PATH19}${option && option.query ? `?${dataToURLString(option.query)}` : ''}`,
+              `${prefix}${PATH20}${option && option.query ? `?${dataToURLString(option.query)}` : ''}`,
           },
           monthly: {
             /**
              * @returns OK
              */
             get: (option: { query: Methods_1jm1r65['get']['query'], config?: T | undefined }) =>
-              fetch<Methods_1jm1r65['get']['resBody'], BasicHeaders, Methods_1jm1r65['get']['status']>(prefix, PATH20, GET, option).json(),
+              fetch<Methods_1jm1r65['get']['resBody'], BasicHeaders, Methods_1jm1r65['get']['status']>(prefix, PATH21, GET, option).json(),
             /**
              * @returns OK
              */
             $get: (option: { query: Methods_1jm1r65['get']['query'], config?: T | undefined }) =>
-              fetch<Methods_1jm1r65['get']['resBody'], BasicHeaders, Methods_1jm1r65['get']['status']>(prefix, PATH20, GET, option).json().then(r => r.body),
+              fetch<Methods_1jm1r65['get']['resBody'], BasicHeaders, Methods_1jm1r65['get']['status']>(prefix, PATH21, GET, option).json().then(r => r.body),
             $path: (option?: { method?: 'get' | undefined; query: Methods_1jm1r65['get']['query'] } | undefined) =>
-              `${prefix}${PATH20}${option && option.query ? `?${dataToURLString(option.query)}` : ''}`,
+              `${prefix}${PATH21}${option && option.query ? `?${dataToURLString(option.query)}` : ''}`,
           },
           runtime: {
             /**
              * @returns OK
              */
             get: (option?: { config?: T | undefined } | undefined) =>
-              fetch<Methods_1cgpyyc['get']['resBody'], BasicHeaders, Methods_1cgpyyc['get']['status']>(prefix, PATH21, GET, option).json(),
+              fetch<Methods_1cgpyyc['get']['resBody'], BasicHeaders, Methods_1cgpyyc['get']['status']>(prefix, PATH22, GET, option).json(),
             /**
              * @returns OK
              */
             $get: (option?: { config?: T | undefined } | undefined) =>
-              fetch<Methods_1cgpyyc['get']['resBody'], BasicHeaders, Methods_1cgpyyc['get']['status']>(prefix, PATH21, GET, option).json().then(r => r.body),
-            $path: () => `${prefix}${PATH21}`,
+              fetch<Methods_1cgpyyc['get']['resBody'], BasicHeaders, Methods_1cgpyyc['get']['status']>(prefix, PATH22, GET, option).json().then(r => r.body),
+            $path: () => `${prefix}${PATH22}`,
           },
         },
       },

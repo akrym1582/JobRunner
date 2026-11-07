@@ -12,6 +12,14 @@ public static partial class UiEndpoints
 {
     private static void MapEditor(RouteGroupBuilder group)
     {
+        group.MapPost("/definition-editor/move", async (EditorMoveRequest request, DefinitionService definitions, RunnerOptions options, StorageRepository storage, CancellationToken token) =>
+        {
+            var bundle = await EditorSourcesAsync(request.Draft, definitions, token);
+            var activeRow = await storage.GetAsync("definition-active", token);
+            string catalog = activeRow is null ? string.Empty : StorageRepository.Read<Activation>(activeRow).GroupCatalogHash ?? string.Empty;
+            request = request with { Draft = request.Draft with { OriginCatalogHash = request.Draft.OriginCatalogHash ?? catalog } };
+            return DefinitionEditor.Move(bundle, request, definitions, options, token);
+        });
         group.MapPost("/definition-editor/groups/export", async (EditorGroupPackageRequest request, DefinitionService definitions, CancellationToken token) =>
         {
             var bundle = await EditorSourcesAsync(request.Draft, definitions, token);
@@ -22,21 +30,28 @@ public static partial class UiEndpoints
             var bundle = await EditorSourcesAsync(request.Draft, definitions, token);
             return DefinitionEditor.ImportGroup(bundle, request, definitions, options);
         });
-        group.MapPost("/definition-editor/local", (EditorLocalRequest request, DefinitionService definitions, RunnerOptions options) =>
+        group.MapPost("/definition-editor/local", async (EditorLocalRequest request, DefinitionService definitions, RunnerOptions options, StorageRepository storage, CancellationToken token) =>
         {
             var bundle = EditorLocalFiles.Read(request, definitions);
-            return new EditorDocument(DefinitionEditor.Project(bundle, 9) with { LocalSources = bundle.Sources }, DefinitionEditor.Describe(bundle.Sources, bundle.Sources), DefinitionEditor.Containers(bundle), options.TimeZone, options.ScheduleTimeMode);
+            return new EditorDocument(DefinitionEditor.Project(bundle, 9) with { LocalSources = bundle.Sources, OriginCatalogHash = await CurrentOriginAsync(storage, token) }, DefinitionEditor.Describe(bundle.Sources, bundle.Sources), DefinitionEditor.Containers(bundle), options.TimeZone, options.ScheduleTimeMode);
         });
-        group.MapPost("/definition-editor/local/new", (EditorFileCreation request, DefinitionService definitions, RunnerOptions options) =>
+        group.MapPost("/definition-editor/local/new", async (EditorFileCreation request, DefinitionService definitions, RunnerOptions options, StorageRepository storage, CancellationToken token) =>
         {
             var bundle = EditorLocalFiles.Read(new([DefinitionEditor.CreateFile(request)]), definitions);
-            return new EditorDocument(DefinitionEditor.Project(bundle, 9) with { LocalSources = bundle.Sources }, DefinitionEditor.Describe(bundle.Sources, bundle.Sources), DefinitionEditor.Containers(bundle), options.TimeZone, options.ScheduleTimeMode);
+            return new EditorDocument(DefinitionEditor.Project(bundle, 9) with { LocalSources = bundle.Sources, OriginCatalogHash = await CurrentOriginAsync(storage, token) }, DefinitionEditor.Describe(bundle.Sources, bundle.Sources), DefinitionEditor.Containers(bundle), options.TimeZone, options.ScheduleTimeMode);
         });
         group.MapGet("/definition-editor", async (string? definitionHash, StorageRepository storage, DefinitionService definitions, RunnerOptions options, CancellationToken token) =>
         {
-            string hash = definitionHash ?? (await ActiveAsync(storage, token)).DefinitionHash;
+            var activeRow = await storage.GetAsync("definition-active", token);
+            var active = activeRow is null ? null : StorageRepository.Read<Activation>(activeRow);
+            if (definitionHash is null)
+            {
+                active = await ActiveAsync(storage, token);
+            }
+
+            string hash = definitionHash ?? active!.DefinitionHash;
             var bundle = await definitions.ReadSourcesAsync(hash, token);
-            return new EditorDocument(DefinitionEditor.Project(bundle, 9), DefinitionEditor.Describe(bundle.Sources, bundle.Sources), DefinitionEditor.Containers(bundle), options.TimeZone, options.ScheduleTimeMode);
+            return new EditorDocument(DefinitionEditor.Project(bundle, 9) with { OriginCatalogHash = active?.DefinitionHash == hash ? active.GroupCatalogHash : null }, DefinitionEditor.Describe(bundle.Sources, bundle.Sources), DefinitionEditor.Containers(bundle), options.TimeZone, options.ScheduleTimeMode);
         });
         group.MapPost("/definition-editor/preview", async (EditorDraft draft, DefinitionService definitions, CancellationToken token) =>
         {
@@ -98,6 +113,12 @@ public static partial class UiEndpoints
         }).Produces(200, contentType: "application/octet-stream");
     }
 
+    private static async Task<string> CurrentOriginAsync(StorageRepository storage, CancellationToken token)
+    {
+        var row = await storage.GetAsync("definition-active", token);
+        return row is null ? string.Empty : StorageRepository.Read<Activation>(row).GroupCatalogHash ?? string.Empty;
+    }
+
     private static Task<DefinitionBundle> EditorSourcesAsync(EditorDraft draft, DefinitionService definitions, CancellationToken token)
     {
         // ローカル原文は毎回検証し、Storageへ保存せず既存の編集経路へ渡します。
@@ -106,7 +127,7 @@ public static partial class UiEndpoints
             return definitions.ReadSourcesAsync(draft.DefinitionHash, token);
         }
 
-        var bundle = EditorLocalFiles.Read(new(draft.LocalSources), definitions);
+        var bundle = EditorLocalFiles.Read(new(draft.LocalSources), definitions, true);
         if (bundle.Hash != draft.DefinitionHash)
         {
             throw new ArgumentException("ローカル原文と下書きの基点版が一致しません。");

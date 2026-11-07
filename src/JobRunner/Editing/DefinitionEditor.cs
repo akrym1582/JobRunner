@@ -372,7 +372,7 @@ public static partial class DefinitionEditor
     private sealed class Document
     {
         private readonly SourceEvidence source;
-        private readonly List<(int Start, int End, string Text)> replacements = [];
+        private readonly List<(int Start, int End, string Text, byte[]? Raw)> replacements = [];
 
         public Document(SourceEvidence source)
         {
@@ -391,7 +391,9 @@ public static partial class DefinitionEditor
 
         public Dictionary<string, DefinitionSyntax> Syntax { get; } = new(StringComparer.Ordinal);
 
-        public void Replace(int start, int end, string text) => replacements.Add((start, end, text));
+        public void Replace(int start, int end, string text) => replacements.Add((start, end, text, null));
+
+        public void ReplaceRaw(int start, int end, byte[] bytes) => replacements.Add((start, end, string.Empty, bytes));
 
         public void SetValues(DefinitionSyntax syntax, string key, List<string> values, bool quoted, Func<string, string>? normalize = null, bool ordered = false)
         {
@@ -493,7 +495,7 @@ public static partial class DefinitionEditor
 
                 // CP932の重複符号位置も含め、変更しない範囲は再エンコードしません。
                 output.Write(original.AsSpan(offsets[boundary], offsets[edit.Start] - offsets[boundary]));
-                output.Write(encoding.GetBytes(edit.Text));
+                output.Write(edit.Raw ?? encoding.GetBytes(edit.Text));
                 boundary = edit.End;
             }
 

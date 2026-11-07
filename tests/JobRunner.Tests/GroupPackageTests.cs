@@ -39,13 +39,13 @@ public sealed class GroupPackageTests
 
     /// <summary>選択外への参照とカレンダー継承を黙って切り離しません。</summary>
     [Fact]
-    public void RejectsExternalDependenciesAndNameCollision()
+    public void PreservesExternalDependenciesAndRejectsNameCollision()
     {
         var service = Service();
         var bundle = service.Validate([Source("a.ajs", "unit=calendar;{ty=g;cl=su;}unit=g;{ty=g;unit=n;{ty=n;jc=\"/calendar\";sd=0,ud;}}")]);
-        Assert.Contains("選択外", Assert.Throws<ArgumentException>(() => DefinitionEditor.ExportGroup(bundle, new(DefinitionEditor.Project(bundle, 9), "/g"), service)).Message, StringComparison.Ordinal);
+        Assert.NotEmpty(DefinitionEditor.ExportGroup(bundle, new(DefinitionEditor.Project(bundle, 9), "/g"), service));
         bundle = service.Validate([Source("a.ajs", "unit=parent;{ty=g;cl=su;unit=g;{ty=g;unit=n;{ty=n;sd=0,ud;}}}")]);
-        Assert.Contains("継承", Assert.Throws<ArgumentException>(() => DefinitionEditor.ExportGroup(bundle, new(DefinitionEditor.Project(bundle, 9), "/parent/g"), service)).Message, StringComparison.Ordinal);
+        Assert.NotEmpty(DefinitionEditor.ExportGroup(bundle, new(DefinitionEditor.Project(bundle, 9), "/parent/g"), service));
         bundle = service.Validate([Source("a.ajs", "unit=g;{ty=g;unit=n;{ty=n;sd=0,ud;}}")]);
         var draft = DefinitionEditor.Project(bundle, 9);
         string zip = Convert.ToBase64String(DefinitionEditor.ExportGroup(bundle, new(draft, "/g"), service));

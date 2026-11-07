@@ -18,16 +18,16 @@ public static partial class DefinitionEditor
     /// <returns>運用状態を含まないZIPです。</returns>
     public static byte[] ExportGroup(DefinitionBundle bundle, EditorGroupPackageRequest request, DefinitionService definitions)
     {
-        var current = definitions.Validate(Render(bundle, request.Draft));
+        var current = definitions.Validate(Render(bundle, request.Draft), true);
         var all = current.Units.Flatten().ToDictionary(u => u.Path, StringComparer.Ordinal);
         if (!all.TryGetValue(request.Path, out var selected) || selected.Type != "g" || request.Path == "/")
         {
             throw new ArgumentException("ルート以外のグループを選択してください。");
         }
 
-        ValidateGroupDependencies(all, request.Path);
+        var dependencies = GroupDependencies(all, request.Path);
         var sources = ExtractGroup(current, request.Path);
-        definitions.Validate(EditorLocalFiles.ValidateSources(sources));
+        definitions.Validate(EditorLocalFiles.ValidateSources(sources), true);
         using var output = new MemoryStream();
         using (var archive = new ZipArchive(output, ZipArchiveMode.Create, true))
         {
@@ -42,7 +42,7 @@ public static partial class DefinitionEditor
             }
 
             using var metadata = archive.CreateEntry("manifest.json").Open();
-            JsonSerializer.Serialize(metadata, new { FormatVersion = 1, GroupRoot = request.Path, Sources = manifest });
+            JsonSerializer.Serialize(metadata, new { FormatVersion = 2, GroupRoot = request.Path, Sources = manifest, Dependencies = dependencies });
         }
 
         if (output.Length > EditorLocalFiles.TotalLimit)
@@ -61,7 +61,7 @@ public static partial class DefinitionEditor
     /// <returns>保存も運用反映もしていない候補です。</returns>
     public static EditorDocument ImportGroup(DefinitionBundle bundle, EditorGroupPackageRequest request, DefinitionService definitions, RunnerOptions options)
     {
-        var imported = EditorLocalFiles.Read(new(ZipBase64: request.ZipBase64), definitions);
+        var imported = EditorLocalFiles.Read(new(ZipBase64: request.ZipBase64), definitions, true);
         using var input = new MemoryStream(Convert.FromBase64String(request.ZipBase64!));
         using var archive = new ZipArchive(input, ZipArchiveMode.Read);
         using var json = JsonDocument.Parse(archive.GetEntry("manifest.json")!.Open());
@@ -86,8 +86,7 @@ public static partial class DefinitionEditor
             }
         }
 
-        ValidateGroupDependencies(importedUnits, sourceRoot);
-        var current = definitions.Validate(Render(bundle, request.Draft));
+        var current = definitions.Validate(Render(bundle, request.Draft), true);
         var currentUnits = current.Units.Flatten().ToDictionary(u => u.Path, StringComparer.Ordinal);
         bool replace = request.ParentPath is null;
         string target;
@@ -150,7 +149,7 @@ public static partial class DefinitionEditor
             foreach (var item in document.Syntax)
             {
                 string reference = importedUnits[item.Key].Get("jc");
-                if (reference.Length > 0)
+                if (reference.Length > 0 && Within(reference, sourceRoot))
                 {
                     document.SetValues(item.Value, "jc", [Map(reference)], true);
                 }
@@ -161,32 +160,38 @@ public static partial class DefinitionEditor
             sources.Add(rendered);
         }
 
-        var result = definitions.Validate(EditorLocalFiles.ValidateSources(sources));
+        var result = definitions.Validate(EditorLocalFiles.ValidateSources(sources), true);
         var origins = GroupOrigins(bundle, request.Draft);
         var paths = result.Units.Flatten().Where(u => u.Type == "g").Select(u => u.Path).ToHashSet(StringComparer.Ordinal);
         origins = origins.Where(p => paths.Contains(p.Key)).ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
-        var projected = Project(result, 9) with { DefinitionHash = request.Draft.DefinitionHash, LocalSources = request.Draft.LocalSources, WorkingSources = result.Sources, WorkingContainers = Containers(result), GroupOrigins = origins };
-        return new(projected, Describe(result.Sources, bundle.Sources), Containers(result), options.TimeZone, options.ScheduleTimeMode);
+        var projected = Project(result, 9) with { DefinitionHash = request.Draft.DefinitionHash, LocalSources = request.Draft.LocalSources, WorkingSources = result.Sources, WorkingContainers = Containers(result), GroupOrigins = origins, RootOrigins = RootOrigins(bundle, request.Draft), OriginCatalogHash = request.Draft.OriginCatalogHash };
+        return new(projected, Describe(result.Sources, bundle.Sources), Containers(result), options.TimeZone, options.ScheduleTimeMode, GroupDependencies(result.Units.Flatten().ToDictionary(u => u.Path), target).Concat(json.RootElement.TryGetProperty("Dependencies", out var dependencies) && dependencies.ValueKind == JsonValueKind.Array ? dependencies.EnumerateArray().Select(d => d.ValueKind == JsonValueKind.String ? "出力元情報: " + d.GetString() : throw new ArgumentException("ZIPの依存診断は文字列で指定してください。")) : []).ToList());
     }
 
-    private static void ValidateGroupDependencies(Dictionary<string, UnitDefinition> all, string path)
+    private static List<string> GroupDependencies(Dictionary<string, UnitDefinition> all, string path)
     {
+        var diagnostics = new List<string>();
         foreach (var unit in all.Values.Where(u => Within(u.Path, path)))
         {
             string reference = unit.Get("jc");
             if (reference.Length > 0 && !Within(reference, path))
             {
-                throw new ArgumentException($"{unit.Path}: 選択外カレンダー {reference} を参照しています。");
+                diagnostics.Add($"{unit.Path}: 外部カレンダー {reference}（{(all.TryGetValue(reference, out var dependency) && dependency.Type == "g" ? "参照先あり" : "参照先不足・運用反映不可")}）。依存先は同梱しません。");
             }
         }
 
         string parent = ScheduleCalculator.Parent(path);
         while (all.TryGetValue(parent, out var ancestor))
         {
-            var keys = ancestor.Attributes.Keys.Where(k => k is "op" or "cl" or "md" or "sdd" or "stt").ToList();
+            var keys = ancestor.Attributes.Keys.Where(k => k is "op" or "cl" or "md" or "sdd" or "stt" or "ex").ToList();
             if (keys.Count > 0)
             {
-                throw new ArgumentException($"{path}: 選択外の祖先 {parent} に継承属性 {string.Join(", ", keys)} があります。単独出力では意味を保持できません。");
+                diagnostics.Add($"{path}: 祖先 {parent} の継承属性 {string.Join(", ", keys.Select(k => k + "=" + string.Join("/", ancestor.Attributes[k])))}。取り込み後は配置先の親に従います。");
+            }
+
+            if (ancestor.OwnerName is not null || ancestor.PermissionMode is not null || ancestor.ResourceGroup is not null)
+            {
+                diagnostics.Add($"{path}: 祖先 {parent} の所有者={ancestor.OwnerName}, 許可={ancestor.PermissionMode}, 資源グループ={ancestor.ResourceGroup}。取り込み後は配置先の親に従います。");
             }
 
             if (parent == "/")
@@ -196,6 +201,8 @@ public static partial class DefinitionEditor
 
             parent = ScheduleCalculator.Parent(parent);
         }
+
+        return diagnostics;
     }
 
     private static List<SourceEvidence> ExtractGroup(DefinitionBundle bundle, string path)

@@ -29,7 +29,8 @@ public static partial class DefinitionValidator
     /// <summary>全ファイルを統合してから参照と属性の整合性を検証します。</summary>
     /// <param name="units">配置済みの最上位ユニットです。</param>
     /// <param name="options">ローカル実行先への明示的な対応付けです。</param>
-    public static void Validate(List<UnitDefinition> units, RunnerOptions options)
+    /// <param name="allowMissingCalendars">編集専用の参照不足許可です。</param>
+    public static void Validate(List<UnitDefinition> units, RunnerOptions options, bool allowMissingCalendars = false)
     {
         var all = new Dictionary<string, UnitDefinition>(StringComparer.Ordinal);
         foreach (var unit in units.Flatten())
@@ -157,7 +158,7 @@ public static partial class DefinitionValidator
             }
 
             string reference = unit.Get("jc");
-            if (reference.Length > 0 && (!all.TryGetValue(reference, out var calendar) || calendar.Type != "g"))
+            if (!allowMissingCalendars && reference.Length > 0 && (!all.TryGetValue(reference, out var calendar) || calendar.Type != "g"))
             {
                 throw Error(unit, "参照カレンダーのグループが存在しません。");
             }

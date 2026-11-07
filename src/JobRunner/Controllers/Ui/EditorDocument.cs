@@ -5,5 +5,6 @@ namespace JobRunner.Controllers.Ui;
 /// <param name="Sources">原文の確認用です。</param>
 /// <param name="Containers">新規ルートを追加できる位置です。</param>
 /// <param name="TimeZone">予定試算の時間帯です。</param>
+/// <param name="Diagnostics">外部依存と継承差の診断です。</param>
 /// <param name="ScheduleTimeMode">24または48時間制です。</param>
-public sealed record EditorDocument(EditorDraft Draft, List<EditorSource> Sources, List<EditorContainer>? Containers = null, string? TimeZone = null, int? ScheduleTimeMode = null);
+public sealed record EditorDocument(EditorDraft Draft, List<EditorSource> Sources, List<EditorContainer>? Containers = null, string? TimeZone = null, int? ScheduleTimeMode = null, List<string>? Diagnostics = null);

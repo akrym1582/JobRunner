@@ -37,6 +37,35 @@
         }
       }
     },
+    "/api/jobrunner/ui/definition-editor/move": {
+      "post": {
+        "tags": [
+          "JobRunner"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorMoveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorDocument"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobrunner/ui/definition-editor/groups/export": {
       "post": {
         "tags": [
@@ -1091,6 +1120,13 @@
             "type": "integer",
             "format": "int32",
             "nullable": true
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -1198,6 +1234,17 @@
             "additionalProperties": {
               "type": "string"
             },
+            "nullable": true
+          },
+          "rootOrigins": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "originCatalogHash": {
+            "type": "string",
             "nullable": true
           }
         },
@@ -1333,6 +1380,43 @@
             "nullable": true
           },
           "zipBase64": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorMoveRequest": {
+        "required": [
+          "draft",
+          "parentPath",
+          "path",
+          "sourceIndex"
+        ],
+        "type": "object",
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/EditorDraft"
+          },
+          "path": {
+            "type": "string"
+          },
+          "parentPath": {
+            "type": "string"
+          },
+          "sourceIndex": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "fileName": {
+            "type": "string",
+            "nullable": true
+          },
+          "fileTargetPath": {
+            "type": "string",
+            "nullable": true
+          },
+          "fileEncoding": {
             "type": "string",
             "nullable": true
           }
@@ -2374,6 +2458,13 @@
               "type": "string"
             },
             "nullable": true
+          },
+          "rootOrigins": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -2442,6 +2533,7 @@
           "impactHash",
           "previousSources",
           "removedRoots",
+          "rootOrigins",
           "sources"
         ],
         "type": "object",
@@ -2496,6 +2588,13 @@
           "groupChanges": {
             "type": "array",
             "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "rootOrigins": {
+            "type": "object",
+            "additionalProperties": {
               "type": "string"
             },
             "nullable": true

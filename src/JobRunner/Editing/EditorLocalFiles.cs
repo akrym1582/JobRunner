@@ -21,8 +21,9 @@ public static partial class EditorLocalFiles
     /// <summary>入力を検証し、既存エンジンで全ファイルの参照を解決します。</summary>
     /// <param name="request">原文または出力ZIPです。</param>
     /// <param name="definitions">意味検証器です。</param>
+    /// <param name="allowMissingCalendars">編集専用の参照不足許可です。</param>
     /// <returns>保存していない定義です。</returns>
-    public static DefinitionBundle Read(EditorLocalRequest request, DefinitionService definitions)
+    public static DefinitionBundle Read(EditorLocalRequest request, DefinitionService definitions, bool allowMissingCalendars = false)
     {
         if ((request.Sources is null) == (request.ZipBase64 is null))
         {
@@ -30,7 +31,7 @@ public static partial class EditorLocalFiles
         }
 
         var sources = request.Sources ?? ReadZip(DecodeBase64(request.ZipBase64!, TotalLimit));
-        return definitions.Validate(ValidateSources(sources));
+        return definitions.Validate(ValidateSources(sources), allowMissingCalendars);
     }
 
     /// <summary>解析前に入力のパス・バイト・階層制限を検証します。</summary>

@@ -86,6 +86,7 @@ export type EditorDocument = {
   containers?: EditorContainer[] | null | undefined;
   timeZone?: string | null | undefined;
   scheduleTimeMode?: number | null | undefined;
+  diagnostics?: string[] | null | undefined;
 }
 
 export type EditorDraft = {
@@ -107,6 +108,12 @@ export type EditorDraft = {
   groupOrigins?: {
     [key: string]: string;
   } | null | undefined;
+
+  rootOrigins?: {
+    [key: string]: string;
+  } | null | undefined;
+
+  originCatalogHash?: string | null | undefined;
 }
 
 export type EditorEdge = {
@@ -146,6 +153,16 @@ export type EditorGroupPackageRequest = {
 export type EditorLocalRequest = {
   sources?: SourceEvidence[] | null | undefined;
   zipBase64?: string | null | undefined;
+}
+
+export type EditorMoveRequest = {
+  draft: EditorDraft;
+  path: string;
+  parentPath: string;
+  sourceIndex: number;
+  fileName?: string | null | undefined;
+  fileTargetPath?: string | null | undefined;
+  fileEncoding?: string | null | undefined;
 }
 
 export type EditorNetwork = {
@@ -421,6 +438,10 @@ export type Operation = {
   groupOrigins?: {
     [key: string]: string;
   } | null | undefined;
+
+  rootOrigins?: {
+    [key: string]: string;
+  } | null | undefined;
 }
 
 export type ProblemDetails = {
@@ -453,6 +474,10 @@ export type PublicationPreview = {
   } | null;
 
   groupChanges: string[] | null;
+
+  rootOrigins: {
+    [key: string]: string;
+  } | null;
 }
 
 export type RuntimeControl = {

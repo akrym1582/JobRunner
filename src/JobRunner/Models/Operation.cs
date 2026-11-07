@@ -192,4 +192,8 @@ public sealed class Operation
     /// <summary>Gets or sets. 改名後のパスから既存パスへの明示的な対応です。</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public Dictionary<string, string>? GroupOrigins { get; set; }
+
+    /// <summary>Gets or sets. 移動前のルート完全名です。</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, string>? RootOrigins { get; set; }
 }

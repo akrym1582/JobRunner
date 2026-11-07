@@ -64,6 +64,11 @@ public sealed partial class SchedulerEngine
     private async Task<(string GroupId, string RelativePath)> RootIdentityAsync(Occurrence root, CancellationToken token)
     {
         var catalog = await ReadGroupsAsync(root.GroupCatalogHash, token);
+        if (catalog.Roots.TryGetValue(root.RootPath, out string? rootId))
+        {
+            return (rootId, string.Empty);
+        }
+
         string path = ScheduleCalculator.Parent(root.RootPath);
         while (path.Length > 0)
         {
@@ -88,6 +93,11 @@ public sealed partial class SchedulerEngine
     private async Task<string> MapGroupRootAsync(Occurrence root, Dictionary<string, string> nextPaths, CancellationToken token)
     {
         var catalog = await ReadGroupsAsync(root.GroupCatalogHash, token);
+        if (catalog.Roots.TryGetValue(root.RootPath, out string? rootId) && nextPaths.TryGetValue(rootId, out string? moved))
+        {
+            return moved;
+        }
+
         string path = ScheduleCalculator.Parent(root.RootPath);
         while (path.Length > 0)
         {
@@ -173,7 +183,7 @@ public sealed partial class SchedulerEngine
         GroupCatalog catalog;
         try
         {
-            catalog = GroupCatalogService.Create(next, updated, previous, operation.GroupOrigins);
+            catalog = GroupCatalogService.Create(next, updated, previous, operation.GroupOrigins, operation.RootOrigins);
         }
         catch (ArgumentException ex)
         {

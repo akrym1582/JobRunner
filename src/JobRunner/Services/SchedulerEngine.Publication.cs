@@ -43,8 +43,20 @@ public sealed partial class SchedulerEngine
         }
 
         var roots = DefinitionPublication.Roots(next);
-        var nextGroupPaths = (await ReadGroupsAsync(updated.GroupCatalogHash, token)).Groups.ToDictionary(p => p.Value, p => p.Key, StringComparer.Ordinal);
+        var nextCatalog = await ReadGroupsAsync(updated.GroupCatalogHash, token);
+        var nextGroupPaths = nextCatalog.Groups.Concat(nextCatalog.Roots).ToDictionary(p => p.Value, p => p.Key, StringComparer.Ordinal);
         var byRegistration = registrations.ToDictionary(r => StorageRepository.Read<Registration>(r).Id, r => StorageRepository.Read<Registration>(r), StringComparer.Ordinal);
+
+        // 個別の確定登録は期間・除外・間隔カーソルを持ちます。自動登録へ黙って置換しません。
+        foreach (var registration in byRegistration.Values.Where(r => r.Kind == "Confirmed" && !r.Disabled && !r.ReplenishmentStopped && r.Id != StorageRepository.Hash(r.RootPath)))
+        {
+            string moved = await MapGroupRootAsync(new Occurrence { RootPath = registration.RootPath, GroupCatalogHash = registration.GroupCatalogHash }, nextGroupPaths, token);
+            if (moved != registration.RootPath && roots.ContainsKey(moved))
+            {
+                throw new FormatException($"{registration.RootPath}: APIの個別確定登録が残っています。登録条件を確認して解除し、移動後に再登録してください。下書きの移動は保持できます。");
+            }
+        }
+
         var disabledRoots = new HashSet<string>(StringComparer.Ordinal);
         foreach (var registration in byRegistration.Values.Where(r => r.Disabled && r.Id == StorageRepository.Hash(r.RootPath)))
         {
@@ -149,7 +161,7 @@ public sealed partial class SchedulerEngine
     private async Task FinalizePublicationAsync(CancellationToken token)
     {
         active = StorageRepository.Read<Activation>((await storage.GetAsync("definition-active", token)) ?? throw new InvalidDataException("反映先の採用行が欠損しています。"));
-        if (active.SettingsHash != definitions.SettingsHash() || active.FormatVersion != 7 || active.Phase != "Ready")
+        if (active.SettingsHash != definitions.SettingsHash() || active.FormatVersion != 8 || active.Phase != "Ready")
         {
             throw new InvalidDataException("反映計画の保存形式・実行設定が現在の実行器と一致しません。補充せず停止します。");
         }
@@ -178,7 +190,7 @@ public sealed partial class SchedulerEngine
         {
             var saved = await mirror.DownloadContentAsync(token);
             var previous = saved.Value.Content.ToObjectFromJson<Activation>();
-            if (previous is null || previous.FormatVersion != 7 || previous.Id != active.Id || previous.SettingsHash != active.SettingsHash || previous.Phase != "Ready")
+            if (previous is null || previous.FormatVersion != 8 || previous.Id != active.Id || previous.SettingsHash != active.SettingsHash || previous.Phase != "Ready")
             {
                 throw new InvalidDataException("管理Blobと反映先が一致しません。破損状態を上書きせず復元してください。");
             }
@@ -188,6 +200,6 @@ public sealed partial class SchedulerEngine
 
         leader!.Ensure();
         await mirror.UploadAsync(BinaryData.FromObjectAsJson(active), new BlobUploadOptions { Conditions = condition }, token);
-        await storage.PutImmutableAsync($"management/{storage.Partition}/{active.DefinitionHash}/{active.SettingsHash}/{active.Id}/activation-v7-{active.Revision}.json", BinaryData.FromObjectAsJson(active), token);
+        await storage.PutImmutableAsync($"management/{storage.Partition}/{active.DefinitionHash}/{active.SettingsHash}/{active.Id}/activation-v8-{active.Revision}.json", BinaryData.FromObjectAsJson(active), token);
     }
 }

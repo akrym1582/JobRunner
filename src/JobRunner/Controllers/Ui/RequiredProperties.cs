@@ -31,6 +31,15 @@ public sealed class RequiredProperties : ISchemaFilter
                 schema.Required.Remove("workingSources");
                 schema.Required.Remove("workingContainers");
                 schema.Required.Remove("groupOrigins");
+                schema.Required.Remove("rootOrigins");
+                schema.Required.Remove("originCatalogHash");
+            }
+
+            if (context.Type == typeof(EditorMoveRequest))
+            {
+                schema.Required.Remove("fileName");
+                schema.Required.Remove("fileTargetPath");
+                schema.Required.Remove("fileEncoding");
             }
 
             if (context.Type == typeof(EditorGroupChange))
@@ -60,6 +69,7 @@ public sealed class RequiredProperties : ISchemaFilter
                 schema.Required.Remove("containers");
                 schema.Required.Remove("timeZone");
                 schema.Required.Remove("scheduleTimeMode");
+                schema.Required.Remove("diagnostics");
             }
 
             if (context.Type == typeof(EditorSource))

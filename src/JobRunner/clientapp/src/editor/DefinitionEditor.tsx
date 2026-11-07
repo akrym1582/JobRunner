@@ -27,6 +27,7 @@ import { EditorProperties } from "./EditorProperties";
 import { ExecutionProperties } from "./ExecutionProperties";
 import { TimingProperties } from "./TimingProperties";
 import { LocalDefinitionInput } from "./LocalDefinitionInput";
+import { MoveUnits } from "./MoveUnits";
 import { GroupPackages } from "./GroupPackages";
 import { GroupProperties } from "./GroupProperties";
 import { CreationProperties } from "./CreationProperties";
@@ -419,10 +420,18 @@ export function DefinitionEditor({
       const candidate = await load();
       if (started !== revision.current)
         throw new Error("読込中に編集されたため、取り込みを中止しました。");
-      if (!window.confirm(confirmation)) return;
+      if (
+        !window.confirm(
+          [confirmation, ...(candidate.diagnostics ?? [])].join("\n\n"),
+        )
+      )
+        return;
       update(candidate.draft);
       setMessage(
-        "グループを下書きへ取り込みました。プレビューで差分を確認してください。運用は変更していません。",
+        [
+          "下書きへ適用しました。プレビューで差分を確認してください。運用は変更していません。",
+          ...(candidate.diagnostics ?? []),
+        ].join("\n"),
       );
     } catch (error) {
       setMessage(await errorMessage(error));
@@ -658,6 +667,14 @@ export function DefinitionEditor({
           disabled={busy || !loaded || !saveAllowed}
           onImport={importGroup}
           onExport={exportGroup}
+        />
+      )}
+      {draft && (
+        <MoveUnits
+          draft={draft}
+          sources={creationBase?.sources ?? []}
+          disabled={busy || !loaded || !saveAllowed}
+          onMove={importGroup}
         />
       )}
       <LocalDefinitionInput disabled={busy || !loaded} onImport={importLocal} />

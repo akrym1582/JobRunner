@@ -35,20 +35,40 @@ public sealed class PublicationWriteBoundaryTests
     /// <returns>重複と過去の再実行がなく、部分世代が同じIDで揃うことを確認します。</returns>
     [Theory]
     [MemberData(nameof(Boundaries))]
-    public async Task ResumesAfterActualStorageBoundary(int stage, int? count)
+    public Task ResumesAfterActualStorageBoundary(int stage, int? count) => VerifyBoundaryAsync(stage, count, false);
+
+    /// <summary>ルート移動の識別情報も実書込み中断から復旧します。</summary>
+    /// <param name="stage">中断境界です。</param>
+    /// <param name="count">件数方式です。</param>
+    /// <returns>重複のない移動復旧です。</returns>
+    [Theory]
+    [InlineData(1, null)]
+    [InlineData(3, null)]
+    [InlineData(6, null)]
+    [InlineData(9, null)]
+    [InlineData(10, null)]
+    [InlineData(1, 1)]
+    [InlineData(3, 1)]
+    [InlineData(6, 1)]
+    [InlineData(9, 1)]
+    [InlineData(10, 1)]
+    public Task RootMoveResumesAfterActualStorageBoundary(int stage, int? count) => VerifyBoundaryAsync(stage, count, true);
+
+    private static async Task VerifyBoundaryAsync(int stage, int? count, bool move)
     {
         var failure = new WriteInterruption(stage);
         await using var scenario = new EngineScenario(failure);
         scenario.Scope.Options.ConfirmedFutureGenerations = count;
         string children = string.Concat(Enumerable.Range(0, 105).Select(i => $"unit=j{i};{{ty=j;te=\"true\";}}"));
-        await scenario.StartAsync("unit=net;{ty=n;sd=2026/11/5;st=10:00;cy=(1,d);sh=no;" + children + "}");
+        string original = "unit=net;{ty=n;sd=2026/11/5;st=10:00;cy=(1,d);sh=no;" + children + "}";
+        await scenario.StartAsync(move ? "unit=a;{ty=g;" + original + "}unit=b;{ty=g;}" : original);
         var storage = scenario.Scope.Repository;
         string stateNamespace = scenario.Engine.Namespace!;
         var before = await scenario.OccurrencesAsync();
         var definitions = new DefinitionService(storage, scenario.Scope.Options);
-        var next = definitions.Validate([new SourceEvidence { Mapping = new DefinitionSource { BlobPath = "local/new.ajs" }, Base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes("unit=net;{ty=n;sd=2026/11/5;st=11:00;cy=(1,d);sh=no;" + children + "}")) }]);
+        var next = definitions.Validate([new SourceEvidence { Mapping = new DefinitionSource { BlobPath = "local/new.ajs" }, Base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(move ? "unit=a;{ty=g;}unit=b;{ty=g;" + original.Replace("10:00", "11:00", StringComparison.Ordinal) + "}" : original.Replace("10:00", "11:00", StringComparison.Ordinal))) }]);
         await definitions.SaveAsync(next, CancellationToken.None);
-        var operation = new Operation { Id = "write-boundary", Kind = "Activate", Target = next.Hash };
+        var operation = new Operation { Id = "write-boundary", Kind = "Activate", Target = next.Hash, RootOrigins = move ? new() { ["/b/net"] = "/a/net" } : null };
         await scenario.EnqueueAsync(operation);
         string key = "command:" + StorageRepository.Hash(operation.Id);
 
