@@ -590,21 +590,16 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
         string? fixedGroups = existingRoot is null ? registration.GroupCatalogHash : StorageRepository.Read<Occurrence>(existingRoot).GroupCatalogHash;
         bool groupSkipped = await GroupSkippedAsync(fixedGroups, root.Path, point.Due, cancellationToken);
         root = (await ReadUnitsAsync(fixedHash, cancellationToken))[root.Path];
-        var schedule = new Dictionary<string, (SchedulePoint Point, bool Enabled)>(StringComparer.Ordinal) { [root.Path] = (point, true) };
+        var schedule = new Dictionary<string, NestedScheduleSelection>(StringComparer.Ordinal) { [root.Path] = new(point, true, "ROOT") };
         var fixedUnits = await ReadUnitsAsync(fixedHash, cancellationToken);
         var children = new List<TableTransactionAction>();
         int childrenBytes = 0;
         foreach (var unit in new[] { root }.Flatten())
         {
-            var selected = unit.Path == root.Path ? (Point: point, Enabled: true) : schedule[ScheduleCalculator.Parent(unit.Path)];
-            if (unit.Path != root.Path && unit.IsNetwork() && unit.Get("de", "y") != "y" && selected.Enabled && unit.Attributes.Keys.Any(k => k is "sd" or "st" or "ln" or "cy" or "sh" or "shd" or "cftd" or "ed"))
+            var selected = unit.Path == root.Path ? new NestedScheduleSelection(point, true, "ROOT") : schedule[ScheduleCalculator.Parent(unit.Path)];
+            if (unit.Path != root.Path && unit.IsNetwork())
             {
-                // 上位ルールにリンクする候補から、当該業務日の最も早い予定を一つだけ採用します。
-                var linked = JsonSerializer.Deserialize<UnitDefinition>(JsonSerializer.Serialize(unit))!;
-                linked.Attributes["sd"] = (unit.Attributes.GetValueOrDefault("sd") ?? ["1,en"])
-                    .Where(raw => ScheduleCalculator.RuleValue(unit, "ln", ScheduleCalculator.SplitRule(raw).Rule, ScheduleCalculator.SplitRule(raw).Rule.ToString(System.Globalization.CultureInfo.InvariantCulture)) == selected.Point.Rule.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
-                var candidate = ScheduleCalculator.Calculate(linked, fixedUnits, registration, selected.Point.BusinessDate, selected.Point.BusinessDate.AddDays(1), options).Where(p => ScheduleCalculator.IsNestedTimeEligible(unit, fixedUnits, p.Rule)).OrderBy(p => p.Due).ThenBy(p => p.Rule).FirstOrDefault();
-                selected = candidate is null ? (selected.Point, false) : (candidate, true);
+                selected = NestedScheduleSelector.Select(unit, fixedUnits, registration, selected, options, cancellationToken);
             }
 
             schedule[unit.Path] = selected;

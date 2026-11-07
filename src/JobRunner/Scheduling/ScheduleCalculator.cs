@@ -138,7 +138,7 @@ public static class ScheduleCalculator
     /// <param name="options">時間帯設定です。</param>
     /// <param name="cancellationToken">呼出元による計算中断です。</param>
     /// <returns>ルール別の候補です。</returns>
-    private static IEnumerable<SchedulePoint> CalculateRaw(UnitDefinition root, IReadOnlyDictionary<string, UnitDefinition> all, Registration registration, DateOnly from, DateOnly until, RunnerOptions options, CancellationToken cancellationToken)
+    internal static IEnumerable<SchedulePoint> CalculateRaw(UnitDefinition root, IReadOnlyDictionary<string, UnitDefinition> all, Registration registration, DateOnly from, DateOnly until, RunnerOptions options, CancellationToken cancellationToken)
     {
         if (until.DayNumber - from.DayNumber > 3700)
         {

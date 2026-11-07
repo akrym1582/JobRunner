@@ -298,6 +298,35 @@
         }
       }
     },
+    "/api/jobrunner/ui/definition-editor/nested-schedules": {
+      "post": {
+        "tags": [
+          "JobRunner"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorScheduleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorNestedSchedulePreview"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobrunner/ui/definition-editor/paste": {
       "post": {
         "tags": [
@@ -1471,6 +1500,112 @@
           },
           "targetNetworkId": {
             "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorNestedSchedulePreview": {
+        "required": [
+          "rootNetworkId",
+          "rootPath",
+          "rows",
+          "timeZone"
+        ],
+        "type": "object",
+        "properties": {
+          "rootNetworkId": {
+            "type": "string"
+          },
+          "rootPath": {
+            "type": "string"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorNestedScheduleRow"
+            }
+          },
+          "timeZone": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorNestedScheduleRow": {
+        "required": [
+          "businessDate",
+          "chain",
+          "eligible",
+          "reason",
+          "root",
+          "selected"
+        ],
+        "type": "object",
+        "properties": {
+          "businessDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "root": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SchedulePoint"
+              }
+            ],
+            "nullable": true
+          },
+          "selected": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SchedulePoint"
+              }
+            ],
+            "nullable": true
+          },
+          "eligible": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "chain": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorNestedScheduleStep"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorNestedScheduleStep": {
+        "required": [
+          "eligible",
+          "path",
+          "point",
+          "reason",
+          "type"
+        ],
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "eligible": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "point": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SchedulePoint"
+              }
+            ],
+            "nullable": true
           }
         },
         "additionalProperties": false

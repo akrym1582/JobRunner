@@ -171,6 +171,34 @@ export type EditorMoveSelectionRequest = {
   targetNetworkId: string;
 }
 
+export type EditorNestedSchedulePreview = {
+  rootNetworkId: string;
+  rootPath: string;
+  rows: EditorNestedScheduleRow[];
+  timeZone: string;
+}
+
+export type EditorNestedScheduleRow = {
+  businessDate: string;
+
+  root: SchedulePoint | null;
+
+  selected: SchedulePoint | null;
+
+  eligible: boolean;
+  reason: string;
+  chain: EditorNestedScheduleStep[];
+}
+
+export type EditorNestedScheduleStep = {
+  path: string;
+  type: string;
+  eligible: boolean;
+  reason: string;
+
+  point: SchedulePoint | null;
+}
+
 export type EditorNetwork = {
   path: string;
   nodes: EditorNode[];

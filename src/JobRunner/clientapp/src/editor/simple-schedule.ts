@@ -302,10 +302,12 @@ export function formatSimpleAttributes(
   calendarPath: (path: string) => string = (path) => path,
 ): string {
   return Object.entries(attributes)
-    .filter(([key]) => [...managedKeys, "jc"].includes(key))
+    .filter(([key]) => [...managedKeys, "jc", "de", "ln"].includes(key))
     .flatMap(([key, values]) =>
       values
-        .filter((value) => key === "jc" || splitRule(value)[0] === rule)
+        .filter(
+          (value) => ["jc", "de"].includes(key) || splitRule(value)[0] === rule,
+        )
         .map((value) => {
           const text =
             key === "jc"
@@ -319,4 +321,42 @@ export function formatSimpleAttributes(
         }),
     )
     .join("\n");
+}
+
+export function upperRule(attributes: Attributes, rule: number): string {
+  return ruleValue(attributes, "ln", rule, String(rule));
+}
+export function applyNestedSimple(
+  attributes: Attributes,
+  rule: number,
+  value: SimpleSchedule,
+  original: SimpleSchedule | undefined,
+  mode: "parent" | "own",
+  originalMode: "parent" | "own",
+  upper: string,
+  originalUpper: string,
+): Attributes {
+  if (mode === "parent") {
+    const next = { ...attributes };
+    delete next.sd;
+    if (originalMode !== "parent") next.de = ["y"];
+    return next;
+  }
+  // 上位依存のsd省略は、ルートの暗黙第1ルールとは異なります。
+  const base =
+    originalMode === "parent"
+      ? { ...attributes, sd: attributes.sd ?? ["0,ud"] }
+      : attributes;
+  const next = applySimple(base, rule, value, original);
+  if (attributes.de?.[0] !== "n") next.de = ["n"];
+  if (!original || originalMode === "parent" || upper !== originalUpper) {
+    const values = next.ln ?? [],
+      index = values.findIndex((s) => splitRule(s)[0] === rule);
+    const generated = `${rule},${Number(upper)}`;
+    next.ln =
+      index < 0
+        ? [...values, generated]
+        : values.map((s, i) => (i === index ? generated : s));
+  }
+  return next;
 }

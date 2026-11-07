@@ -3,8 +3,11 @@ import type { EditorDocument, EditorDraft } from "../api/@types";
 import { DraftSchedulePreview } from "./DraftSchedulePreview";
 import { groupPath } from "./group-paths";
 import { networkNames } from "./hierarchy";
+import { scheduleParentId, effectiveScheduleRules } from "./schedule-hierarchy";
 import {
   applySimple,
+  applyNestedSimple,
+  upperRule,
   defaults,
   describeSimple,
   nextRule,
@@ -24,6 +27,11 @@ type Session = {
   rule: number;
   original?: SimpleSchedule;
   value: SimpleSchedule;
+  mode: "parent" | "own";
+  originalMode: "parent" | "own";
+  upper: string;
+  originalUpper: string;
+  adding: boolean;
 };
 export function SimpleScheduleEditor({
   base,
@@ -43,15 +51,24 @@ export function SimpleScheduleEditor({
   const [session, setSession] = useState<Session>();
   const [rule, setRule] = useState(1);
   const names = useMemo(() => networkNames(draft), [draft]);
-  const root = draft.roots?.find((r) => r.node.id === current);
-  const eligible =
-    !!root && !Array.from(names.values()).includes(root.parentPath);
+  const parentId = useMemo(
+    () => scheduleParentId(draft, current),
+    [draft, current],
+  );
+  const nested = !!parentId;
+  const eligible = names.has(current);
+  const parentRules = parentId
+    ? effectiveScheduleRules(draft, parentId)
+    : undefined;
   const attributes = useMemo(
     () => draft.schedules?.find((s) => s.id === current)?.attributes ?? {},
     [draft, current],
   );
+  const mode = nested && attributes.de?.[0] !== "n" ? "parent" : "own";
   const availableRule = nextRule(
-    attributes,
+    mode === "parent"
+      ? { ...attributes, sd: attributes.sd ?? ["0,ud"] }
+      : attributes,
     draft.execution?.find((s) => s.id === current)?.attributes,
   );
   const rules = scheduleRules(attributes);
@@ -73,17 +90,45 @@ export function SimpleScheduleEditor({
   }, [pending]);
   const stale =
     !!session && (session.draft !== draft || session.current !== current);
-  const errors = session
-    ? simpleErrors(session.value, base.scheduleTimeMode ?? 48)
-    : [];
+  const errors =
+    session && session.mode === "own"
+      ? simpleErrors(session.value, base.scheduleTimeMode ?? 48)
+      : [];
+  if (
+    session &&
+    nested &&
+    session.mode === "own" &&
+    !/^(?:[1-9]|[1-9]\d|1[0-3]\d|14[0-4])$/.test(session.upper)
+  )
+    errors.push("上位対応ルールは1〜144で指定してください。");
+  if (session && session.mode === "own" && !session.adding && !session.original)
+    errors.push(
+      "既存の独自ルールは詳細編集の対象です。元の設定へ戻すには未適用入力を破棄してください。",
+    );
   const candidate = useMemo(() => {
     if (!session || stale || errors.length) return undefined;
     return withSchedule(
       draft,
       current,
-      applySimple(attributes, session.rule, session.value, session.original),
+      nested
+        ? applyNestedSimple(
+            attributes,
+            session.rule,
+            session.value,
+            session.original,
+            session.mode,
+            session.originalMode,
+            session.upper,
+            session.originalUpper,
+          )
+        : applySimple(
+            attributes,
+            session.rule,
+            session.value,
+            session.original,
+          ),
     );
-  }, [session, stale, errors.length, draft, current, attributes]);
+  }, [session, stale, errors.length, draft, current, attributes, nested]);
   function discard() {
     if (!session || window.confirm("簡単設定の未適用入力を破棄しますか？")) {
       setSession(undefined);
@@ -91,20 +136,28 @@ export function SimpleScheduleEditor({
     }
     return false;
   }
-  function begin(adding: boolean) {
+  function begin(adding: boolean, desiredMode: "parent" | "own" = "own") {
     if (!discard()) return;
-    const id = adding ? availableRule : selected;
+    const id = adding || mode === "parent" ? availableRule : selected;
     if (!id) return;
     const value = adding
       ? { ...defaults(), calendar: attributes.jc?.[0] ?? "" }
-      : original;
+      : (original ??
+        (desiredMode === "parent"
+          ? { ...defaults(), calendar: attributes.jc?.[0] ?? "" }
+          : undefined));
     if (!value) return;
     setSession({
       draft,
       current,
       rule: id,
-      original: adding ? undefined : value,
+      original: adding ? undefined : original || undefined,
       value,
+      mode: desiredMode,
+      originalMode: mode,
+      upper: upperRule(attributes, id),
+      originalUpper: upperRule(attributes, id),
+      adding: adding || mode === "parent",
     });
   }
   function set<K extends keyof SimpleSchedule>(
@@ -125,12 +178,22 @@ export function SimpleScheduleEditor({
           JP1/AJS3
           V12の標準定義を生成します。適用するまで下書きには保存されません。
         </p>
-        {!eligible && (
+        {!eligible && <p>編集対象のジョブネットを選択してください。</p>}
+        {nested && (
           <p>
-            簡単設定はルートジョブネットが対象です。ネストは詳細編集を使ってください。
+            上位ネット: {names.get(parentId!)}
+            。独自設定でも、上位の予定と対応ルールが成立する日だけが対象です。
           </p>
         )}
-        {eligible && (
+        {nested && (
+          <button
+            disabled={disabled}
+            onClick={() => begin(mode === "parent", "parent")}
+          >
+            {mode === "parent" ? "依存方法を設定" : "上位依存への切替を設定"}
+          </button>
+        )}
+        {eligible && mode === "own" && (
           <div className="editor-network-fields">
             <label>
               簡単設定のルール
@@ -163,7 +226,7 @@ export function SimpleScheduleEditor({
             </button>
           </div>
         )}
-        {eligible && !original && rules.length > 0 && (
+        {eligible && mode === "own" && !original && rules.length > 0 && (
           <p>
             この指定は簡単設定の対象外です。原文を保持して詳細編集を使ってください。
           </p>
@@ -171,14 +234,75 @@ export function SimpleScheduleEditor({
         {session && value && (
           <>
             <p role="status">
-              ルール {session.rule} の未適用入力（ブラウザー保存の対象外）
+              {session.mode === "parent"
+                ? "上位依存"
+                : `ルール ${session.rule}`}{" "}
+              の未適用入力（ブラウザー保存の対象外）
             </p>
             {stale && (
               <p role="alert">
                 下書きまたは対象ネットが変わりました。古い候補は適用できません。入力を破棄して開き直してください。
               </p>
             )}
-            <fieldset disabled={stale || disabled}>
+            {nested && (
+              <label>
+                スケジュールの依存方法
+                <select
+                  aria-label="スケジュールの依存方法"
+                  disabled={stale || disabled}
+                  value={session.mode}
+                  onChange={(e) =>
+                    setSession({
+                      ...session,
+                      mode: e.target.value as "parent" | "own",
+                    })
+                  }
+                >
+                  <option value="parent">上位のスケジュールを使用</option>
+                  <option value="own">独自スケジュールを設定</option>
+                </select>
+              </label>
+            )}
+            {nested && session.mode === "own" && (
+              <label>
+                リンクする上位ルール番号
+                <input
+                  list="editor-upper-schedule-rules"
+                  aria-label="リンクする上位ルール番号"
+                  type="number"
+                  min="1"
+                  max="144"
+                  disabled={stale || disabled}
+                  value={session.upper}
+                  onChange={(e) =>
+                    setSession({ ...session, upper: e.target.value })
+                  }
+                />
+              </label>
+            )}
+            {nested && (
+              <datalist id="editor-upper-schedule-rules">
+                {parentRules!.rules.map((id) => (
+                  <option key={id} value={id}>
+                    上位ルール {id}
+                  </option>
+                ))}
+              </datalist>
+            )}
+            {nested && session.mode === "own" && (
+              <p>
+                上位の有効ルール（{names.get(parentRules!.source)}）:{" "}
+                {parentRules!.rules.join(", ") || "予定なし"}
+                {!parentRules!.rules.includes(Number(session.upper)) &&
+                  "。指定した対応先がないため、現在の上位予定では対象になりません。"}
+              </p>
+            )}
+            {nested && session.mode === "parent" && (
+              <p>
+                独自の日付・時刻・参照カレンダーは使用しません。切替はこのネットの全ルールに影響します。
+              </p>
+            )}
+            <fieldset disabled={stale || disabled || session.mode === "parent"}>
               <legend>簡単設定の入力</legend>
               <div className="editor-network-fields">
                 <label>
@@ -367,7 +491,7 @@ export function SimpleScheduleEditor({
                 )}
               </div>
             </fieldset>
-            <p>{describeSimple(value)}</p>
+            {session.mode === "own" && <p>{describeSimple(value)}</p>}
             <p>
               運用日番号・最終運用日はカレンダーの基準日・月区分に従います。起算は休業日振替の後に行い、起点の前日/翌日から数えます。猶予内に必要な運用日がない場合は候補なしです。
             </p>
@@ -392,11 +516,23 @@ export function SimpleScheduleEditor({
               onClick={() => {
                 if (!candidate || !eligible || stale) return;
                 const notices: string[] = [];
-                if (attributes.sd?.some((s) => /^0,\s*ud$/.test(s)))
+                if (nested && session.mode !== session.originalMode)
+                  notices.push(
+                    session.mode === "parent"
+                      ? "上位依存へ切り替えます。全ての独自の開始日(sd)を削除し、他の属性は保持します。全ルールに影響します。"
+                      : "独自スケジュールへ切り替えます。上位の予定が成立する日だけが対象です。全ルールの依存方法に影響します。",
+                  );
+                if (
+                  session.mode === "own" &&
+                  attributes.sd?.some((s) => /^0,\s*ud$/.test(s))
+                )
                   notices.push(
                     "予定なしを解除し、実行予定を定義します。保留・運用停止は解除しません。",
                   );
-                if (value.calendar !== (attributes.jc?.[0] ?? ""))
+                if (
+                  session.mode === "own" &&
+                  value.calendar !== (attributes.jc?.[0] ?? "")
+                )
                   notices.push(
                     "参照カレンダーを変更します。このネットの全ルールに影響します。",
                   );
