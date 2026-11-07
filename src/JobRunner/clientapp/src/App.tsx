@@ -37,6 +37,16 @@ function initialOperation(): Operation | null {
   }
 }
 export function App() {
+  const [schedulePending, setSchedulePending] = useState(false);
+  function changeView(next: "graph" | "monthly" | "editor") {
+    if (
+      next !== view &&
+      schedulePending &&
+      !window.confirm("簡単設定の未適用入力を破棄して画面を切り替えますか？")
+    )
+      return;
+    setView(next);
+  }
   const [view, setView] = useState<"graph" | "monthly" | "editor">("graph");
   const [readError, setReadError] = useState("");
   const [network, setNetwork] = useState("");
@@ -184,7 +194,7 @@ export function App() {
         </div>
         <div className="workspace-label">WORKSPACE</div>
         <button
-          onClick={() => setView("graph")}
+          onClick={() => changeView("graph")}
           className={`view-nav ${view === "graph" ? "nav-active" : ""}`}
         >
           <GitBranch size={18} />
@@ -192,7 +202,7 @@ export function App() {
           <ChevronRight size={16} />
         </button>
         <button
-          onClick={() => setView("monthly")}
+          onClick={() => changeView("monthly")}
           className={`view-nav ${view === "monthly" ? "nav-active" : ""}`}
         >
           <CalendarDays size={18} />
@@ -200,7 +210,7 @@ export function App() {
           <ChevronRight size={16} />
         </button>
         <button
-          onClick={() => setView("editor")}
+          onClick={() => changeView("editor")}
           className={`view-nav ${view === "editor" ? "nav-active" : ""}`}
         >
           <FilePenLine size={18} />
@@ -315,6 +325,7 @@ export function App() {
           )}
           {view === "editor" ? (
             <DefinitionEditor
+              onSchedulePendingChange={setSchedulePending}
               activeHash={catalog.data?.definitionHash}
               path={editorNetwork || path}
               onNavigate={setEditorNetwork}
@@ -412,7 +423,7 @@ export function App() {
                     setNetwork(entry.networkPath);
                     setRootId(entry.execution.rootId || "");
                     setSelected(entry.execution.unitPath || "");
-                    setView("graph");
+                    changeView("graph");
                   }}
                 />
               ) : (

@@ -415,7 +415,12 @@ public static class ScheduleCalculator
             }
         }
 
-        var seed = selector == "en" ? anchor : Pick(firstMonth);
+        // 年月・週番号を省略した曜日は登録日以降で最も近い曜日です。
+        // 登録月内に残っていなくても翌月（年）の曜日から週周期を開始します。
+        int nextWeekday = parts.Length == 1 ? Array.IndexOf(Weekdays, selector) : -1;
+        var seed = selector == "en" ? anchor : nextWeekday >= 0
+            ? anchor.AddDays((nextWeekday - (int)anchor.DayOfWeek + 7) % 7)
+            : Pick(firstMonth);
         if (seed is null || day < seed)
         {
             return false;

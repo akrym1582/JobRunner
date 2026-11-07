@@ -102,3 +102,17 @@ Storage共有下書き、運用反映の確認・適用、PauseAll/ResumeAll、�
 
 
 版9のジョブ・子ネットの選択移動はJobRunner独自の下書きUI/APIです。同じ親の選択を別ネットへ移し、内部の通常/条件接続を保持し、範囲外の接続を確認後に切断します。通常/リカバリー/判定の成立条件は既存エンジンの検証を使い、不成立なら候補全体を拒否します。明示属性と外部jcを保持し、省略属性・上位ルールは移動先で評価します。親に対応ルールがないlnの既存動作も維持し、ルール値と親の条件を確認表示します。ルートと子の相互変換、JP1の移動コマンド互換、実JP1投入比較は対象外です。
+
+## ルートのスケジュール簡単設定
+
+根拠は同じV12 3021-3-D28-20の5.2.3–5.2.4です。2026-11-07にPDF本文を取得し、開始日の曜日省略、時刻、処理周期、振り替え、起算を確認しました。独自の定義属性・日付計算は追加しません。フォームの初期値は適用時に明示する値であり、JP1の省略時既定値とは区別します。実JP1との比較は未実施です。
+
+| 条件 | 公式根拠 | 期待結果・提供範囲 | 受入テスト |
+| --- | --- | --- | --- |
+| 毎日・毎運用日 | 5.2.4 sd=en、cy=(1,d)、sh=no/ca | 登録日からの日周期。運用日のみは参照/継承カレンダーの休業日を中止 | SimpleScheduleTests.DailyOperatingDaysUseReferencedCalendarAndBusinessTime、simple-schedule.test.ts |
+| 毎週の曜日、年月・週番号省略 | 5.2.4 sdのn省略 | 登録日以降の最も近い曜日。月末・年末を越えて週周期を継続 | SimpleScheduleTests.WeeklyWeekdayContinuesAcrossRegistrationMonth |
+| 毎月暦日、第N/最終運用日、一回実行 | 5.2.4 sd/cy、5.2.3 sdd/md | 暦日と業務月の運用日番号を区別。存在しない暦日は月末へ丸めない | SimpleScheduleTests.MonthlyMissingDaysAndOffsetsKeepCalendarMeaning、simple-schedule.test.ts |
+| 毎月D日の前後N運用日 | 5.2.4 cftd=be/af、起算日数/猶予1〜31、猶予省略10 | 振替後の起点を含めず前日/翌日から数える。猶予は暦日、足りなければ候補なし。DとNは利用者が変更可能 | SimpleScheduleTests.MonthlyTwentyFifthCountsOperatingDays、HolidayOriginShiftAndGrace、SimpleScheduleRuntimeTests |
+| 標準属性だけの生成と局所編集 | 5.2.4 ルール番号1〜144 | 未編集属性・ルール番号・省略・原文を保持。簡単設定対象外の指定は詳細編集のまま。暗黙のsd第1ルールは追加時に保持 | simple-schedule.test.ts、simple-schedule.spec.ts |
+
+簡単設定はルート限定です。計画実行登録、動的な外部パラメーター起算、未確認の指定の近似変換は提供しません。簡単設定の入力/確認、undoや試算画面は編集UIの操作契約であり、JP1コマンドやHTTP操作の互換性を追加するものではありません。

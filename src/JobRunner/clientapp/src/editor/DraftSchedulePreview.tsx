@@ -7,9 +7,13 @@ import { networkNames } from "./hierarchy";
 export function DraftSchedulePreview({
   draft,
   current,
+  candidate = false,
+  blocked = false,
 }: {
   draft: EditorDraft;
   current: string;
+  candidate?: boolean;
+  blocked?: boolean;
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const [anchor, setAnchor] = useState(today);
@@ -25,8 +29,17 @@ export function DraftSchedulePreview({
   }>();
   const serial = useRef(0);
   const key = useMemo(
-    () => JSON.stringify({ draft, current, anchor, from, until }),
-    [draft, current, anchor, from, until],
+    () =>
+      JSON.stringify({
+        draft,
+        current,
+        anchor,
+        from,
+        until,
+        candidate,
+        blocked,
+      }),
+    [draft, current, anchor, from, until, candidate, blocked],
   );
   const latest = useRef(key);
   latest.current = key;
@@ -37,7 +50,11 @@ export function DraftSchedulePreview({
   const visible = response?.key === key ? response : undefined;
   return (
     <section className="editor-schedule-preview" aria-label="下書き予定試算">
-      <h3>下書きの予定試算（登録しません）</h3>
+      <h3>
+        {candidate
+          ? "未適用の簡単設定の試算（保存・登録しません）"
+          : "下書きの予定試算（登録しません）"}
+      </h3>
       <p>
         実行予定・登録済み世代ではありません。ルートの定義候補だけを計算し、保留・起動条件・間隔登録・ネストの実行予測は含みません。計算が5秒を超える場合は、期間またはルール数を減らしてください。
       </p>
@@ -70,7 +87,9 @@ export function DraftSchedulePreview({
           />
         </label>
         <button
-          disabled={!eligible || !anchor || !from || !until || visible?.busy}
+          disabled={
+            blocked || !eligible || !anchor || !from || !until || visible?.busy
+          }
           onClick={async () => {
             const request = ++serial.current;
             setResponse({ key, busy: true });

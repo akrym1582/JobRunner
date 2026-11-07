@@ -2,7 +2,7 @@ import { groupPath, originalGroupPath } from "./group-paths";
 import { useState } from "react";
 import type { EditorDocument, EditorDraft } from "../api/@types";
 import { CalendarMonth } from "./CalendarMonth";
-import { DraftSchedulePreview } from "./DraftSchedulePreview";
+import { SimpleScheduleEditor } from "./SimpleScheduleEditor";
 
 type Field = {
   key: string;
@@ -161,8 +161,12 @@ export function TimingProperties({
   draft,
   current,
   onChange,
+  disabled,
+  onPendingChange,
 }: {
   base: EditorDocument;
+  disabled: boolean;
+  onPendingChange: (pending: boolean) => void;
   draft: EditorDraft;
   current: string;
   onChange: (draft: EditorDraft) => void;
@@ -189,6 +193,14 @@ export function TimingProperties({
         {base.timeZone}・{base.scheduleTimeMode}
         時間制。29〜31日と第5曜日の基準日、24時間制の24時以降は未対応です。夏時間の曖昧・欠落時刻は試算時に拒否します。
       </p>
+      <SimpleScheduleEditor
+        base={base}
+        draft={draft}
+        current={current}
+        onChange={onChange}
+        disabled={disabled}
+        onPendingChange={onPendingChange}
+      />
       {schedule && (
         <section aria-label="ネットのスケジュール">
           <h3>現在のネットのスケジュール</h3>
@@ -232,7 +244,6 @@ export function TimingProperties({
               参照カレンダーを開く: {schedule.attributes.jc[0]}
             </button>
           )}
-          <DraftSchedulePreview draft={draft} current={current} />
         </section>
       )}
       <section aria-label="カレンダーの編集">
