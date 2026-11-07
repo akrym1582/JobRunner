@@ -83,7 +83,10 @@ export function DefinitionEditor({
   const [base, setBase] = useState<EditorDocument>();
   const [history, setHistory] = useState<History>();
   const [loaded, setLoaded] = useState(false);
-  const [saving, setSaving] = useState("");
+  const [savedSnapshot, setSavedSnapshot] = useState<{
+    base: EditorDocument;
+    history: History;
+  }>();
   const [saveError, setSaveError] = useState("");
   const [saveAllowed, setSaveAllowed] = useState(true);
   const [conflicted, setConflicted] = useState(false);
@@ -105,6 +108,14 @@ export function DefinitionEditor({
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const conflict = useRef(false);
   const draft = history?.present;
+  // Effectが動く前の描画も、現在の履歴と同じ保存完了だけを「保存済み」とします。
+  // undo→redoで同じdraftへ戻っても、先行する書込み待ちの履歴とは区別します。
+  const saving =
+    base && history && saveAllowed
+      ? savedSnapshot?.base === base && savedSnapshot.history === history
+        ? "ブラウザーに保存済み"
+        : "下書きを保存中…"
+      : "";
   const network =
     draft?.networks.find((n) => n.path === path) ??
     draft?.networks[0] ??
@@ -120,6 +131,11 @@ export function DefinitionEditor({
   const creationBase = useMemo(
     () => (base && draft ? creationDocument(base, draft) : undefined),
     [base, draft],
+  );
+  const previewSource = preview?.sources[previewFile];
+  // 貼付は原文を再構成して順序も変えるため、不変のファイル対応で開始時の原文を探します。
+  const originalSource = base?.sources.find(
+    (file) => file.fileName === previewSource?.fileName,
   );
 
   const persist = useCallback(
@@ -141,7 +157,7 @@ export function DefinitionEditor({
           conflict.current = true;
           setConflicted(true);
         }
-        setSaving("");
+        setSavedSnapshot(undefined);
         setSaveError(`自動保存できません: ${String(error)}`);
       });
       return pending;
@@ -205,13 +221,12 @@ export function DefinitionEditor({
     };
   }, [source.error]);
   useEffect(() => {
-    if (!base || !draft || !saveAllowed) return;
+    if (!base || !history || !saveAllowed) return;
     let current = true;
-    setSaving("下書きを保存中…");
-    void persist({ version: 1, base, draft })
+    void persist({ version: 1, base, draft: history.present })
       .then(() => {
         if (current) {
-          setSaving("ブラウザーに保存済み");
+          setSavedSnapshot({ base, history });
           setSaveError("");
         }
       })
@@ -219,7 +234,7 @@ export function DefinitionEditor({
     return () => {
       current = false;
     };
-  }, [base, draft, saveAllowed, persist]);
+  }, [base, history, saveAllowed, persist]);
   useEffect(() => {
     setSelected("");
     setSelection([]);
@@ -426,7 +441,6 @@ export function DefinitionEditor({
       setShowPreview(false);
       setSelected("");
       setConnectFrom("");
-      setSaving("ブラウザーに保存済み");
       setSaveError("");
       setMessage(
         "ローカル定義を下書きとして読み込みました。採用・登録はしていません。",
@@ -490,11 +504,7 @@ export function DefinitionEditor({
         await persist({ version: 1, base, draft });
         setSaveAllowed(true);
         setSaveError("");
-        setSaving(
-          started === revision.current
-            ? "ブラウザーに保存済み"
-            : "下書きを保存中…",
-        );
+        setSavedSnapshot({ base, history: history! });
         setMessage(
           "保存済み下書きがないため、現在の編集の保存を再開しました。",
         );
@@ -561,7 +571,7 @@ export function DefinitionEditor({
                     .then(() => {
                       setSaveAllowed(true);
                       setSaveError("");
-                      setSaving("ブラウザーに保存済み");
+                      setSavedSnapshot({ base, history: history! });
                     })
                     .catch(() => {});
                 }
@@ -588,7 +598,7 @@ export function DefinitionEditor({
       {draft?.localSources && (
         <p role="status">
           ローカル入力を基にした下書き・
-          {draft.localSources.length + (draft.newFiles?.length ?? 0)}ファイル
+          {creationBase?.sources.length ?? 0}ファイル
         </p>
       )}
       <DefinitionLifecycleControls
@@ -970,14 +980,12 @@ export function DefinitionEditor({
                     <div>
                       <h4>変更前</h4>
                       <pre aria-label="変更前の原文">
-                        {base?.sources[previewFile]?.text}
+                        {originalSource?.text}
                       </pre>
                     </div>
                     <div>
                       <h4>変更後</h4>
-                      <pre aria-label="変更後の原文">
-                        {preview.sources[previewFile]?.text}
-                      </pre>
+                      <pre aria-label="変更後の原文">{previewSource?.text}</pre>
                     </div>
                   </div>
                 </>
@@ -987,8 +995,8 @@ export function DefinitionEditor({
           <div className="editor-footer">
             <span>
               基点版 {draft.definitionHash.slice(0, 12)} ·{" "}
-              {(base?.sources.length ?? 0) + (draft.newFiles?.length ?? 0)}{" "}
-              ファイル · このブラウザーに下書きを保存
+              {creationBase?.sources.length ?? 0} ファイル ·
+              このブラウザーに下書きを保存
             </span>
             <button disabled={busy} onClick={() => void discard()}>
               <RotateCcw size={14} />
