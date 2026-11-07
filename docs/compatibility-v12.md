@@ -102,3 +102,33 @@ Storage共有下書き、運用反映の確認・適用、PauseAll/ResumeAll、�
 
 
 版9のジョブ・子ネットの選択移動はJobRunner独自の下書きUI/APIです。同じ親の選択を別ネットへ移し、内部の通常/条件接続を保持し、範囲外の接続を確認後に切断します。通常/リカバリー/判定の成立条件は既存エンジンの検証を使い、不成立なら候補全体を拒否します。明示属性と外部jcを保持し、省略属性・上位ルールは移動先で評価します。親に対応ルールがないlnの既存動作も維持し、ルール値と親の条件を確認表示します。ルートと子の相互変換、JP1の移動コマンド互換、実JP1投入比較は対象外です。
+
+## ルートのスケジュール簡単設定
+
+根拠は同じV12 3021-3-D28-20の5.2.3–5.2.4です。2026-11-07にPDF本文を取得し、開始日の曜日省略、時刻、処理周期、振り替え、起算を確認しました。独自の定義属性・日付計算は追加しません。フォームの初期値は適用時に明示する値であり、JP1の省略時既定値とは区別します。実JP1との比較は未実施です。
+
+| 条件 | 公式根拠 | 期待結果・提供範囲 | 受入テスト |
+| --- | --- | --- | --- |
+| 毎日・毎運用日 | 5.2.4 sd=en、cy=(1,d)、sh=no/ca | 登録日からの日周期。運用日のみは参照/継承カレンダーの休業日を中止 | SimpleScheduleTests.DailyOperatingDaysUseReferencedCalendarAndBusinessTime、simple-schedule.test.ts |
+| 毎週の曜日、年月・週番号省略 | 5.2.4 sdのn省略 | 登録日以降の最も近い曜日。月末・年末を越えて週周期を継続 | SimpleScheduleTests.WeeklyWeekdayContinuesAcrossRegistrationMonth |
+| 毎月暦日、第N/最終運用日、一回実行 | 5.2.4 sd/cy、5.2.3 sdd/md | 暦日と業務月の運用日番号を区別。存在しない暦日は月末へ丸めない | SimpleScheduleTests.MonthlyMissingDaysAndOffsetsKeepCalendarMeaning、simple-schedule.test.ts |
+| 毎月D日の前後N運用日 | 5.2.4 cftd=be/af、起算日数/猶予1〜31、猶予省略10 | 振替後の起点を含めず前日/翌日から数える。猶予は暦日、足りなければ候補なし。DとNは利用者が変更可能 | SimpleScheduleTests.MonthlyTwentyFifthCountsOperatingDays、HolidayOriginShiftAndGrace、SimpleScheduleRuntimeTests |
+| 標準属性だけの生成と局所編集 | 5.2.4 ルール番号1〜144 | 未編集属性・ルール番号・省略・原文を保持。簡単設定対象外の指定は詳細編集のまま。暗黙のsd第1ルールは追加時に保持 | simple-schedule.test.ts、simple-schedule.spec.ts |
+
+ネストへの拡張は次節に記載します。計画実行登録、動的な外部パラメーター起算、未確認の指定の近似変換は提供しません。簡単設定の入力/確認、undoや試算画面は編集UIの操作契約であり、JP1コマンドやHTTP操作の互換性を追加するものではありません。
+
+
+## ネストの簡単設定と上位連動試算
+
+V12 3021-3-D28-20 5.2.4（de/ln）、[設計ガイド3021-3-D23-30 3.5.3](https://itpfdoc.hitachi.co.jp/manuals/3021/30213d2330/AJSG0049.HTM)、[操作ガイド3021-3-D27-30 12.3.16](https://itpfdoc.hitachi.co.jp/manuals/3021/30213d2730/AJSV0253.HTM)・[12.3.17](https://itpfdoc.hitachi.co.jp/manuals/3021/30213d2730/AJSV0254.HTM)の本文を2026-11-07に取得して確認しました。通常/リカバリーのネストで同じ標準属性の簡単設定を使います。deの省略/yを維持し、独自設定はde=n、ルールごとの上位対応はlnで表現します。新規lnは公式画面と同じ自ルール番号を初期値とし、存在しない対応先を自動作成しません。
+
+| 条件 | 公式の期待結果・実装範囲 | 試験 |
+| --- | --- | --- |
+| 上位依存と独自設定の切替 | 上位依存ではルールとjcの入力を無効化。de=yと併記できないsdの削除は確認とundoの対象。他の合法な未編集属性・省略・原文を保持 | nested-schedule.test.ts、nested-schedules.spec.ts |
+| 上位予定とリンク | 上位が成立する業務日・対応ルールだけを採用。親が依存する場合は祖先まで追う。祖先が対象外なら子孫も対象外 | NestedSchedulePreviewTests、NestedSchedulePreviewRuntimeTests |
+| 複数候補と時刻境界 | 基準時刻の条件を満たした候補から最早日時、同日時なら小さい番号を採用。同日時の不適合ルールが有効な別ルールを消さない | FiltersBusinessTimeBeforeChoosingSameDueRule、KeepsSeparateRootContextsAndChoosesEarliestChild |
+| 別カレンダー・起算・48時間 | 子独自のjcとcftdを評価。同一業務日と実暦日を区別し、上位より早い予定時刻を実開始時刻と誤認しない | AppliesReferencedCalendarAndMonthlyOperatingOffset、nested-schedules.spec.ts |
+| 祖先連動試算 | 既存ルートAPIは維持し、編集専用nested-schedules APIを追加。ルートなし・対応なし・同日候補なし・時刻条件・祖先対象外の理由を返す。リカバリーの異常発生や先行完了等の実行条件は予測しない | NestedSchedulePreviewTests、RecoveryNetworkKeepsItsScheduleWithoutPredictingFailure |
+| 保持と再開 | 原文・BOM・文字コード、旧下書き、改名/移動、undo、保存、再取込、複数タブ、遅い応答を保護。試算では運用・Blobへ書き込まない | ResolvesNestedScheduleAfterGroupMove、nested-schedules.spec.ts、全体回帰 |
+
+試算API・理由コード・行数/時間制限は編集画面の独自操作契約です。JP1の状態・エラーIDを名乗りません。定義保存形式とeditorVersionは変更しません。実JP1・Windows・実Azureでの比較は未実施です。

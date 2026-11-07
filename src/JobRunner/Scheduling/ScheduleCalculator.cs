@@ -138,7 +138,7 @@ public static class ScheduleCalculator
     /// <param name="options">時間帯設定です。</param>
     /// <param name="cancellationToken">呼出元による計算中断です。</param>
     /// <returns>ルール別の候補です。</returns>
-    private static IEnumerable<SchedulePoint> CalculateRaw(UnitDefinition root, IReadOnlyDictionary<string, UnitDefinition> all, Registration registration, DateOnly from, DateOnly until, RunnerOptions options, CancellationToken cancellationToken)
+    internal static IEnumerable<SchedulePoint> CalculateRaw(UnitDefinition root, IReadOnlyDictionary<string, UnitDefinition> all, Registration registration, DateOnly from, DateOnly until, RunnerOptions options, CancellationToken cancellationToken)
     {
         if (until.DayNumber - from.DayNumber > 3700)
         {
@@ -415,7 +415,12 @@ public static class ScheduleCalculator
             }
         }
 
-        var seed = selector == "en" ? anchor : Pick(firstMonth);
+        // 年月・週番号を省略した曜日は登録日以降で最も近い曜日です。
+        // 登録月内に残っていなくても翌月（年）の曜日から週周期を開始します。
+        int nextWeekday = parts.Length == 1 ? Array.IndexOf(Weekdays, selector) : -1;
+        var seed = selector == "en" ? anchor : nextWeekday >= 0
+            ? anchor.AddDays((nextWeekday - (int)anchor.DayOfWeek + 7) % 7)
+            : Pick(firstMonth);
         if (seed is null || day < seed)
         {
             return false;

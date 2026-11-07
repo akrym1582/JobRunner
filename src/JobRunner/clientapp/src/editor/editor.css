@@ -577,3 +577,18 @@
   flex-wrap: wrap;
   gap: 12px;
 }
+.editor-simple-schedule {
+  margin: 16px 0;
+  padding: 16px;
+  border: 1px solid #c9d7e5;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.editor-simple-schedule pre {
+  overflow: auto;
+  padding: 12px;
+  background: #edf2f7;
+}
+.editor-simple-schedule fieldset {
+  min-width: 0;
+}

@@ -70,6 +70,12 @@ public static partial class UiEndpoints
             var compiled = definitions.Validate(DefinitionEditor.Render(bundle, request.Draft));
             return DefinitionEditor.PreviewSchedule(compiled, request, options, token);
         });
+        group.MapPost("/definition-editor/nested-schedules", async (EditorScheduleRequest request, DefinitionService definitions, RunnerOptions options, CancellationToken token) =>
+        {
+            var bundle = await EditorSourcesAsync(request.Draft, definitions, token);
+            var compiled = definitions.Validate(DefinitionEditor.Render(bundle, request.Draft));
+            return DefinitionEditor.PreviewNestedSchedule(compiled, request, options, token);
+        });
         group.MapPost("/definition-editor/paste", async (EditorPasteRequest request, DefinitionService definitions, RunnerOptions options, CancellationToken token) =>
         {
             var bundle = await EditorSourcesAsync(request.Draft, definitions, token);

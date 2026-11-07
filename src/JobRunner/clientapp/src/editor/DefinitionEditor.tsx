@@ -74,7 +74,9 @@ export function DefinitionEditor({
   activeHash,
   path,
   onNavigate,
+  onSchedulePendingChange,
 }: {
+  onSchedulePendingChange: (pending: boolean) => void;
   activeHash?: string;
   path: string;
   onNavigate: (path: string) => void;
@@ -730,6 +732,8 @@ export function DefinitionEditor({
           )}
           {base && (
             <TimingProperties
+              disabled={busy || !saveAllowed}
+              onPendingChange={onSchedulePendingChange}
               base={base}
               draft={draft}
               current={network.path}

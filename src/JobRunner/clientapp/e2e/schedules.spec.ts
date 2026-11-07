@@ -185,7 +185,7 @@ test("ネストの独立予定と上位ルールを保持し、不正値・継�
   await preview(page);
   await expect(
     page.getByRole("button", { name: "下書きを試算", exact: true }),
-  ).toBeDisabled();
+  ).toBeEnabled();
   await field(page, "上位予定への依存 (de)");
   await preview(page, false);
   await expect(
