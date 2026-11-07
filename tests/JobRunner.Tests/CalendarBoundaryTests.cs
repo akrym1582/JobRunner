@@ -84,7 +84,7 @@ public sealed class CalendarBoundaryTests
     public void KeepsUnverifiedBoundariesRejected(string definition)
     {
         var units = Jp1DefinitionParser.Parse(definition, new DefinitionSource());
-        Assert.Throws<FormatException>(() => DefinitionValidator.Validate(units, new RunnerOptions()));
+        Assert.Throws<FormatException>(() => DefinitionValidator.Validate(units, new RunnerOptions { ScheduleTimeMode = 24 }));
     }
 
     /// <summary>夏時間の欠落と二重化を、勝手な補正で実行日時へ変換しません。</summary>

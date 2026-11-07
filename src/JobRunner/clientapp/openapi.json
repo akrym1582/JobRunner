@@ -37,6 +37,35 @@
         }
       }
     },
+    "/api/jobrunner/ui/definition-editor/move-selection": {
+      "post": {
+        "tags": [
+          "JobRunner"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorMoveSelectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorDocument"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobrunner/ui/definition-editor/move": {
       "post": {
         "tags": [
@@ -1419,6 +1448,29 @@
           "fileEncoding": {
             "type": "string",
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorMoveSelectionRequest": {
+        "required": [
+          "draft",
+          "ids",
+          "targetNetworkId"
+        ],
+        "type": "object",
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/EditorDraft"
+          },
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "targetNetworkId": {
+            "type": "string"
           }
         },
         "additionalProperties": false

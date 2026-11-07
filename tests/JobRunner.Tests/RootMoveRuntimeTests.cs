@@ -268,4 +268,40 @@ public sealed class RootMoveRuntimeTests
         scenario.Clock.Now = sourceToday.Due;
         await scenario.AdvanceUntilAsync(values => values.Any(o => o.RootPath == "/c/n" && o.Due == sourceToday.Due && o.State == "Succeeded"));
     }
+
+    /// <summary>元のパスに戻る移動でも保留枠を新しい登録キーへ引き継ぎます。</summary>
+    /// <param name="count">件数方式です。</param>
+    /// <returns>保留世代と再生成された予定が重複しないことを確認します。</returns>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RoundTripMoveKeepsHeldSlot(bool count)
+    {
+        await using var scenario = new EngineScenario();
+        scenario.Scope.Options.ConfirmedHorizonDays = 2;
+        scenario.Scope.Options.ConfirmedFutureGenerations = count ? 2 : null;
+        const string network = "unit=n;{ty=n;sd=1,en;st=11:00;cy=(1,d);sh=no;}";
+        await scenario.StartAsync("unit=a;{ty=g;" + network + "}unit=b;{ty=g;}");
+        var storage = scenario.Scope.Repository;
+        var held = (await scenario.OccurrencesAsync()).Where(o => o.Id == o.RootId).OrderBy(o => o.Due).Last();
+        await scenario.EnqueueAsync(new Operation { Id = "hold", Kind = "Hold", Target = held.Id });
+        await scenario.Engine.TickAsync(CancellationToken.None);
+        var service = new DefinitionService(storage, scenario.Scope.Options);
+        string previous = "/a/n";
+        foreach (string group in new[] { "b", "a" })
+        {
+            var next = service.Validate([new SourceEvidence { Mapping = new() { BlobPath = "local/round-trip" }, Base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes("unit=a;{ty=g;" + (group == "a" ? network : string.Empty) + "}unit=b;{ty=g;" + (group == "b" ? network : string.Empty) + "}")) }]);
+            await service.SaveAsync(next, CancellationToken.None);
+            await scenario.EnqueueAsync(new Operation { Id = "move-" + group, Kind = "Activate", Target = next.Hash, RootOrigins = new() { ["/" + group + "/n"] = previous } });
+            await scenario.Engine.TickAsync(CancellationToken.None);
+            previous = "/" + group + "/n";
+        }
+
+        await scenario.RestartAsync();
+        await scenario.Engine.TickAsync(CancellationToken.None);
+        var values = await scenario.OccurrencesAsync();
+        Assert.Equal("Held", values.Single(o => o.Id == held.Id).State);
+        Assert.DoesNotContain(values, o => o.Id != held.Id && o.RootPath == "/a/n" && o.Due == held.Due && o.State != "Superseded");
+        Assert.Empty(await storage.ListAsync("attempt:", CancellationToken.None));
+    }
 }

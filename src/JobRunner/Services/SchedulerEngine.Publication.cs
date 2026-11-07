@@ -140,7 +140,12 @@ public sealed partial class SchedulerEngine
                 if (registration.Id == StorageRepository.Hash(root.RootPath))
                 {
                     string mappedRoot = await MapGroupRootAsync(root, nextGroupPaths, token);
-                    if (mappedRoot != root.RootPath && roots.ContainsKey(mappedRoot))
+
+                    // 元のパスへ戻っても登録のSlotIdentityは変わり得ます。同じ固定IDなら新しいキーにも保護枠を作ります。
+                    // 消えた旧IDを、同名の別ネットへ取り込まない条件は維持します。
+                    if (roots.ContainsKey(mappedRoot) && (fixedIdentity is not null
+                        ? fixedIdentity == nextCatalog.Roots.GetValueOrDefault(mappedRoot)
+                        : mappedRoot != root.RootPath))
                     {
                         var mappedRegistration = new Registration { Namespace = updated.Id, Id = StorageRepository.Hash(mappedRoot), RootPath = mappedRoot, SlotIdentity = movedSources.ContainsKey(mappedRoot) ? nextCatalog.Roots[mappedRoot] : byRegistration.GetValueOrDefault(StorageRepository.Hash(mappedRoot))?.SlotIdentity };
                         string mappedKey = DefinitionPublication.SlotKey(mappedRegistration, root.Rule, root.BusinessDate, root.OriginalDue);

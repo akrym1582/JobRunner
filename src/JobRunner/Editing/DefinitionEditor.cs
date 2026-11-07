@@ -373,6 +373,8 @@ public static partial class DefinitionEditor
     {
         private readonly SourceEvidence source;
         private readonly List<(int Start, int End, string Text, byte[]? Raw)> replacements = [];
+        private List<int>? byteOffsets;
+        private byte[]? originalBytes;
 
         public Document(SourceEvidence source)
         {
@@ -463,6 +465,17 @@ public static partial class DefinitionEditor
             }
         }
 
+        public byte[] SliceRaw(int start, int end)
+        {
+            var offsets = ByteOffsets();
+            if (start < 0 || end < start || end > Text.Length || offsets[start] < 0 || offsets[end] < 0)
+            {
+                throw new InvalidDataException("原文の切り出し範囲が不正または文字の途中です。");
+            }
+
+            return OriginalBytes().AsSpan(offsets[start], offsets[end] - offsets[start]).ToArray();
+        }
+
         public SourceEvidence Render()
         {
             if (replacements.Count == 0)
@@ -470,20 +483,9 @@ public static partial class DefinitionEditor
                 return source;
             }
 
-            byte[] original = Convert.FromBase64String(source.Base64);
+            byte[] original = OriginalBytes();
             var encoding = EncodingFor(source);
-            var decoder = encoding.GetDecoder();
-            var offsets = new List<int> { 0 };
-            Span<char> decoded = stackalloc char[2];
-            for (int i = 0; i < original.Length; i++)
-            {
-                int count = decoder.GetChars(original.AsSpan(i, 1), decoded, i == original.Length - 1);
-                for (int j = 0; j < count; j++)
-                {
-                    offsets.Add(j + 1 == count ? i + 1 : -1);
-                }
-            }
-
+            var offsets = ByteOffsets();
             using var output = new MemoryStream();
             int boundary = 0;
             foreach (var edit in replacements.OrderBy(r => r.Start).ThenBy(r => r.End))
@@ -501,6 +503,33 @@ public static partial class DefinitionEditor
 
             output.Write(original.AsSpan(offsets[boundary]));
             return new SourceEvidence { Mapping = source.Mapping, ETag = source.ETag, Base64 = Convert.ToBase64String(output.ToArray()) };
+        }
+
+        private byte[] OriginalBytes() => originalBytes ??= Convert.FromBase64String(source.Base64);
+
+        private List<int> ByteOffsets()
+        {
+            if (byteOffsets is not null)
+            {
+                return byteOffsets;
+            }
+
+            byte[] original = OriginalBytes();
+            var encoding = EncodingFor(source);
+            var decoder = encoding.GetDecoder();
+            var offsets = new List<int> { 0 };
+            Span<char> decoded = stackalloc char[2];
+            for (int i = 0; i < original.Length; i++)
+            {
+                int count = decoder.GetChars(original.AsSpan(i, 1), decoded, i == original.Length - 1);
+                for (int j = 0; j < count; j++)
+                {
+                    offsets.Add(j + 1 == count ? i + 1 : -1);
+                }
+            }
+
+            byteOffsets = offsets;
+            return offsets;
         }
     }
 }

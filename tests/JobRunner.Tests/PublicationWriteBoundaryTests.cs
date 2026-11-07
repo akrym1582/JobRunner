@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Azure.Core;
 using Azure.Core.Pipeline;
+using JobRunner.Editing;
 using JobRunner.Models;
 using JobRunner.Services;
 using JobRunner.Storage;
@@ -54,19 +55,50 @@ public sealed class PublicationWriteBoundaryTests
     [InlineData(10, 1)]
     public Task RootMoveResumesAfterActualStorageBoundary(int stage, int? count) => VerifyBoundaryAsync(stage, count, true);
 
-    private static async Task VerifyBoundaryAsync(int stage, int? count, bool move)
+    /// <summary>子移動を含む候補を実書込み境界で中断し、同じ世代IDで復旧します。</summary>
+    /// <param name="stage">中断境界です。</param>
+    /// <param name="count">件数方式です。</param>
+    /// <returns>部分バッチと世代生成の復旧です。</returns>
+    [Theory]
+    [InlineData(1, null)]
+    [InlineData(3, null)]
+    [InlineData(6, null)]
+    [InlineData(8, null)]
+    [InlineData(9, null)]
+    [InlineData(10, null)]
+    [InlineData(1, 1)]
+    [InlineData(3, 1)]
+    [InlineData(6, 1)]
+    [InlineData(8, 1)]
+    [InlineData(9, 1)]
+    [InlineData(10, 1)]
+    public Task ChildMoveResumesAfterActualStorageBoundary(int stage, int? count) => VerifyBoundaryAsync(stage, count, false, true);
+
+    private static async Task VerifyBoundaryAsync(int stage, int? count, bool move, bool childMove = false)
     {
         var failure = new WriteInterruption(stage);
         await using var scenario = new EngineScenario(failure);
         scenario.Scope.Options.ConfirmedFutureGenerations = count;
-        string children = string.Concat(Enumerable.Range(0, 105).Select(i => $"unit=j{i};{{ty=j;te=\"true\";}}"));
+        string children = string.Concat(Enumerable.Range(0, childMove ? 103 : 105).Select(i => $"unit=j{i};{{ty=j;te=\"true\";}}"));
         string original = "unit=net;{ty=n;sd=2026/11/5;st=10:00;cy=(1,d);sh=no;" + children + "}";
+        if (childMove)
+        {
+            original = original.Replace(children, "unit=left;{ty=n;" + children + "}unit=right;{ty=n;}", StringComparison.Ordinal);
+        }
+
         await scenario.StartAsync(move ? "unit=a;{ty=g;" + original + "}unit=b;{ty=g;}" : original);
         var storage = scenario.Scope.Repository;
         string stateNamespace = scenario.Engine.Namespace!;
         var before = await scenario.OccurrencesAsync();
         var definitions = new DefinitionService(storage, scenario.Scope.Options);
         var next = definitions.Validate([new SourceEvidence { Mapping = new DefinitionSource { BlobPath = "local/new.ajs" }, Base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(move ? "unit=a;{ty=g;}unit=b;{ty=g;" + original.Replace("10:00", "11:00", StringComparison.Ordinal) + "}" : original.Replace("10:00", "11:00", StringComparison.Ordinal))) }]);
+        if (childMove)
+        {
+            var candidate = DefinitionEditor.MoveSelection(next, new(DefinitionEditor.Project(next, 9), Enumerable.Range(0, 103).Select(i => "/net/left/j" + i).ToList(), "/net/right"), definitions, scenario.Scope.Options);
+            next = definitions.Validate(DefinitionEditor.Render(next, candidate.Draft));
+            Assert.Contains(next.Units.Flatten(), u => u.Path == "/net/right/j102");
+        }
+
         await definitions.SaveAsync(next, CancellationToken.None);
         var operation = new Operation { Id = "write-boundary", Kind = "Activate", Target = next.Hash, RootOrigins = move ? new() { ["/b/net"] = "/a/net" } : null };
         await scenario.EnqueueAsync(operation);

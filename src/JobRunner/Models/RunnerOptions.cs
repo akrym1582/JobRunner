@@ -5,10 +5,17 @@ namespace JobRunner.Models;
 /// </summary>
 public sealed class RunnerOptions
 {
+    private string connectionString = "UseDevelopmentStorage=true";
+
     /// <summary>
-    /// Gets or sets. BlobとTableの接続文字列。ログやAPIへ返さない秘密設定です。
+    /// Gets or sets. BlobとTableの接続文字列。空なら開発用Storageを使用し、ログやAPIへ返しません。
     /// </summary>
-    public string ConnectionString { get; set; } = "UseDevelopmentStorage=true";
+    [System.Diagnostics.CodeAnalysis.AllowNull]
+    public string ConnectionString
+    {
+        get => connectionString;
+        set => connectionString = string.IsNullOrWhiteSpace(value) ? "UseDevelopmentStorage=true" : value;
+    }
 
     /// <summary>
     /// Gets or sets. 定義スナップショットとログを保存する専用コンテナーです。
@@ -31,9 +38,9 @@ public sealed class RunnerOptions
     public string TimeZone { get; set; } = "Asia/Tokyo";
 
     /// <summary>
-    /// Gets or sets. ルート予定の時間制。24または48を指定します。
+    /// Gets or sets. ルート予定の時間制。既定は48。24または48を指定します。
     /// </summary>
-    public int ScheduleTimeMode { get; set; } = 24;
+    public int ScheduleTimeMode { get; set; } = 48;
 
     /// <summary>
     /// Gets or sets. 自動確定登録を先読みする日数です。
