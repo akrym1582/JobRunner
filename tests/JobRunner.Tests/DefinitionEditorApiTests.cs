@@ -282,6 +282,47 @@ public sealed class DefinitionEditorApiTests
         }
     }
 
+    /// <summary>選択移動APIは候補とエラーだけを返し、Blob・採用・運用行を書き換えません。</summary>
+    /// <returns>正常・不正要求と出力の実HTTP検証です。</returns>
+    [Fact]
+    public async Task MoveSelectionIsDraftOnlyOverHttp()
+    {
+        await using var scope = new StorageScope();
+        string input = "child-move-" + Guid.NewGuid().ToString("N");
+        scope.Options.DefinitionSources = [new() { BlobPath = input + "/active.ajs" }];
+        await scope.Repository.InitializeAsync(CancellationToken.None);
+        var container = scope.Repository.Blobs.GetBlobContainerClient(input);
+        await container.CreateAsync();
+        await container.GetBlobClient("active.ajs").UploadAsync(BinaryData.FromString("unit=active;{ty=n;sd=0,ud;}"));
+        await TestDefinitions.SeedHttpAsync(scope.Repository, scope.Options);
+        using var app = new AppProcess(scope.Options);
+        try
+        {
+            await WaitForEditorAsync(app);
+            var before = await OperationalStateAsync(scope.Repository);
+            var opened = await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/local", new EditorLocalRequest([new() { Mapping = new() { BlobPath = "local.ajs" }, Base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes("unit=a;{ty=n;sd=0,ud;unit=j;{ty=j;te=\"true\";}}unit=b;{ty=n;sd=0,ud;}")) }]));
+            Assert.Equal(HttpStatusCode.OK, opened.StatusCode);
+            var document = (await opened.Content.ReadFromJsonAsync<EditorDocument>())!;
+            var request = new EditorMoveSelectionRequest(document.Draft, ["/a/j"], "/b");
+            var response = await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/move-selection", request);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var moved = (await response.Content.ReadFromJsonAsync<EditorDocument>())!;
+            Assert.Contains(moved.Draft.Networks.Single(n => n.Path == "/b").Nodes, n => n.Id == "/b/j");
+            Assert.NotNull(moved.Draft.OriginCatalogHash);
+            Assert.Equal(HttpStatusCode.OK, (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/export", moved.Draft)).StatusCode);
+            foreach (var invalid in new[] { request with { Ids = [] }, request with { Ids = ["/a/j", "/a/j"] }, request with { TargetNetworkId = "/a" }, request with { TargetNetworkId = "/a/j" } })
+            {
+                Assert.Equal(HttpStatusCode.BadRequest, (await app.Client.PostAsJsonAsync("/api/jobrunner/ui/definition-editor/move-selection", invalid)).StatusCode);
+            }
+
+            Assert.Equal(before, await OperationalStateAsync(scope.Repository));
+        }
+        finally
+        {
+            await container.DeleteAsync();
+        }
+    }
+
     private static async Task<List<string>> OperationalStateAsync(StorageRepository storage)
     {
         var state = new List<string>();

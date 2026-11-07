@@ -27,6 +27,7 @@ import { EditorProperties } from "./EditorProperties";
 import { ExecutionProperties } from "./ExecutionProperties";
 import { TimingProperties } from "./TimingProperties";
 import { LocalDefinitionInput } from "./LocalDefinitionInput";
+import { MoveSelection } from "./MoveSelection";
 import { MoveUnits } from "./MoveUnits";
 import { GroupPackages } from "./GroupPackages";
 import { GroupProperties } from "./GroupProperties";
@@ -879,6 +880,15 @@ export function DefinitionEditor({
               }}
             />
           )}
+          <MoveSelection
+            draft={draft}
+            current={network.path}
+            selected={selection.filter((id) =>
+              network.nodes.some((n) => n.id === id),
+            )}
+            disabled={busy || !saveAllowed}
+            onMove={importGroup}
+          />
           <div className="editor-network-bar">
             <GitBranch size={16} />
             <label>

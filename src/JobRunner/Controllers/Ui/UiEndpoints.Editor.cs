@@ -12,6 +12,12 @@ public static partial class UiEndpoints
 {
     private static void MapEditor(RouteGroupBuilder group)
     {
+        group.MapPost("/definition-editor/move-selection", async (EditorMoveSelectionRequest request, DefinitionService definitions, RunnerOptions options, StorageRepository storage, CancellationToken token) =>
+        {
+            var bundle = await EditorSourcesAsync(request.Draft, definitions, token);
+            request = request with { Draft = request.Draft with { OriginCatalogHash = request.Draft.OriginCatalogHash ?? await CurrentOriginAsync(storage, token) } };
+            return DefinitionEditor.MoveSelection(bundle, request, definitions, options, token);
+        });
         group.MapPost("/definition-editor/move", async (EditorMoveRequest request, DefinitionService definitions, RunnerOptions options, StorageRepository storage, CancellationToken token) =>
         {
             var bundle = await EditorSourcesAsync(request.Draft, definitions, token);

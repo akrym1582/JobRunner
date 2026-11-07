@@ -99,3 +99,6 @@ DefinitionEditorTestsとDefinitionEditorApiTestsで無変更バイト一致、UT
 ## Storage中心の運用と編集版9
 
 Storage共有下書き、運用反映の確認・適用、PauseAll/ResumeAll、複数ノードの複製、月表示カレンダーはJobRunner独自UI/APIです。JP1 HTTPの対応操作・エラーIDを追加したものではありません。月の実効値は既存ScheduleCalculatorで評価し、JP1の未対応境界や別形式Schedule/Calendarを拡張しません。全体停止は起動済みプロセスを終了させず、新規開始を抑止します。保存形式6は全API/実行器を停止して移行します。[仕様](spec/scheduler/definition-lifecycle/spec.md)と[運用手順](operations.md)を参照してください。
+
+
+版9のジョブ・子ネットの選択移動はJobRunner独自の下書きUI/APIです。同じ親の選択を別ネットへ移し、内部の通常/条件接続を保持し、範囲外の接続を確認後に切断します。通常/リカバリー/判定の成立条件は既存エンジンの検証を使い、不成立なら候補全体を拒否します。明示属性と外部jcを保持し、省略属性・上位ルールは移動先で評価します。親に対応ルールがないlnの既存動作も維持し、ルール値と親の条件を確認表示します。ルートと子の相互変換、JP1の移動コマンド互換、実JP1投入比較は対象外です。

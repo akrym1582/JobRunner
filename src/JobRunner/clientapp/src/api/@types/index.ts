@@ -165,6 +165,12 @@ export type EditorMoveRequest = {
   fileEncoding?: string | null | undefined;
 }
 
+export type EditorMoveSelectionRequest = {
+  draft: EditorDraft;
+  ids: string[];
+  targetNetworkId: string;
+}
+
 export type EditorNetwork = {
   path: string;
   nodes: EditorNode[];
