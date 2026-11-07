@@ -135,6 +135,10 @@ public static partial class EditorLocalFiles
         int depth = 0;
         int units = 0;
         bool quoted = false;
+        bool inValue = false;
+        bool valueStarted = false;
+
+        // 属性値中の2026/11/*4等はコメントではありません。Value()が先頭で呼ぶSkipだけと揃えます。
         for (int i = 0; i < text.Length; i++)
         {
             if (quoted && text[i] == '#')
@@ -144,8 +148,9 @@ public static partial class EditorLocalFiles
             else if (text[i] == '"')
             {
                 quoted = !quoted;
+                valueStarted |= inValue;
             }
-            else if (!quoted && text[i] == '/' && i + 1 < text.Length && text[i + 1] == '*')
+            else if (!quoted && (!inValue || !valueStarted) && text[i] == '/' && i + 1 < text.Length && text[i + 1] == '*')
             {
                 int end = text.IndexOf("*/", i + 2, StringComparison.Ordinal);
                 if (end < 0)
@@ -155,6 +160,23 @@ public static partial class EditorLocalFiles
 
                 i = end + 1;
             }
+            else if (!quoted && text[i] == '=')
+            {
+                if (inValue)
+                {
+                    valueStarted = true;
+                }
+                else
+                {
+                    inValue = true;
+                    valueStarted = false;
+                }
+            }
+            else if (!quoted && text[i] == ';')
+            {
+                inValue = false;
+                valueStarted = false;
+            }
             else if (!quoted && text[i] == '{' && (++depth > 64 || ++units > 10000))
             {
                 throw new ArgumentException("ローカル入力は64階層・1ファイル10000ユニットまでです。");
@@ -162,6 +184,10 @@ public static partial class EditorLocalFiles
             else if (!quoted && text[i] == '}')
             {
                 depth--;
+            }
+            else if (inValue && !char.IsWhiteSpace(text[i]))
+            {
+                valueStarted = true;
             }
         }
     }
