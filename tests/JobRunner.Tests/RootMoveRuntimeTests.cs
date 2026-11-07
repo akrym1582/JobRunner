@@ -222,4 +222,50 @@ public sealed class RootMoveRuntimeTests
             await scenario.AdvanceUntilAsync(values => values.Any(o => o.RootPath == "/b/n" && o.GenerationRevision == 2 && o.Started));
         }
     }
+
+    /// <summary>消えた旧固定IDの保留枠を、親改名で現行ルートへ混ぜません。</summary>
+    /// <param name="count">件数方式かです。</param>
+    /// <returns>現行の当日予定と正しい固定IDの保留枠を検証します。</returns>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RenameAfterReusingPathDoesNotAdoptRetiredRootSlots(bool count)
+    {
+        await using var scenario = new EngineScenario();
+        scenario.Scope.Options.ConfirmedHorizonDays = 2;
+        scenario.Scope.Options.ConfirmedFutureGenerations = count ? 2 : null;
+        const string sourceNetwork = "unit=n;{ty=n;sd=1,en;st=11:00;cy=(1,d);sh=no;}";
+        const string oldNetwork = "unit=n;{ty=n;sd=1,en;st=10:00;cy=(1,d);sh=no;}";
+        await scenario.StartAsync("unit=a;{ty=g;" + sourceNetwork + "}unit=b;{ty=g;" + oldNetwork + "}");
+        var storage = scenario.Scope.Repository;
+        var before = await scenario.OccurrencesAsync();
+        var sourceToday = before.Where(o => o.Id == o.RootId && o.RootPath == "/a/n").OrderBy(o => o.Due).First();
+        var sourceTomorrow = before.Single(o => o.Id == o.RootId && o.RootPath == "/a/n" && o.Due == sourceToday.Due.AddDays(1));
+        var retired = before.Where(o => o.Id == o.RootId && o.RootPath == "/b/n").OrderBy(o => o.Due).First();
+        await scenario.EnqueueAsync(new Operation { Id = "hold-retired", Kind = "Hold", Target = retired.Id });
+        await scenario.EnqueueAsync(new Operation { Id = "hold-source", Kind = "Hold", Target = sourceTomorrow.Id });
+        await scenario.Engine.TickAsync(CancellationToken.None);
+        var service = new DefinitionService(storage, scenario.Scope.Options);
+        async Task Publish(string id, string text, Dictionary<string, string>? roots, Dictionary<string, string>? groups = null)
+        {
+            var next = service.Validate([new SourceEvidence { Mapping = new() { BlobPath = "local/rename-reused" }, Base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(text)) }]);
+            await service.SaveAsync(next, CancellationToken.None);
+            await scenario.EnqueueAsync(new Operation { Id = id, Kind = "Activate", Target = next.Hash, RootOrigins = roots, GroupOrigins = groups });
+            await scenario.Engine.TickAsync(CancellationToken.None);
+            Assert.Equal("Completed", StorageRepository.Read<Operation>((await storage.GetAsync("command:" + StorageRepository.Hash(id), CancellationToken.None))!).Status);
+        }
+
+        await Publish("remove", "unit=a;{ty=g;" + sourceNetwork + "}unit=b;{ty=g;}", null);
+        await Publish("move", "unit=a;{ty=g;}unit=b;{ty=g;" + sourceNetwork + "}", new() { ["/b/n"] = "/a/n" });
+        await Publish("rename", "unit=a;{ty=g;}unit=c;{ty=g;" + sourceNetwork + "}", new() { ["/c/n"] = "/b/n" }, new() { ["/a"] = "/a", ["/c"] = "/b" });
+        await scenario.RestartAsync();
+        await scenario.Engine.TickAsync(CancellationToken.None);
+        var after = await scenario.OccurrencesAsync();
+        Assert.Equal("Held", after.Single(o => o.Id == retired.Id).State);
+        Assert.Equal("Held", after.Single(o => o.Id == sourceTomorrow.Id).State);
+        Assert.Contains(after, o => o.RootPath == "/c/n" && o.Id == o.RootId && o.Due == sourceToday.Due && o.State == "Waiting");
+        Assert.DoesNotContain(after, o => o.RootPath == "/c/n" && o.Id == o.RootId && o.Due == sourceTomorrow.Due);
+        scenario.Clock.Now = sourceToday.Due;
+        await scenario.AdvanceUntilAsync(values => values.Any(o => o.RootPath == "/c/n" && o.Due == sourceToday.Due && o.State == "Succeeded"));
+    }
 }

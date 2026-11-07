@@ -93,9 +93,11 @@ public sealed partial class SchedulerEngine
     private async Task<string> MapGroupRootAsync(Occurrence root, Dictionary<string, string> nextPaths, CancellationToken token)
     {
         var catalog = await ReadGroupsAsync(root.GroupCatalogHash, token);
-        if (catalog.Roots.TryGetValue(root.RootPath, out string? rootId) && nextPaths.TryGetValue(rootId, out string? moved))
+        if (catalog.Roots.TryGetValue(root.RootPath, out string? rootId))
         {
-            return moved;
+            // 固定IDの消失は別ネットへの置換です。親が同じでも、その保護枠を引き継ぎません。
+            // ID自体が記録されていない場合だけ、従来のグループ単位の補完へ進みます。
+            return nextPaths.GetValueOrDefault(rootId) ?? root.RootPath;
         }
 
         string path = ScheduleCalculator.Parent(root.RootPath);
