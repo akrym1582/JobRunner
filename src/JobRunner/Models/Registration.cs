@@ -5,6 +5,10 @@ namespace JobRunner.Models;
 /// </summary>
 public sealed class Registration
 {
+    /// <summary>Gets or sets. 移動後の原予定枠を過去の同名ネットと区別します。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? SlotIdentity { get; set; }
+
     /// <summary>
     /// Gets or sets. 操作または自動登録から決定的に生成する識別子です。
     /// </summary>

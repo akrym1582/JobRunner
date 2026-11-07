@@ -19,8 +19,9 @@ public sealed class GroupCatalogService(StorageRepository storage)
     /// <param name="activation">反映先の採用版です。</param>
     /// <param name="previous">現在の対応です。</param>
     /// <param name="origins">新完全名から旧完全名への対応です。</param>
+    /// <param name="rootOrigins">移動前のルート完全名です。</param>
     /// <returns>保存前のカタログです。</returns>
-    public static GroupCatalog Create(DefinitionBundle next, Activation activation, GroupCatalog? previous, Dictionary<string, string>? origins = null)
+    public static GroupCatalog Create(DefinitionBundle next, Activation activation, GroupCatalog? previous, Dictionary<string, string>? origins = null, Dictionary<string, string>? rootOrigins = null)
     {
         var result = new GroupCatalog { Namespace = activation.Id };
         var used = new HashSet<string>(StringComparer.Ordinal);
@@ -39,6 +40,35 @@ public sealed class GroupCatalogService(StorageRepository storage)
         if (origins is not null && origins.Any(p => !result.Groups.ContainsKey(p.Key) || previous?.Groups.ContainsKey(p.Value) != true))
         {
             throw new ArgumentException("グループの改名元または反映先がありません。");
+        }
+
+        var previousGroupPaths = previous?.Groups.ToDictionary(p => p.Value, p => p.Key, StringComparer.Ordinal) ?? [];
+        var usedRoots = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var root in DefinitionPublication.Roots(next).Values)
+        {
+            string? origin = rootOrigins is null ? root.Path : rootOrigins.GetValueOrDefault(root.Path);
+            if (rootOrigins is null)
+            {
+                string parent = JobRunner.Scheduling.ScheduleCalculator.Parent(root.Path);
+                if (result.Groups.TryGetValue(parent, out string? groupId))
+                {
+                    string? oldParent = previousGroupPaths.GetValueOrDefault(groupId);
+                    origin = oldParent is null ? null : oldParent.TrimEnd('/') + "/" + root.Name;
+                }
+            }
+
+            string id = (origin is null ? null : previous?.Roots.GetValueOrDefault(origin)) ?? StorageRepository.Hash($"root:{activation.Id}:{activation.Revision}:{root.Path}");
+            if (!usedRoots.Add(id))
+            {
+                throw new ArgumentException("同じルートを複数の配置先へ引き継げません。");
+            }
+
+            result.Roots.Add(root.Path, id);
+        }
+
+        if (rootOrigins is not null && rootOrigins.Any(p => !result.Roots.ContainsKey(p.Key) || previous?.Roots.ContainsKey(p.Value) != true))
+        {
+            throw new ArgumentException("ルートの移動元または反映先がありません。");
         }
 
         return result;
@@ -92,7 +122,7 @@ public sealed class GroupCatalogService(StorageRepository storage)
 
         var data = (await storage.Container.GetBlobClient($"groups/{storage.Partition}/{hash}.json").DownloadContentAsync(token)).Value.Content;
         var value = data.ToObjectFromJson<GroupCatalog>();
-        if (StorageRepository.Hash(data.ToArray()) != hash || value?.FormatVersion != 1 || value.Groups.Values.Distinct(StringComparer.Ordinal).Count() != value.Groups.Count)
+        if (StorageRepository.Hash(data.ToArray()) != hash || value?.FormatVersion != 2 || value.Groups.Values.Distinct(StringComparer.Ordinal).Count() != value.Groups.Count || value.Roots.Values.Distinct(StringComparer.Ordinal).Count() != value.Roots.Count)
         {
             throw new InvalidDataException("グループ所属が破損しています。自動再開はしません。");
         }

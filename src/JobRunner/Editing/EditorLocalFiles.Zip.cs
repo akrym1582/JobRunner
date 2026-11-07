@@ -43,7 +43,7 @@ public static partial class EditorLocalFiles
             using var json = JsonDocument.Parse(ReadEntry(manifest, 256 * 1024));
             var root = json.RootElement;
             UniqueProperties(root);
-            if (root.GetProperty("FormatVersion").GetInt32() != 1)
+            if (root.GetProperty("FormatVersion").GetInt32() != 1 && !(root.GetProperty("FormatVersion").GetInt32() == 2 && root.TryGetProperty("GroupRoot", out _)))
             {
                 throw new ArgumentException("未対応のZIP形式です。");
             }

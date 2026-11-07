@@ -4,10 +4,13 @@ namespace JobRunner.Models;
 public sealed class GroupCatalog
 {
     /// <summary>Gets or sets. 保存形式です。</summary>
-    public int FormatVersion { get; set; } = 1;
+    public int FormatVersion { get; set; } = 2;
 
     /// <summary>Gets or sets. 同じパスを別の採用領域で共有しません。</summary>
     public string Namespace { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets. ルートの配置をまたぐ固定IDです。</summary>
+    public Dictionary<string, string> Roots { get; set; } = new(StringComparer.Ordinal);
 
     /// <summary>Gets or sets. 完全名から固定IDへの対応です。</summary>
     public Dictionary<string, string> Groups { get; set; } = new(StringComparer.Ordinal);

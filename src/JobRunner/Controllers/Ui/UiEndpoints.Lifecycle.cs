@@ -99,6 +99,11 @@ public static partial class UiEndpoints
             await definitions.SaveAsync(next, token);
             var row = await storage.GetAsync("definition-active", token);
             var active = row is null ? null : await ActiveAsync(storage, token);
+            if (draft.OriginCatalogHash is not null && draft.OriginCatalogHash != (active?.GroupCatalogHash ?? string.Empty))
+            {
+                throw new FormatException("運用定義の所属が変わりました。下書きは保持しています。必要な編集を保存・出力し、最新の運用定義を開き直して移動してください。");
+            }
+
             var old = active is null ? null : await definitions.ReadSourcesAsync(active.DefinitionHash, token);
             var registrations = active is null ? [] : await storage.ListAsync($"registration:{active.Id}:", token);
             var occurrences = (await storage.ListAsync("occurrence:", token)).Where(r => StorageRepository.Read<Occurrence>(r).Namespace == active?.Id).ToList();
@@ -116,7 +121,12 @@ public static partial class UiEndpoints
             var origins = DefinitionEditor.GroupOrigins(source, draft).Where(p => oldGroups.Contains(p.Value)).ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
             var changes = next.Units.Flatten().Where(u => u.Type == "g").Select(u => !origins.TryGetValue(u.Path, out string? origin) ? $"{u.Path}: 新規グループは停止状態で反映" : origin != u.Path ? $"{origin} → {u.Path}: 固定IDと停止状態を維持" : null).Where(v => v is not null).Select(v => v!).ToList();
             changes.AddRange(newRoots.Except(oldRoots, StringComparer.Ordinal).Select(p => $"{p}: 新しい配置先の祖先グループの停止状態を適用。開始済み旧世代の所属は変更しません。"));
-            return new PublicationPreview(next.Hash, active?.Revision ?? 0, DefinitionPublication.ImpactHash(row, registrations, occurrences, now, await storage.ListAsync("group-control:", token)), newRoots.Except(oldRoots, StringComparer.Ordinal).ToList(), oldRoots.Except(newRoots, StringComparer.Ordinal).ToList(), generations, DefinitionEditor.Describe(next.Sources, old?.Sources ?? []), old is null ? [] : DefinitionEditor.Describe(old.Sources, old.Sources), origins, changes);
+            var oldRootPaths = oldRoots.ToHashSet(StringComparer.Ordinal);
+            var rootOrigins = DefinitionEditor.RootOrigins(source, draft).Where(p => oldRootPaths.Contains(p.Value) && newRoots.Contains(p.Key)).ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
+            var movedRoots = rootOrigins.Where(p => p.Key != p.Value).Select(p => p.Value).ToHashSet(StringComparer.Ordinal);
+            changes.AddRange(registrationMap.Values.Where(r => r.Kind == "Confirmed" && !r.Disabled && !r.ReplenishmentStopped && r.Id != StorageRepository.Hash(r.RootPath) && movedRoots.Contains(r.RootPath))
+                .Select(r => $"{r.RootPath}: API個別確定登録が残るため反映不可。登録条件を確認・解除し、移動後に再登録してください。"));
+            return new PublicationPreview(next.Hash, active?.Revision ?? 0, DefinitionPublication.ImpactHash(row, registrations, occurrences, now, await storage.ListAsync("group-control:", token)), newRoots.Except(oldRoots, StringComparer.Ordinal).ToList(), oldRoots.Except(newRoots, StringComparer.Ordinal).ToList(), generations, DefinitionEditor.Describe(next.Sources, old?.Sources ?? []), old is null ? [] : DefinitionEditor.Describe(old.Sources, old.Sources), origins, changes, rootOrigins);
         });
         group.MapPost("/definition-editor/publish", (Operation operation, StorageRepository storage, CancellationToken token) =>
         {

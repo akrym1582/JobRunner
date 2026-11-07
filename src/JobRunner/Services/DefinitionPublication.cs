@@ -46,7 +46,11 @@ public static class DefinitionPublication
     /// <param name="day">元の業務日です。</param>
     /// <param name="due">間隔・日時・即時登録の元の日時です。</param>
     /// <returns>Tableの抑止記録キーです。</returns>
-    public static string SlotKey(Registration registration, int rule, DateOnly day, DateTimeOffset due) => "generation-slot:" + StorageRepository.Hash(JsonSerializer.Serialize(new { registration.Namespace, registration.Id, Rule = rule, Day = day, Due = registration.FixedDue is not null || registration.Kind == "Immediate" ? due : (DateTimeOffset?)null }));
+    public static string SlotKey(Registration registration, int rule, DateOnly day, DateTimeOffset due)
+    {
+        string original = JsonSerializer.Serialize(new { registration.Namespace, registration.Id, Rule = rule, Day = day, Due = registration.FixedDue is not null || registration.Kind == "Immediate" ? due : (DateTimeOffset?)null });
+        return "generation-slot:" + StorageRepository.Hash(registration.SlotIdentity is null ? original : JsonSerializer.Serialize(new { registration.SlotIdentity, Original = original }));
+    }
 
     /// <summary>反映前に確認した対象行と版を照合するハッシュです。</summary>
     /// <param name="activation">現在の採用行です。</param>

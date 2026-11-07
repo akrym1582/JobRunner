@@ -34,7 +34,7 @@ public sealed class DefinitionLifecycleTests
         await engine.TickAsync(CancellationToken.None);
         var active = StorageRepository.Read<Activation>((await scope.Repository.GetAsync("definition-active", CancellationToken.None))!);
         Assert.Equal(1, active.Revision);
-        Assert.Equal(7, active.FormatVersion);
+        Assert.Equal(8, active.FormatVersion);
         Assert.NotNull(engine.Namespace);
         Assert.Empty(await scope.Repository.ListAsync("attempt:", CancellationToken.None));
         var restarted = new SchedulerEngine(scope.Repository, definitions, new ProcessJobExecutor(scope.Repository), scope.Options, clock);

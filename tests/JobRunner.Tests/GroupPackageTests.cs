@@ -39,13 +39,13 @@ public sealed class GroupPackageTests
 
     /// <summary>選択外への参照とカレンダー継承を黙って切り離しません。</summary>
     [Fact]
-    public void RejectsExternalDependenciesAndNameCollision()
+    public void PreservesExternalDependenciesAndRejectsNameCollision()
     {
         var service = Service();
         var bundle = service.Validate([Source("a.ajs", "unit=calendar;{ty=g;cl=su;}unit=g;{ty=g;unit=n;{ty=n;jc=\"/calendar\";sd=0,ud;}}")]);
-        Assert.Contains("選択外", Assert.Throws<ArgumentException>(() => DefinitionEditor.ExportGroup(bundle, new(DefinitionEditor.Project(bundle, 9), "/g"), service)).Message, StringComparison.Ordinal);
+        Assert.NotEmpty(DefinitionEditor.ExportGroup(bundle, new(DefinitionEditor.Project(bundle, 9), "/g"), service));
         bundle = service.Validate([Source("a.ajs", "unit=parent;{ty=g;cl=su;unit=g;{ty=g;unit=n;{ty=n;sd=0,ud;}}}")]);
-        Assert.Contains("継承", Assert.Throws<ArgumentException>(() => DefinitionEditor.ExportGroup(bundle, new(DefinitionEditor.Project(bundle, 9), "/parent/g"), service)).Message, StringComparison.Ordinal);
+        Assert.NotEmpty(DefinitionEditor.ExportGroup(bundle, new(DefinitionEditor.Project(bundle, 9), "/parent/g"), service));
         bundle = service.Validate([Source("a.ajs", "unit=g;{ty=g;unit=n;{ty=n;sd=0,ud;}}")]);
         var draft = DefinitionEditor.Project(bundle, 9);
         string zip = Convert.ToBase64String(DefinitionEditor.ExportGroup(bundle, new(draft, "/g"), service));
@@ -96,6 +96,40 @@ public sealed class GroupPackageTests
 
         var bundle = service.Validate([source]);
         Assert.Throws<ArgumentException>(() => DefinitionEditor.ImportGroup(bundle, new(DefinitionEditor.Project(bundle, 9), "/g", Convert.ToBase64String(stream.ToArray())), service, new()));
+    }
+
+    /// <summary>大量の依存を持つ出力も読込側のmanifest上限内に収まります。</summary>
+    /// <param name="unique">参照先を別々にするかです。</param>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void LargeDependenciesRoundTripWithinManifestLimit(bool unique)
+    {
+        var service = Service();
+        string networks = string.Concat(Enumerable.Range(0, 2500).Select(i => $"unit=n{i};{{ty=n;sd=0,ud;jc=\"/external/{new string('x', 60)}{(unique ? i : 0)}\";}}"));
+        var bundle = service.Validate([Source("large.ajs", "unit=g;{ty=g;" + networks + "}unit=keep;{ty=g;}")], true);
+        var draft = DefinitionEditor.Project(bundle, 9);
+        byte[] zip = DefinitionEditor.ExportGroup(bundle, new(draft, "/g"), service);
+        using var archive = new ZipArchive(new MemoryStream(zip));
+        Assert.InRange(archive.GetEntry("manifest.json")!.Length, 1, 256 * 1024);
+        var imported = DefinitionEditor.ImportGroup(bundle, new(draft, string.Empty, Convert.ToBase64String(zip), "/", "copy"), service, new());
+        var result = service.Validate(DefinitionEditor.Render(bundle, imported.Draft), true);
+        Assert.Equal(2500, result.Units.Flatten().Count(u => u.Path.StartsWith("/copy/n", StringComparison.Ordinal)));
+        if (unique)
+        {
+            Assert.Contains(imported.Diagnostics!, d => d.Contains("省略", StringComparison.Ordinal));
+        }
+    }
+
+    /// <summary>ファイル対応だけでmanifest上限を超える入力は壊れたZIPを返しません。</summary>
+    [Fact]
+    public void RejectsOversizedSourceManifestBeforeReturningZip()
+    {
+        var service = Service();
+        var sources = new List<SourceEvidence> { Source("main.ajs", "unit=g;{ty=g;}") };
+        sources.AddRange(Enumerable.Range(0, 31).Select(i => Source(new string('い', 500) + i + ".ajs", "unit=n;{ty=n;sd=0,ud;}", "utf-8", "/g/" + new string('あ', 1000) + i)));
+        var bundle = service.Validate(sources);
+        Assert.Contains("manifest", Assert.Throws<ArgumentException>(() => DefinitionEditor.ExportGroup(bundle, new(DefinitionEditor.Project(bundle, 9), "/g"), service)).Message, StringComparison.Ordinal);
     }
 
     private static SourceEvidence Source(string name, string text, string encoding = "utf-8", string target = "/")

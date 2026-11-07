@@ -221,3 +221,199 @@ for (const accepted of [false, true]) {
     ).toBeEnabled();
   });
 }
+
+test("グループ移動を確認して保存しundoできる", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "定義編集", exact: true }).click();
+  await page.getByText("ローカル定義を開く", { exact: true }).click();
+  await page.getByLabel("定義ファイル", { exact: true }).setInputFiles({
+    name: "move.ajs",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.from(
+      "unit=a;{ty=g;unit=g;{ty=g;unit=n;{ty=n;sd=0,ud;}}}unit=b;{ty=g;cl=su;}",
+    ),
+  });
+  page.once("dialog", (d) => d.accept());
+  await page
+    .getByRole("button", { name: "ローカル定義を読み込む", exact: true })
+    .click();
+  await expect(page.getByLabel("編集ネット")).toHaveValue("/a/g/n");
+  await page.getByText("グループ・ルートネットの移動", { exact: true }).click();
+  await page
+    .getByLabel("移動するユニット", { exact: true })
+    .selectOption("/a/g");
+  await page.getByLabel("移動先グループ", { exact: true }).selectOption("/b");
+  page.once("dialog", async (d) => {
+    expect(d.message()).toContain("移動先の継承");
+    await d.accept();
+  });
+  await page
+    .getByRole("button", { name: "移動候補を確認", exact: true })
+    .click();
+  await expect(
+    page.getByLabel("編集ネット").locator('option[value="/b/g/n"]'),
+  ).toHaveCount(1);
+  await expect(
+    page.getByText("ブラウザーに保存済み", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(
+    page.getByLabel("編集ネット").locator('option[value="/a/g/n"]'),
+  ).toHaveCount(1);
+  await page.getByRole("button", { name: "やり直す", exact: true }).click();
+  await expect(
+    page.getByLabel("編集ネット").locator('option[value="/b/g/n"]'),
+  ).toHaveCount(1);
+  await expect(
+    page.getByText("ブラウザーに保存済み", { exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: "定義編集", exact: true }).click();
+  await expect(
+    page.getByLabel("編集ネット").locator('option[value="/b/g/n"]'),
+  ).toHaveCount(1);
+});
+
+test("外部カレンダーを同梱しないZIPを不足状態で保存できる", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "定義編集", exact: true }).click();
+  await page.getByText("ローカル定義を開く", { exact: true }).click();
+  const input = page.getByLabel("定義ファイル", { exact: true });
+  await input.setInputFiles({
+    name: "external.ajs",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.from(
+      'unit=calendar;{ty=g;cl=su;}unit=g;{ty=g;unit=n;{ty=n;sd=0,ud;jc="/calendar";}}',
+    ),
+  });
+  page.once("dialog", (d) => d.accept());
+  await page
+    .getByRole("button", { name: "ローカル定義を読み込む", exact: true })
+    .click();
+  await page
+    .getByText("グループのエクスポート・インポート", { exact: true })
+    .click();
+  await page.getByLabel("入出力グループ").selectOption("/g");
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "グループZIPをダウンロード" }).click();
+  const zip = await readFile((await (await download).path())!);
+  await input.setInputFiles({
+    name: "target.ajs",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.from("unit=keep;{ty=g;}"),
+  });
+  page.once("dialog", (d) => d.accept());
+  await page
+    .getByRole("button", { name: "ローカル定義を読み込む", exact: true })
+    .click();
+  await expect(page.getByLabel("入出力グループ")).toHaveValue("/keep");
+  await page
+    .getByLabel("グループZIP", { exact: true })
+    .setInputFiles({ name: "g.zip", mimeType: "application/zip", buffer: zip });
+  await page.getByLabel("追加グループ名", { exact: true }).fill("copied");
+  page.once("dialog", async (d) => {
+    expect(d.message()).toContain("参照先不足");
+    await d.accept();
+  });
+  await page
+    .getByRole("button", { name: "グループを下書きへ取り込む" })
+    .click();
+  await expect(page.getByLabel("編集ネット")).toHaveValue("/copied/n");
+  await expect(
+    page.getByText("ブラウザーに保存済み", { exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: "定義編集", exact: true }).click();
+  await expect(page.getByLabel("編集ネット")).toHaveValue("/copied/n");
+  await page
+    .getByRole("button", { name: "検証・プレビュー", exact: true })
+    .click();
+  await expect(
+    page.getByText("検証エラー — 修正してください", { exact: true }),
+  ).toBeVisible();
+  const refused = page.waitForResponse((r) =>
+    r.url().endsWith("/api/jobrunner/ui/definition-editor/publication-preview"),
+  );
+  await page
+    .getByRole("button", { name: "運用反映の差分を確認", exact: true })
+    .click();
+  const response = await refused;
+  expect(response.status()).toBe(400);
+  expect(JSON.stringify(await response.json())).toContain(
+    "参照カレンダーのグループが存在しません",
+  );
+  await expect(
+    page.getByRole("dialog", { name: "運用反映の確認" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText(/参照カレンダーのグループが存在しません/).first(),
+  ).toBeVisible();
+});
+
+test("所属の古い下書きは運用反映前に拒否して採用版を保持する", async ({
+  request,
+}) => {
+  const api = "http://127.0.0.1:5181/api/jobrunner/ui";
+  const before = await (await request.get(api + "/runtime")).json();
+  const current = await (await request.get(api + "/definition-editor")).json();
+  expect(current.draft.originCatalogHash).toBe(before.active.groupCatalogHash);
+  const fresh = await request.post(
+    api + "/definition-editor/publication-preview",
+    { data: current.draft },
+  );
+  expect(fresh.status()).toBe(200);
+  const stale = await request.post(
+    api + "/definition-editor/publication-preview",
+    { data: { ...current.draft, originCatalogHash: "0".repeat(64) } },
+  );
+  expect(stale.status()).toBe(400);
+  expect(JSON.stringify(await stale.json())).toContain("所属が変わりました");
+  expect((await (await request.get(api + "/runtime")).json()).active).toEqual(
+    before.active,
+  );
+});
+
+test("旧ルート移動の下書きから続けて移動し保存・再読込できる", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "定義編集", exact: true }).click();
+  await page.getByText("ローカル定義を開く", { exact: true }).click();
+  await page.getByLabel("定義ファイル", { exact: true }).setInputFiles({
+    name: "chain.ajs",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.from(
+      "unit=a;{ty=g;unit=n;{ty=n;sd=0,ud;}}unit=b;{ty=g;}unit=c;{ty=g;}",
+    ),
+  });
+  page.once("dialog", (d) => d.accept());
+  await page
+    .getByRole("button", { name: "ローカル定義を読み込む", exact: true })
+    .click();
+  await expect(page.getByLabel("編集ネット")).toHaveValue("/a/n");
+  await page.getByText("ネットの移動・種別切替", { exact: true }).click();
+  await page.getByLabel("ルートの移動先", { exact: true }).selectOption("/b");
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "移動を検証", exact: true }).click();
+  await expect(
+    page.getByLabel("編集ネット").locator('option[value="/a/n"]'),
+  ).toContainText("/b/n");
+  await page.getByText("グループ・ルートネットの移動", { exact: true }).click();
+  await page
+    .getByLabel("移動するユニット", { exact: true })
+    .selectOption("/b/n");
+  await page.getByLabel("移動先グループ", { exact: true }).selectOption("/c");
+  page.once("dialog", (d) => d.accept());
+  await page
+    .getByRole("button", { name: "移動候補を確認", exact: true })
+    .click();
+  await expect(page.getByLabel("編集ネット")).toHaveValue("/c/n");
+  await expect(
+    page.getByText("ブラウザーに保存済み", { exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: "定義編集", exact: true }).click();
+  await expect(page.getByLabel("編集ネット")).toHaveValue("/c/n");
+});

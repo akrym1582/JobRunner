@@ -107,8 +107,9 @@ public sealed class DefinitionService(StorageRepository storage, RunnerOptions o
 
     /// <summary>APIの取り込み原文を同じ検証経路で正規化します。</summary>
     /// <param name="sources">原文バイト列と配置先の一覧です。</param>
+    /// <param name="allowMissingCalendars">編集専用で参照不足だけを許可します。運用では指定しません。</param>
     /// <returns>検証済みの不変定義です。</returns>
-    public DefinitionBundle Validate(List<SourceEvidence> sources)
+    public DefinitionBundle Validate(List<SourceEvidence> sources, bool allowMissingCalendars = false)
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         foreach (var source in sources)
@@ -141,7 +142,7 @@ public sealed class DefinitionService(StorageRepository storage, RunnerOptions o
             bundle.Units.AddRange(Jp1DefinitionParser.Parse(text, source.Mapping));
         }
 
-        Complete(bundle);
+        Complete(bundle, allowMissingCalendars);
         return bundle;
     }
 
@@ -237,7 +238,8 @@ public sealed class DefinitionService(StorageRepository storage, RunnerOptions o
 
     /// <summary>親グループを補完し、全体を検証してからハッシュを確定します。</summary>
     /// <param name="bundle">すべての入力を解析した一式です。</param>
-    private void Complete(DefinitionBundle bundle)
+    /// <param name="allowMissingCalendars">下書きだけ参照不足を許可します。</param>
+    private void Complete(DefinitionBundle bundle, bool allowMissingCalendars = false)
     {
         var paths = bundle.Units.Flatten().Select(u => u.Path).ToHashSet(StringComparer.Ordinal);
         foreach (var source in bundle.Sources)
@@ -254,7 +256,7 @@ public sealed class DefinitionService(StorageRepository storage, RunnerOptions o
             }
         }
 
-        DefinitionValidator.Validate(bundle.Units, options);
+        DefinitionValidator.Validate(bundle.Units, options, allowMissingCalendars);
         bundle.Hash = StorageRepository.Hash(JsonSerializer.Serialize(bundle.Sources.Select(s => new { s.Mapping.Kind, s.Mapping.TargetPath, s.Mapping.BlobPath, s.Mapping.Encoding, s.ContentHash })));
     }
 }
