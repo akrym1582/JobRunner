@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import type { Occurrence, Operation } from "./api/@types";
 import { client, errorMessage } from "./client";
+import { GroupControls } from "./GroupControls";
 import { RuntimeControls } from "./RuntimeControls";
 import { DefinitionEditor } from "./editor/DefinitionEditor";
 import { Graph } from "./Graph";
@@ -46,6 +47,11 @@ export function App() {
   const [focus, setFocus] = useState<{ path: string; revision: number }>();
   const [logTarget, setLogTarget] = useState<Occurrence>();
   const [search, setSearch] = useState("");
+  const [groupId, setGroupId] = useState("");
+  const groupCatalog = useAspidaSWR(client.ui.groups, {
+    refreshInterval: 1500,
+  });
+  const selectedGroup = groupCatalog.data?.find((g) => g.id === groupId);
   const [page, setPage] = useState(0);
   const [from, setFrom] = useState("");
   const [until, setUntil] = useState("");
@@ -214,9 +220,39 @@ export function App() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </label>
+        <nav aria-label="ジョブグループ一覧">
+          <button
+            className={`network-item ${!groupId ? "active" : ""}`}
+            onClick={() => setGroupId("")}
+          >
+            ジョブルート /
+          </button>
+          {groupCatalog.data
+            ?.filter((g) => !g.retired && g.path.includes(search))
+            .map((g) => (
+              <button
+                key={g.id}
+                className={`network-item ${groupId === g.id ? "active" : ""}`}
+                style={{
+                  paddingLeft:
+                    18 + Math.max(0, g.path.split("/").length - 2) * 12,
+                }}
+                onClick={() => setGroupId(g.id)}
+                title={g.path}
+              >
+                <FolderTree size={16} />
+                <span>{g.path.split("/").at(-1)}</span>
+                <span>{g.pausedBy.length ? "⏸" : ""}</span>
+              </button>
+            ))}
+        </nav>
         <nav aria-label="ジョブネット一覧">
           {networks
-            .filter((n) => n.path.includes(search))
+            .filter(
+              (n) =>
+                n.path.includes(search) &&
+                (!selectedGroup || n.path.startsWith(selectedGroup.path + "/")),
+            )
             .map((n) => (
               <button
                 key={n.path}
@@ -270,6 +306,7 @@ export function App() {
           </div>
         </header>
         <RuntimeControls />
+        <GroupControls selected={groupId} onSelect={setGroupId} />
         <div className="content">
           {catalog.data && !catalog.data.definitionHash && (
             <div className="notice" role="status">

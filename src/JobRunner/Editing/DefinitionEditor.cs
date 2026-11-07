@@ -468,20 +468,37 @@ public static partial class DefinitionEditor
                 return source;
             }
 
-            var text = new StringBuilder(Text);
-            int boundary = Text.Length;
-            foreach (var edit in replacements.OrderByDescending(r => r.Start).ThenByDescending(r => r.End))
+            byte[] original = Convert.FromBase64String(source.Base64);
+            var encoding = EncodingFor(source);
+            var decoder = encoding.GetDecoder();
+            var offsets = new List<int> { 0 };
+            Span<char> decoded = stackalloc char[2];
+            for (int i = 0; i < original.Length; i++)
             {
-                if (edit.End > boundary)
+                int count = decoder.GetChars(original.AsSpan(i, 1), decoded, i == original.Length - 1);
+                for (int j = 0; j < count; j++)
                 {
-                    throw new InvalidDataException("原文の編集範囲が重複しています。");
+                    offsets.Add(j + 1 == count ? i + 1 : -1);
                 }
-
-                text.Remove(edit.Start, edit.End - edit.Start).Insert(edit.Start, edit.Text);
-                boundary = edit.Start;
             }
 
-            return new SourceEvidence { Mapping = source.Mapping, ETag = source.ETag, Base64 = Convert.ToBase64String(EncodingFor(source).GetBytes(text.ToString())) };
+            using var output = new MemoryStream();
+            int boundary = 0;
+            foreach (var edit in replacements.OrderBy(r => r.Start).ThenBy(r => r.End))
+            {
+                if (edit.Start < boundary || edit.End < edit.Start || edit.End > Text.Length || offsets[edit.Start] < 0 || offsets[edit.End] < 0)
+                {
+                    throw new InvalidDataException("原文の編集範囲が重複しているか文字の途中です。");
+                }
+
+                // CP932の重複符号位置も含め、変更しない範囲は再エンコードしません。
+                output.Write(original.AsSpan(offsets[boundary], offsets[edit.Start] - offsets[boundary]));
+                output.Write(encoding.GetBytes(edit.Text));
+                boundary = edit.End;
+            }
+
+            output.Write(original.AsSpan(offsets[boundary]));
+            return new SourceEvidence { Mapping = source.Mapping, ETag = source.ETag, Base64 = Convert.ToBase64String(output.ToArray()) };
         }
     }
 }

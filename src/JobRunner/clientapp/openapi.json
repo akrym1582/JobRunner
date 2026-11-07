@@ -37,6 +37,65 @@
         }
       }
     },
+    "/api/jobrunner/ui/definition-editor/groups/export": {
+      "post": {
+        "tags": [
+          "JobRunner"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorGroupPackageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobrunner/ui/definition-editor/groups/import": {
+      "post": {
+        "tags": [
+          "JobRunner"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorGroupPackageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorDocument"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobrunner/ui/definition-editor/local": {
       "post": {
         "tags": [
@@ -414,6 +473,28 @@
         }
       }
     },
+    "/api/jobrunner/ui/groups": {
+      "get": {
+        "tags": [
+          "JobRunner"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GroupStatus"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobrunner/ui/jobnets": {
       "get": {
         "tags": [
@@ -740,6 +821,10 @@
           "baseline": {
             "type": "string",
             "format": "date-time"
+          },
+          "groupCatalogHash": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -1107,6 +1192,13 @@
               "$ref": "#/components/schemas/EditorContainer"
             },
             "nullable": true
+          },
+          "groupOrigins": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -1195,6 +1287,37 @@
           },
           "name": {
             "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorGroupPackageRequest": {
+        "required": [
+          "draft",
+          "name",
+          "parentPath",
+          "path",
+          "zipBase64"
+        ],
+        "type": "object",
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/EditorDraft"
+          },
+          "path": {
+            "type": "string"
+          },
+          "zipBase64": {
+            "type": "string",
+            "nullable": true
+          },
+          "parentPath": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -1575,6 +1698,42 @@
             "type": "boolean"
           },
           "canRestore": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GroupStatus": {
+        "required": [
+          "control",
+          "definitionRevision",
+          "id",
+          "path",
+          "pausedBy",
+          "retired"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "definitionRevision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "control": {
+            "$ref": "#/components/schemas/RuntimeControl"
+          },
+          "pausedBy": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "retired": {
             "type": "boolean"
           }
         },
@@ -2021,6 +2180,10 @@
           },
           "individuallyModified": {
             "type": "boolean"
+          },
+          "groupCatalogHash": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -2204,6 +2367,13 @@
             "type": "integer",
             "format": "int64",
             "nullable": true
+          },
+          "groupOrigins": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -2267,6 +2437,8 @@
           "definitionHash",
           "expectedRevision",
           "generations",
+          "groupChanges",
+          "groupOrigins",
           "impactHash",
           "previousSources",
           "removedRoots",
@@ -2313,6 +2485,20 @@
             "items": {
               "$ref": "#/components/schemas/EditorSource"
             }
+          },
+          "groupOrigins": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "groupChanges": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
           }
         },
         "additionalProperties": false

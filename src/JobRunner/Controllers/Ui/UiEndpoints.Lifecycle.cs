@@ -18,7 +18,7 @@ public static partial class UiEndpoints
         {
             var controlRow = await storage.GetAsync("runtime-control", token) ?? throw new InvalidDataException("停止状態を準備中です。再取得してください。");
             var activeRow = await storage.GetAsync("definition-active", token);
-            var pending = (await storage.ListAsync("command:", token)).Select(StorageRepository.Read<Operation>).Where(o => o.Status == "Pending" && o.Kind is "Activate" or "PauseAll" or "ResumeAll").ToList();
+            var pending = (await storage.ListAsync("command:", token)).Select(StorageRepository.Read<Operation>).Where(o => o.Status == "Pending" && o.Kind is "Activate" or "PauseAll" or "ResumeAll" or "PauseGroup" or "ResumeGroup").ToList();
             return new RuntimeStatus(StorageRepository.Read<RuntimeControl>(controlRow), activeRow is null ? null : StorageRepository.Read<Activation>(activeRow), worker.Phase, pending);
         });
         group.MapGet("/definition-editor/shared", async (StorageRepository storage, CancellationToken token) =>
@@ -112,7 +112,11 @@ public static partial class UiEndpoints
                 var registration = registrationMap[root.RegistrationId];
                 return new PublicationGeneration(root.Id, root.RootPath, root.Due, registration.Disabled ? "登録解除済み" : registration.Kind == "Immediate" ? "即時登録" : DefinitionPublication.Protection(g, now));
             }).ToList();
-            return new PublicationPreview(next.Hash, active?.Revision ?? 0, DefinitionPublication.ImpactHash(row, registrations, occurrences, now), newRoots.Except(oldRoots, StringComparer.Ordinal).ToList(), oldRoots.Except(newRoots, StringComparer.Ordinal).ToList(), generations, DefinitionEditor.Describe(next.Sources, old?.Sources ?? []), old is null ? [] : DefinitionEditor.Describe(old.Sources, old.Sources));
+            var oldGroups = old?.Units.Flatten().Where(u => u.Type == "g").Select(u => u.Path).ToHashSet(StringComparer.Ordinal) ?? [];
+            var origins = DefinitionEditor.GroupOrigins(source, draft).Where(p => oldGroups.Contains(p.Value)).ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
+            var changes = next.Units.Flatten().Where(u => u.Type == "g").Select(u => !origins.TryGetValue(u.Path, out string? origin) ? $"{u.Path}: 新規グループは停止状態で反映" : origin != u.Path ? $"{origin} → {u.Path}: 固定IDと停止状態を維持" : null).Where(v => v is not null).Select(v => v!).ToList();
+            changes.AddRange(newRoots.Except(oldRoots, StringComparer.Ordinal).Select(p => $"{p}: 新しい配置先の祖先グループの停止状態を適用。開始済み旧世代の所属は変更しません。"));
+            return new PublicationPreview(next.Hash, active?.Revision ?? 0, DefinitionPublication.ImpactHash(row, registrations, occurrences, now, await storage.ListAsync("group-control:", token)), newRoots.Except(oldRoots, StringComparer.Ordinal).ToList(), oldRoots.Except(newRoots, StringComparer.Ordinal).ToList(), generations, DefinitionEditor.Describe(next.Sources, old?.Sources ?? []), old is null ? [] : DefinitionEditor.Describe(old.Sources, old.Sources), origins, changes);
         });
         group.MapPost("/definition-editor/publish", (Operation operation, StorageRepository storage, CancellationToken token) =>
         {

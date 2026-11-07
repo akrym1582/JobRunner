@@ -12,6 +12,16 @@ public static partial class UiEndpoints
 {
     private static void MapEditor(RouteGroupBuilder group)
     {
+        group.MapPost("/definition-editor/groups/export", async (EditorGroupPackageRequest request, DefinitionService definitions, CancellationToken token) =>
+        {
+            var bundle = await EditorSourcesAsync(request.Draft, definitions, token);
+            return Results.File(DefinitionEditor.ExportGroup(bundle, request, definitions), "application/zip", "jobrunner-group.zip");
+        }).Produces(200, contentType: "application/zip");
+        group.MapPost("/definition-editor/groups/import", async (EditorGroupPackageRequest request, DefinitionService definitions, RunnerOptions options, CancellationToken token) =>
+        {
+            var bundle = await EditorSourcesAsync(request.Draft, definitions, token);
+            return DefinitionEditor.ImportGroup(bundle, request, definitions, options);
+        });
         group.MapPost("/definition-editor/local", (EditorLocalRequest request, DefinitionService definitions, RunnerOptions options) =>
         {
             var bundle = EditorLocalFiles.Read(request, definitions);

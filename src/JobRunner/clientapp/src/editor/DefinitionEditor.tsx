@@ -27,6 +27,7 @@ import { EditorProperties } from "./EditorProperties";
 import { ExecutionProperties } from "./ExecutionProperties";
 import { TimingProperties } from "./TimingProperties";
 import { LocalDefinitionInput } from "./LocalDefinitionInput";
+import { GroupPackages } from "./GroupPackages";
 import { GroupProperties } from "./GroupProperties";
 import { CreationProperties } from "./CreationProperties";
 import { creationDocument } from "./creations";
@@ -407,6 +408,51 @@ export function DefinitionEditor({
       setBusy(false);
     }
   }
+  async function importGroup(
+    load: () => Promise<EditorDocument>,
+    confirmation: string,
+  ) {
+    const started = revision.current;
+    setBusy(true);
+    setMessage("");
+    try {
+      const candidate = await load();
+      if (started !== revision.current)
+        throw new Error("読込中に編集されたため、取り込みを中止しました。");
+      if (!window.confirm(confirmation)) return;
+      update(candidate.draft);
+      setMessage(
+        "グループを下書きへ取り込みました。プレビューで差分を確認してください。運用は変更していません。",
+      );
+    } catch (error) {
+      setMessage(await errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function exportGroup(path: string) {
+    if (!draft) return;
+    const started = revision.current;
+    setBusy(true);
+    setMessage("");
+    try {
+      const blob = await client.ui.definition_editor.groups.export.$post({
+        body: { draft, path, zipBase64: null, parentPath: null, name: null },
+      });
+      if (started !== revision.current)
+        throw new Error("編集中に内容が変わりました。再度出力してください。");
+      const url = URL.createObjectURL(blob),
+        link = document.createElement("a");
+      link.href = url;
+      link.download = "jobrunner-group.zip";
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      setMessage(await errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
   async function importLocal(load: () => Promise<EditorDocument>) {
     if (
       base &&
@@ -606,6 +652,14 @@ export function DefinitionEditor({
         disabled={busy || !loaded}
         onRestore={restoreShared}
       />
+      {draft && (
+        <GroupPackages
+          draft={draft}
+          disabled={busy || !loaded || !saveAllowed}
+          onImport={importGroup}
+          onExport={exportGroup}
+        />
+      )}
       <LocalDefinitionInput disabled={busy || !loaded} onImport={importLocal} />
       <CreationProperties
         base={base}

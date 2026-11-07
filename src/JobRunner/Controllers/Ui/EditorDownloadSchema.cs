@@ -11,9 +11,9 @@ public sealed class EditorDownloadSchema : IOperationFilter
     /// <param name="context">APIの記述です。</param>
     public void Apply(OpenApiOperation operation, OperationFilterContext context)
     {
-        if (context.ApiDescription.RelativePath == "api/jobrunner/ui/definition-editor/export")
+        if (context.ApiDescription.RelativePath is "api/jobrunner/ui/definition-editor/export" or "api/jobrunner/ui/definition-editor/groups/export")
         {
-            operation.Responses["200"].Content["application/octet-stream"] = new OpenApiMediaType { Schema = new OpenApiSchema { Type = "string", Format = "binary" } };
+            operation.Responses["200"].Content[context.ApiDescription.RelativePath.EndsWith("groups/export", StringComparison.Ordinal) ? "application/zip" : "application/octet-stream"] = new OpenApiMediaType { Schema = new OpenApiSchema { Type = "string", Format = "binary" } };
         }
     }
 }

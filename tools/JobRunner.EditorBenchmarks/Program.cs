@@ -21,7 +21,7 @@ internal static class Program
         int count = int.Parse(args[3], System.Globalization.CultureInfo.InvariantCulture);
         var options = new RunnerOptions();
         var service = new DefinitionService(new StorageRepository(options), options);
-        string source = args[1] == "editor" ? EditorText(size, count) : ScheduleText(size);
+        string source = args[1] == "groups" ? string.Concat(Enumerable.Range(0, size).Select(i => $"unit=g{i};{{ty=g;unit=n;{{ty=n;sd=0,ud;}}}}")) : args[1] == "editor" ? EditorText(size, count) : ScheduleText(size);
         if (args[1] == "calendar-load")
         {
             // 入力上限内でも大きいカレンダー属性により、結果集約前に負荷が発生します。
@@ -32,7 +32,17 @@ internal static class Program
         var bundle = service.Validate([evidence]);
         var draft = DefinitionEditor.Project(bundle, 8) with { LocalSources = bundle.Sources };
         Console.WriteLine(JsonSerializer.Serialize(new { label, mode = args[1], size, count, sourceChars = source.Length, units = bundle.Units.Flatten().Count(), runtime = Environment.Version.ToString(), processors = Environment.ProcessorCount }, Json));
-        if (args[1] == "editor")
+        if (args[1] == "groups")
+        {
+            var grouped = DefinitionEditor.Project(bundle, 9);
+            var activation = new Activation { Id = "benchmark", Revision = 1 };
+            var catalog = GroupCatalogService.Create(bundle, activation, null);
+            Measure("catalog-create", () => GroupCatalogService.Create(bundle, activation, catalog));
+            Measure("group-export", () => DefinitionEditor.ExportGroup(bundle, new(grouped, "/g0"), service));
+            string zip = Convert.ToBase64String(DefinitionEditor.ExportGroup(bundle, new(grouped, "/g0"), service));
+            Measure("group-import", () => DefinitionEditor.ImportGroup(bundle, new(grouped, string.Empty, zip, "/", "copied"), service, options));
+        }
+        else if (args[1] == "editor")
         {
             Measure("import-project", () => DefinitionEditor.Project(service.Validate([evidence]), 8));
             draft.Networks[0].Nodes[0].Attributes["te"] = ["echo edited"];

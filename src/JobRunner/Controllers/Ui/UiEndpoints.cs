@@ -19,6 +19,7 @@ public static partial class UiEndpoints
         var group = app.MapGroup("/api/jobrunner/ui");
         MapEditor(group);
         MapLifecycle(group);
+        MapGroups(group);
         group.MapGet("/monthly", ReadMonthlyAsync);
         group.MapGet("/attempts", ReadAttemptsAsync);
         group.MapGet("/logs", ReadLogsAsync);

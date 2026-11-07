@@ -127,6 +127,15 @@ public sealed partial class SchedulerEngine
             baseline = recoveryBaseline;
         }
 
+        // 再開境界より前を件数へ補充し続けず、長期停止後も次の未来予定から探索します。
+        foreach (var cutoff in (await MembershipControlsAsync(registration.GroupCatalogHash, registration.RootPath, token)).Select(c => c.SkipBefore).Append(runtime.SkipBefore).Append(registration.GenerationNotBefore))
+        {
+            if (cutoff > baseline)
+            {
+                baseline = cutoff.Value;
+            }
+        }
+
         // 48時間制や基準時刻加算では、次の実日時が前の業務日に属することがあります。
         DateOnly from = BusinessToday(last is not null && last.OriginalDue > baseline ? last.OriginalDue : baseline);
         DateOnly limit = from.AddYears(Math.Min(100, 9998 - from.Year));

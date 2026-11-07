@@ -94,4 +94,12 @@ public sealed class Registration
 
     /// <summary>Gets or sets. 通常予定を再計算する版。0は旧世代IDを維持します。</summary>
     public long GenerationRevision { get; set; }
+
+    /// <summary>Gets or sets. 作成時の所属と固定グループIDを保持する不変カタログです。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? GroupCatalogHash { get; set; }
+
+    /// <summary>Gets or sets. 新規・再配置した自動登録が反映前の予定を起動しない境界です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? GenerationNotBefore { get; set; }
 }

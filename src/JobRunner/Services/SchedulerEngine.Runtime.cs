@@ -50,51 +50,6 @@ public sealed partial class SchedulerEngine
         }
     }
 
-    private async Task PinLegacyDefinitionsAsync(Activation activation, CancellationToken token)
-    {
-        // 全プロセス停止後の移行です。形式番号を最後に進めるため、中断後も同じ版へ固定できます。
-        var changes = new List<TableTransactionAction>();
-        foreach (var row in await storage.ListAsync("registration:" + activation.Id + ":", token))
-        {
-            var value = StorageRepository.Read<Registration>(row);
-            if (value.DefinitionHash is null)
-            {
-                value.DefinitionHash = activation.DefinitionHash;
-                changes.Add(Update(row, value));
-            }
-        }
-
-        foreach (var row in await storage.ListAsync("occurrence:", token))
-        {
-            var value = StorageRepository.Read<Occurrence>(row);
-            if (value.Namespace == activation.Id)
-            {
-                value.DefinitionHash ??= activation.DefinitionHash;
-
-                // 旧形式には個別保留と登録時の明示保留を区別する印がないため、上書きせず保護します。
-                var units = await ReadUnitsAsync(value.DefinitionHash, token);
-                var definedMonitor = units[value.UnitPath].IsNetwork() ? DefinitionDelayMonitor.Read(units[value.UnitPath], value.Rule) : null;
-                value.IndividuallyModified |= value.HoldOverride is not null || JsonSerializer.Serialize(value.DelayMonitor) != JsonSerializer.Serialize(definedMonitor);
-                changes.Add(Update(row, value));
-            }
-        }
-
-        foreach (var row in await storage.ListAsync("command:", token))
-        {
-            var operation = StorageRepository.Read<Operation>(row);
-            if (operation.StateNamespace == activation.Id && operation.Status == "Pending" && operation.Kind == "Register" && operation.AcceptedDefinitionRevision is null)
-            {
-                operation.AcceptedDefinitionRevision = activation.Revision;
-                changes.Add(Update(row, operation));
-            }
-        }
-
-        foreach (var batch in changes.Chunk(99))
-        {
-            await CommitAsync(batch, token);
-        }
-    }
-
     private async Task ApplyRuntimeAsync(TableEntity commandRow, Operation operation, CancellationToken token)
     {
         var row = await storage.GetAsync("runtime-control", token) ?? throw new InvalidDataException("全体停止の状態が欠損しています。");

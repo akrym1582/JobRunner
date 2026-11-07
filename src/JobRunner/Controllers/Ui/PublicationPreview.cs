@@ -11,4 +11,6 @@ namespace JobRunner.Controllers.Ui;
 /// <param name="Generations">置換・保護の内訳です。</param>
 /// <param name="Sources">ファイル差分です。</param>
 /// <param name="PreviousSources">削除ファイルも含む反映前の一式です。</param>
-public sealed record PublicationPreview(string DefinitionHash, long ExpectedRevision, string ImpactHash, List<string> AddedRoots, List<string> RemovedRoots, List<PublicationGeneration> Generations, List<EditorSource> Sources, List<EditorSource> PreviousSources);
+/// <param name="GroupOrigins">反映時に引き継ぐグループの改名元です。</param>
+/// <param name="GroupChanges">新規停止と所属変更の確認事項です。</param>
+public sealed record PublicationPreview(string DefinitionHash, long ExpectedRevision, string ImpactHash, List<string> AddedRoots, List<string> RemovedRoots, List<PublicationGeneration> Generations, List<EditorSource> Sources, List<EditorSource> PreviousSources, Dictionary<string, string>? GroupOrigins = null, List<string>? GroupChanges = null);
