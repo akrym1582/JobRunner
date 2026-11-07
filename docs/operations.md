@@ -6,7 +6,7 @@
 
 | キー | 初期値・契約 |
 | --- | --- |
-| ConnectionString | `UseDevelopmentStorage=true`。本番は接続文字列を外部設定 |
+| ConnectionString | 未指定・空文字・空白は `UseDevelopmentStorage=true`。本番は接続文字列を外部設定 |
 | ManagementContainer | `jobrunner-management`。全入力コンテナーと分離必須 |
 | TableName | `JobRunner` |
 | SchedulerId | `default`。同じ排他と状態を共有する全インスタンスで一致させる |
@@ -15,7 +15,7 @@
 | DefinitionSources[].TargetPath | 最上位ユニットの親のJP1完全名。ファイルシステムパスではない |
 | DefinitionSources[].BlobPath | `container/blob`。大小文字を保持。ワイルドカードなし |
 | DefinitionSources[].Encoding | `utf-8`。コードページ名の明示指定も可能。変換不能バイトは拒否 |
-| ScheduleTimeMode | 24。48では47:59までの時刻を日付を失わず保持 |
+| ScheduleTimeMode | 既定48。47:59までの時刻を日付を失わず保持。24を明示指定することも可能 |
 | TimeZone | `Asia/Tokyo`。夏時間の曖昧・欠落時刻は拒否 |
 | ConfirmedHorizonDays | 32。1〜366日。未来世代数を指定しない場合の先読み日数 |
 | ConfirmedFutureGenerations | 未指定。自動確定登録で維持する未来世代数を1〜99で指定 |
@@ -26,6 +26,8 @@
 | HistoryArchiveAfterDays | 未指定。完了ルート一式をBlobへ退避する正の保持日数 |
 | LogRetentionDays | 未指定。結果が確定した試行ログを削除する正の保持日数 |
 | OperationArchiveAfterDays | 未指定。完了・拒否した操作本文をBlobへ退避する正の保持日数 |
+
+既存の24時間制で採用済みのStorageを使う場合は、`JobRunner__ScheduleTimeMode=24`を明示して同じ設定を維持します。既定変更によるSettingsHashの不一致を自動移行しません。
 
 通常起動は管理Storageの採用行、不変の定義・原文、登録・世代を復元します。入力Blobの変更では運用は変わりません。定義反映は同じ採用IDのRevisionを進め、通常の未開始予定だけを再計算します。開始済み・結果不明・個別操作済みは旧版に固定します。時間制・タイムゾーン等のSettingsHashが変わる起動は拒否し、別領域へ自動分離しません。切り戻しも明示的な定義反映として扱い、消化済み・取消済みの原予定枠を復活させません。
 
