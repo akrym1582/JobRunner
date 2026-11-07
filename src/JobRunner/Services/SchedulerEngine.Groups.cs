@@ -61,6 +61,30 @@ public sealed partial class SchedulerEngine
 
     private async Task<bool> GroupSkippedAsync(string? hash, string path, DateTimeOffset due, CancellationToken token) => (await MembershipControlsAsync(hash, path, token)).Any(c => c.SkipBefore is DateTimeOffset cutoff && due < cutoff);
 
+    private async Task<(string GroupId, string RelativePath)> RootIdentityAsync(Occurrence root, CancellationToken token)
+    {
+        var catalog = await ReadGroupsAsync(root.GroupCatalogHash, token);
+        string path = ScheduleCalculator.Parent(root.RootPath);
+        while (path.Length > 0)
+        {
+            if (catalog.Groups.TryGetValue(path, out string? id))
+            {
+                // パスを改名しても直近の所属IDとネット名は変わりません。
+                // 削除後の同名グループは別IDのため、旧世代と同一視しません。
+                return (id, root.RootPath[path.TrimEnd('/').Length..]);
+            }
+
+            if (path == "/")
+            {
+                break;
+            }
+
+            path = ScheduleCalculator.Parent(path);
+        }
+
+        return (string.Empty, root.RootPath);
+    }
+
     private async Task<string> MapGroupRootAsync(Occurrence root, Dictionary<string, string> nextPaths, CancellationToken token)
     {
         var catalog = await ReadGroupsAsync(root.GroupCatalogHash, token);
@@ -146,7 +170,17 @@ public sealed partial class SchedulerEngine
     private async Task PreparePublicationGroupsAsync(Activation updated, DefinitionBundle next, Operation operation, OperationMutation plan, CancellationToken token)
     {
         var previous = active?.GroupCatalogHash is null ? null : await ReadGroupsAsync(active.GroupCatalogHash, token);
-        var catalog = GroupCatalogService.Create(next, updated, previous, operation.GroupOrigins);
+        GroupCatalog catalog;
+        try
+        {
+            catalog = GroupCatalogService.Create(next, updated, previous, operation.GroupOrigins);
+        }
+        catch (ArgumentException ex)
+        {
+            // 利用者の改名対応だけを拒否に変換します。Storage障害は再試行対象です。
+            throw new FormatException(ex.Message, ex);
+        }
+
         updated.GroupCatalogHash = await new GroupCatalogService(storage).SaveAsync(catalog, token);
         var previousIds = previous?.Groups.Values.ToHashSet(StringComparer.Ordinal) ?? [];
         foreach (string id in catalog.Groups.Values)

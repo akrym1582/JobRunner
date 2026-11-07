@@ -147,3 +147,77 @@ test("親からの停止を表示し、子の再開は版と固定IDを送る", 
   await request;
   await expect(control).toContainText("停止中");
 });
+
+for (const accepted of [false, true]) {
+  test(`通信失敗と再読込後に同じグループ操作を再送できる（受付済み=${accepted}）`, async ({
+    page,
+  }) => {
+    await page.route("**/api/jobrunner/ui/groups", (route) =>
+      route.fulfill({
+        json: [
+          {
+            id: "recover-group",
+            path: "/recover",
+            definitionRevision: 5,
+            control: { revision: 2, paused: true },
+            pausedBy: ["/recover"],
+            retired: false,
+          },
+        ],
+      }),
+    );
+    const sent: unknown[] = [];
+    let recovered = false;
+    await page.route("**/api/jobrunner/operations", async (route) => {
+      sent.push(route.request().postDataJSON());
+      if (sent.length === 1) return route.abort("failed");
+      recovered = true;
+      await route.fulfill({
+        status: 202,
+        json: { ...route.request().postDataJSON(), status: "Completed" },
+      });
+    });
+    await page.route("**/api/jobrunner/operations/*", (route) =>
+      route.fulfill(
+        recovered
+          ? { json: { status: "Completed", result: "Running" } }
+          : accepted
+            ? { json: { status: "Pending" } }
+            : { status: 404, json: { message: "Not found" } },
+      ),
+    );
+    await page.goto("/");
+    await page
+      .getByLabel("運用グループ", { exact: true })
+      .selectOption("recover-group");
+    page.once("dialog", (d) => d.accept());
+    await page
+      .getByRole("button", { name: "グループの予定実行を再開", exact: true })
+      .click();
+    const control = page.getByRole("region", { name: "グループの実行制御" });
+    await expect(
+      control.getByRole("button", { name: "同じ操作IDで再照会・再送" }),
+    ).toBeVisible();
+    await page.reload();
+    await expect(
+      control.getByRole("button", { name: "同じ操作IDで再照会・再送" }),
+    ).toBeVisible();
+    await control
+      .getByRole("button", { name: "同じ操作IDで再照会・再送" })
+      .click();
+    await expect(
+      control.getByText("グループ操作の結果を確認中…", { exact: true }),
+    ).toHaveCount(0);
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toEqual(sent[0]);
+    await page
+      .getByLabel("運用グループ", { exact: true })
+      .selectOption("recover-group");
+    await expect(
+      page.getByRole("button", {
+        name: "グループの予定実行を再開",
+        exact: true,
+      }),
+    ).toBeEnabled();
+  });
+}

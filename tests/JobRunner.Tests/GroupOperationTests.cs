@@ -203,6 +203,90 @@ public sealed class GroupOperationTests
         Assert.DoesNotContain(await scenario.OccurrencesAsync(), o => o.RootPath == "/renamed/n");
     }
 
+    /// <summary>改名後の翌日予定も固定所属で多重起動と不明結果を検査します。</summary>
+    /// <param name="unknown">旧子が結果不明かです。</param>
+    /// <param name="multiple">多重起動を許可するかです。</param>
+    /// <returns>旧世代を保持したままの起動判定です。</returns>
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task RenameKeepsCrossGenerationStartGuard(bool unknown, bool multiple)
+    {
+        await using var scenario = new EngineScenario();
+        string source = "unit=g;{ty=g;unit=n;{ty=n;mp=" + (multiple ? "y" : "n") + ";sd=1,en;st=10:00;cy=(1,d);sh=no;unit=j;{ty=j;te=\"true\";}}}";
+        await scenario.StartAsync(source);
+        var storage = scenario.Scope.Repository;
+        var root = (await scenario.OccurrencesAsync()).Where(o => o.Id == o.RootId).OrderBy(o => o.Due).First();
+        var child = (await scenario.OccurrencesAsync()).Single(o => o.RootId == root.Id && o.Id != root.Id);
+        root.State = "Running";
+        root.Started = true;
+        child.State = unknown ? "Unknown" : "Held";
+
+        // 結果未確定または保留の子を持つ開始済みネットを永続化する。
+        foreach (var value in new[] { root, child })
+        {
+            var row = (await storage.GetAsync("occurrence:" + value.Id, CancellationToken.None))!;
+            await storage.Table.UpdateEntityAsync(storage.Entity(row.RowKey, value), row.ETag, Azure.Data.Tables.TableUpdateMode.Replace);
+        }
+
+        scenario.Clock.Now = root.Due.AddMinutes(1);
+        var service = new DefinitionService(storage, scenario.Scope.Options);
+        string previous = "/g";
+        foreach (string name in new[] { "renamed", "again" })
+        {
+            var next = service.Validate([new SourceEvidence { Mapping = new() { BlobPath = "local/rename.ajs" }, Base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(source.Replace("unit=g;", $"unit={name};", StringComparison.Ordinal))) }]);
+            await service.SaveAsync(next, CancellationToken.None);
+            await scenario.EnqueueAsync(new Operation { Id = name, Kind = "Activate", Target = next.Hash, GroupOrigins = new() { ["/" + name] = previous } });
+            await scenario.Engine.TickAsync(CancellationToken.None);
+            previous = "/" + name;
+        }
+
+        await scenario.RestartAsync();
+        scenario.Clock.Now = root.Due.AddDays(1);
+        await scenario.Engine.TickAsync(CancellationToken.None);
+        var nextRoot = (await scenario.OccurrencesAsync()).Single(o => o.RootPath == "/again/n" && o.Id == o.RootId && o.Due == scenario.Clock.Now);
+        Assert.Equal(multiple && !unknown ? "Running" : "Waiting", nextRoot.State);
+        Assert.Equal(multiple && !unknown, nextRoot.Started);
+        Assert.Equal(child.State, (await scenario.OccurrencesAsync()).Single(o => o.Id == child.Id).State);
+        if (!multiple || unknown)
+        {
+            Assert.Empty(await storage.ListAsync("attempt:", CancellationToken.None));
+            child.State = "Succeeded";
+            var row = (await storage.GetAsync("occurrence:" + child.Id, CancellationToken.None))!;
+            await storage.Table.UpdateEntityAsync(storage.Entity(row.RowKey, child), row.ETag, Azure.Data.Tables.TableUpdateMode.Replace);
+            await scenario.AdvanceUntilAsync(values => values.Any(o => o.Id == nextRoot.Id && o.Started));
+        }
+    }
+
+    /// <summary>不正な改名対応は永続拒否され、次の正常操作を妨げません。</summary>
+    /// <param name="duplicate">同じ旧グループを二重指定するかです。</param>
+    /// <returns>拒否・再起動と後続操作の検証です。</returns>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InvalidOriginsAreRejectedWithoutBlockingWorker(bool duplicate)
+    {
+        await using var scenario = new EngineScenario();
+        await scenario.StartAsync(Source);
+        var storage = scenario.Scope.Repository;
+        var before = StorageRepository.Read<Activation>((await storage.GetAsync("definition-active", CancellationToken.None))!);
+        Dictionary<string, string> origins = duplicate ? new() { ["/parent"] = "/parent", ["/sibling"] = "/parent" } : new() { ["/parent"] = "/missing" };
+        await scenario.EnqueueAsync(new Operation { Id = "invalid", Kind = "Activate", Target = before.DefinitionHash, GroupOrigins = origins });
+        await scenario.Engine.TickAsync(CancellationToken.None);
+        var result = StorageRepository.Read<Operation>((await storage.GetAsync("command:" + StorageRepository.Hash("invalid"), CancellationToken.None))!);
+        Assert.Equal("Rejected", result.Status);
+        Assert.NotNull(result.CompletedAt);
+        Assert.Equal(before.GroupCatalogHash, await CatalogHashAsync(scenario));
+        await scenario.RestartAsync();
+        await ControlAsync(scenario, "/parent", true, "following-pause");
+        var after = StorageRepository.Read<Activation>((await storage.GetAsync("definition-active", CancellationToken.None))!);
+        Assert.Equal(before.Revision, after.Revision);
+    }
+
+    private static async Task<string?> CatalogHashAsync(EngineScenario scenario) => StorageRepository.Read<Activation>((await scenario.Scope.Repository.GetAsync("definition-active", CancellationToken.None))!).GroupCatalogHash;
+
     private static async Task<GroupCatalog> CatalogAsync(EngineScenario scenario)
     {
         var storage = scenario.Scope.Repository;

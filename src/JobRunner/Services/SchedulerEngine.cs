@@ -160,9 +160,11 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
         rows = rows.Where(r => !archivedRoots.Contains(StorageRepository.Read<Occurrence>(r).RootId)).ToList();
         var all = rows.ToDictionary(r => StorageRepository.Read<Occurrence>(r).Id, r => (Row: r, Value: StorageRepository.Read<Occurrence>(r)), StringComparer.Ordinal);
         var rootUnits = new Dictionary<string, Dictionary<string, UnitDefinition>>(StringComparer.Ordinal);
+        var rootIdentities = new Dictionary<string, (string GroupId, string RelativePath)>(StringComparer.Ordinal);
         foreach (var root in all.Values.Where(v => v.Value.Namespace == active!.Id && v.Value.Id == v.Value.RootId))
         {
             rootUnits[root.Value.Id] = await ReadUnitsAsync(root.Value.DefinitionHash, cancellationToken);
+            rootIdentities[root.Value.Id] = await RootIdentityAsync(root.Value, cancellationToken);
         }
 
         var memberPaths = all.Values.GroupBy(v => v.Value.RootId).ToDictionary(g => g.Key, g => g.Select(v => v.Value.UnitPath).ToHashSet(StringComparer.Ordinal), StringComparer.Ordinal);
@@ -230,7 +232,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
 
                 if (occurrence.Id == occurrence.RootId)
                 {
-                    bool blocked = all.Values.Any(v => v.Value.RootPath == occurrence.RootPath && v.Value.RootId != occurrence.RootId && (v.Value.State == "Unknown" || (unit.Get("mp", "n") != "y" && v.Value.State is "Starting" or "Running")));
+                    bool blocked = all.Values.Any(v => v.Value.Namespace == occurrence.Namespace && v.Value.RootId != occurrence.RootId && rootIdentities[v.Value.RootId] == rootIdentities[occurrence.RootId] && (v.Value.State == "Unknown" || (unit.Get("mp", "n") != "y" && v.Value.State is "Starting" or "Running")));
                     if (blocked)
                     {
                         continue;

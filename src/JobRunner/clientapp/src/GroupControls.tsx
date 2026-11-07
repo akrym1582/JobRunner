@@ -24,6 +24,7 @@ export function GroupControls({
     }
   });
   const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
   const result = useAspidaSWR(client.operations._id(request?.id || "_"), {
     enabled: !!request,
     refreshInterval: (data) => (data?.status === "Pending" || !data ? 1000 : 0),
@@ -35,12 +36,15 @@ export function GroupControls({
     sessionStorage.setItem("jobrunner-group-operation", JSON.stringify(value));
     setRequest(value);
     setMessage("");
+    setSending(true);
     try {
       await client.operations.$post({ body: value });
       await result.mutate();
       await groups.mutate();
     } catch (error) {
       setMessage(await errorMessage(error));
+    } finally {
+      setSending(false);
     }
   }
   return (
@@ -106,10 +110,18 @@ export function GroupControls({
       {result.data?.status === "Rejected" && (
         <span role="alert">{result.data.result}</span>
       )}
-      {message && (
-        <span role="alert">
-          {message}
-          <button onClick={() => request && void send(request)}>
+      {message && <span role="alert">{message}</span>}
+      {pending && (
+        <span>
+          {result.error && (
+            <span role="alert">
+              受付結果を取得できません。同じ操作IDで再確認できます。
+            </span>
+          )}
+          <button
+            disabled={sending}
+            onClick={() => request && void send(request)}
+          >
             同じ操作IDで再照会・再送
           </button>
         </span>
