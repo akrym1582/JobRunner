@@ -87,3 +87,11 @@ EditorSourceに任意のkind項目を追加し、バックエンドDescribeと�
 追加バックエンド7件とVitest42件、警告0・エラー0のReleaseビルド、生成API、ESLint/Prettier/TypeScript/Viteは成功。ローカル全体回帰は536件中535件が成功し、ScaleTestsの1000ジョブ試験だけがTableのGetEntity応答読取りで5秒の通信タイムアウトになった（lifecycle-mapping-full1.trx）。新しい専用Azuriteへ分離し、制限・期待値・実装を変えずに同じ試験が31秒で成功した（lifecycle-mapping-scale-isolated.trx）。最初のTRXとAzuriteログを保存し、一度のタイムアウトの原因は断定しない。最新コミットの全体CI結果はPRへ記録する。
 
 同名別配置の新規ブラウザー試験と、既存のコピー・保存表示・グループ・ローカル入力・共有保存・反映/停止操作を合わせた16件が成功した（lifecycle-mapping-browser1.log）。
+
+## 編集描画のリファクタと性能
+
+基点41200f8の既存機能を保ち、単一ネット200/1000/9000ジョブを再測定した。[条件・前後比較・生データ](editor-performance.md)を参照。9000ジョブの入力から保存完了表示までの中央値は3377→1915ms、順序を入れ替えた再確認では2820→1557ms。保存方式を変えず、表示部品のmemo化と接続名の索引化を行った。初回表示の短縮は確認できず、全件DOMと全文保存が残る。
+
+操作イベントを親へ委譲するため、表示が同じ属性変更後の移動で最新の属性を使うこと、最新のコールバック、キー/複数選択/子ネットを開く操作、改名・種別・座標・条件接続、undo相当の値復元、座標エラーからの復帰、一覧の接続順変更と削除を追加4件で検証した。初回の静的検査は未使用importとTesting Libraryの型にないexact指定で停止し、修正後はESLint/Prettier、Vitest46件、TypeScript/Viteが成功した。性能試験はDB内の最新値と再読込も照合し、初回測定3件、測定器を整えた前後各3件、9000ジョブの再確認各1件が成功した。絶対時間による合否判定は通常CIへ追加しない。
+
+全Playwright62件が成功した（editor-interaction-e2e-full1.log）。その後、新しい専用Azuriteを起動する既定のverify.shでReleaseビルド（警告/エラー0）と.NET全体536件（失敗/スキップ0）が成功した（editor-interaction-backend-full1.trx）。保存・競合・旧下書き・原文・運用操作を含む既存回帰は維持されている。最新SHAのCI結果はPRに記録する。

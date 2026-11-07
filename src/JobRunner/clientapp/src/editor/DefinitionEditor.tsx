@@ -10,7 +10,6 @@ import {
   Redo2,
   RotateCcw,
   Undo2,
-  X,
 } from "lucide-react";
 import type {
   EditorDocument,
@@ -23,6 +22,7 @@ import { client, errorMessage } from "../client";
 import { DefinitionLifecycleControls } from "./DefinitionLifecycleControls";
 import { CopyControls } from "./CopyControls";
 import { EditorGraph } from "./EditorGraph";
+import { EditorLists } from "./EditorLists";
 import { EditorProperties } from "./EditorProperties";
 import { ExecutionProperties } from "./ExecutionProperties";
 import { TimingProperties } from "./TimingProperties";
@@ -877,61 +877,18 @@ export function DefinitionEditor({
               }}
             />
           </div>
-          <div className="editor-lists">
-            <section>
-              <h3>
-                ユニット一覧 <span>{network.nodes.length}</span>
-              </h3>
-              <div className="editor-unit-list">
-                {network.nodes.map((n) => (
-                  <button
-                    key={n.id}
-                    aria-pressed={selected === n.id}
-                    onClick={() => select(n.id)}
-                  >
-                    <span className="outline-pill">
-                      {networkType(draft, n)}
-                    </span>
-                    {n.name}
-                    <small>
-                      {n.x ?? "—"}, {n.y ?? "—"}
-                    </small>
-                  </button>
-                ))}
-              </div>
-            </section>
-            <section>
-              <h3>
-                接続一覧 <span>{network.edges.length}</span>
-              </h3>
-              <div className="editor-connection-list">
-                {network.edges.map((edge, index) => (
-                  <div key={`${edge.from}:${edge.to}:${index}`}>
-                    <span>
-                      {network.nodes.find((n) => n.id === edge.from)?.name}{" "}
-                      <span className="editor-muted">→</span>{" "}
-                      {network.nodes.find((n) => n.id === edge.to)?.name}
-                    </span>
-                    <small>{edge.conditional ? "条件成立" : "通常順序"}</small>
-                    <button
-                      aria-label={`接続 ${index + 1} を削除`}
-                      onClick={() =>
-                        edit({
-                          ...network,
-                          edges: network.edges.filter((_, i) => i !== index),
-                        })
-                      }
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                ))}
-                {!network.edges.length && (
-                  <p className="editor-muted">接続はありません。</p>
-                )}
-              </div>
-            </section>
-          </div>
+          <EditorLists
+            network={network}
+            selected={selected}
+            typeOf={(n) => networkType(draft, n)}
+            onSelect={select}
+            onRemoveEdge={(index) =>
+              edit({
+                ...network,
+                edges: network.edges.filter((_, i) => i !== index),
+              })
+            }
+          />
           {preview && (
             <section className="editor-preview" aria-label="検証結果">
               <div className="editor-preview-title">

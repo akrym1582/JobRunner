@@ -1,0 +1,20 @@
+{
+  "baseline": "41200f8a8513dab1cee3d06d1f79a16e4a5e630b",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "node": "v24.22.1",
+  "dotnetSdk": "10.0.403",
+  "chromium": "Chromium 155.0.8059.79 built on Debian GNU/Linux 13 (trixie)",
+  "cpuMax": "400000 100000",
+  "memoryMax": "17179869184",
+  "order": [
+    "before-automation",
+    "before-events",
+    "after-events",
+    "after-repeat",
+    "before-repeat"
+  ],
+  "notes": [
+    "production preview; sequential; no concurrent builds or test runs",
+    "strings.characters corrects the original instrumentation name bytes; numerical values unchanged"
+  ]
+}

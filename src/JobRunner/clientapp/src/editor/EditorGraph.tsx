@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { memo, useMemo, useRef, useState } from "react";
 import { Maximize, Minus, Plus } from "lucide-react";
 import type { EditorNetwork, EditorNode } from "../api/@types";
 import { fixedLayout, NODE_HEIGHT, NODE_WIDTH } from "../layout";
@@ -74,6 +74,16 @@ export function EditorGraph({
     const node = nodesById.get(id);
     return node ? typeOf(node) : "";
   };
+  const selectedIds = useMemo(() => new Set(selection), [selection]);
+  // 描画部品は表示値だけを持ち、操作時は最新のノード・コールバックを参照します。
+  // コマンド変更後の移動で、描画を省略した時点の属性を戻さないためです。
+  function eventNode(target: EventTarget) {
+    if (!(target instanceof Element)) return undefined;
+    const element = target.closest("[data-editor-node]");
+    return element && svg.current?.contains(element)
+      ? nodesById.get(element.getAttribute("data-editor-node")!)
+      : undefined;
+  }
   function point(clientX: number, clientY: number) {
     const matrix = svg.current?.getScreenCTM();
     return matrix
@@ -100,6 +110,48 @@ export function EditorGraph({
               style={{
                 width: zoom ? layout.width * zoom : "100%",
                 height: zoom ? Math.max(layout.height, 320) * zoom : 440,
+              }}
+              onPointerDown={(e) => {
+                const node = eventNode(e.target);
+                if (!node || e.button !== 0) return;
+                if (connecting) {
+                  onSelect(node.id);
+                  return;
+                }
+                const p = point(e.clientX, e.clientY);
+                drag.current = { node, x: p.x, y: p.y, moved: false };
+                (e.target as Element)
+                  .closest("[data-editor-node]")!
+                  .setPointerCapture(e.pointerId);
+              }}
+              onDoubleClick={(e) => {
+                const node = eventNode(e.target);
+                if (node) onOpen(node.id);
+              }}
+              onKeyDown={(e) => {
+                const node = eventNode(e.target);
+                if (!node) return;
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSelect(node.id, e.ctrlKey || e.metaKey);
+                } else if (e.key.startsWith("Arrow")) {
+                  e.preventDefault();
+                  const next = snap(
+                    node.x! +
+                      (e.key === "ArrowRight"
+                        ? 160
+                        : e.key === "ArrowLeft"
+                          ? -160
+                          : 0),
+                    node.y! +
+                      (e.key === "ArrowDown"
+                        ? 96
+                        : e.key === "ArrowUp"
+                          ? -96
+                          : 0),
+                  );
+                  onMove(node, next.x, next.y);
+                }
               }}
               onPointerMove={(e) => {
                 if (!drag.current) return;
@@ -140,135 +192,47 @@ export function EditorGraph({
                   <path d="M0,0 L8,4 L0,8 Z" fill="context-stroke" />
                 </marker>
               </defs>
-              {layout.edges.map((edge, index) => (
-                <g
-                  key={edge.id}
-                  className="editor-edge"
-                  data-kind={
-                    network.edges[index].conditional
-                      ? "condition"
-                      : ["rj", "rp", "rn", "rjdj"].includes(
-                            nodeType(network.edges[index].to),
-                          )
-                        ? "recovery"
-                        : "normal"
-                  }
-                >
-                  {edge.sections.map((section, i) => (
-                    <path
-                      key={i}
-                      d={[
-                        section.startPoint,
-                        ...section.bendPoints,
-                        section.endPoint,
-                      ]
-                        .map((p, index) => `${index ? "L" : "M"}${p.x},${p.y}`)
-                        .join(" ")}
-                      fill="none"
-                      stroke={
-                        network.edges[index].conditional
-                          ? "#b47a10"
-                          : ["rj", "rp", "rn", "rjdj"].includes(
-                                nodeType(network.edges[index].to),
-                              )
-                            ? "#d45c6a"
-                            : "#6f829a"
-                      }
-                      strokeWidth="2"
-                      strokeDasharray={
-                        network.edges[index].conditional ? "6 4" : undefined
-                      }
-                      markerEnd="url(#editor-arrow)"
-                    />
-                  ))}
-                </g>
-              ))}
+              {layout.edges.map((edge, index) => {
+                const kind = network.edges[index].conditional
+                  ? "condition"
+                  : ["rj", "rp", "rn", "rjdj"].includes(
+                        nodeType(network.edges[index].to),
+                      )
+                    ? "recovery"
+                    : "normal";
+                return (
+                  <GraphEdge
+                    key={edge.id}
+                    kind={kind}
+                    path={edge.sections
+                      .map((section) =>
+                        [
+                          section.startPoint,
+                          ...section.bendPoints,
+                          section.endPoint,
+                        ]
+                          .map((p, i) => `${i ? "L" : "M"}${p.x},${p.y}`)
+                          .join(" "),
+                      )
+                      .join(" ")}
+                  />
+                );
+              })}
               {layout.children.map((position) => {
                 const node = nodesById.get(position.id)!;
-                const shift =
-                  moving?.id === node.id ? moving : { dx: 0, dy: 0 };
                 return (
-                  <g
+                  <GraphNode
                     key={node.id}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`編集 ${node.name}`}
-                    aria-pressed={selection.includes(node.id)}
-                    className={`editor-node ${selection.includes(node.id) ? "selected" : ""}`}
-                    transform={`translate(${position.x + shift.dx},${position.y + shift.dy})`}
-                    onPointerDown={(e) => {
-                      if (e.button !== 0) return;
-                      if (connecting) {
-                        onSelect(node.id);
-                        return;
-                      }
-                      const p = point(e.clientX, e.clientY);
-                      drag.current = { node, x: p.x, y: p.y, moved: false };
-                      e.currentTarget.setPointerCapture(e.pointerId);
-                    }}
-                    onDoubleClick={() => onOpen(node.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onSelect(node.id, e.ctrlKey || e.metaKey);
-                      } else if (e.key.startsWith("Arrow")) {
-                        e.preventDefault();
-                        const next = snap(
-                          node.x! +
-                            (e.key === "ArrowRight"
-                              ? 160
-                              : e.key === "ArrowLeft"
-                                ? -160
-                                : 0),
-                          node.y! +
-                            (e.key === "ArrowDown"
-                              ? 96
-                              : e.key === "ArrowUp"
-                                ? -96
-                                : 0),
-                        );
-                        onMove(node, next.x, next.y);
-                      }
-                    }}
-                  >
-                    <rect width={NODE_WIDTH} height={NODE_HEIGHT} rx="10" />
-                    <rect
-                      className="editor-node-icon"
-                      x="13"
-                      y="17"
-                      width="30"
-                      height="30"
-                      rx="7"
-                    />
-                    <text
-                      x="28"
-                      y="37"
-                      textAnchor="middle"
-                      className="editor-node-type"
-                    >
-                      {typeOf(node).toUpperCase()}
-                    </text>
-                    <text x="54" y="31" className="editor-node-name">
-                      {node.name.length > 9
-                        ? node.name.slice(0, 9) + "…"
-                        : node.name}
-                    </text>
-                    <text x="54" y="51" className="editor-node-caption">
-                      {node.type === "n" || node.type === "rn"
-                        ? "ジョブネット"
-                        : node.type === "jdj"
-                          ? "判定ジョブ"
-                          : node.type === "rjdj"
-                            ? "リカバリー判定"
-                            : node.type === "rj" || node.type === "rp"
-                              ? "リカバリージョブ"
-                              : "ジョブ"}
-                    </text>
-                    <text x="14" y="73" className="editor-node-caption">
-                      {node.x}, {node.y}
-                    </text>
-                    <title>{node.name}</title>
-                  </g>
+                    id={node.id}
+                    name={node.name}
+                    type={node.type}
+                    displayType={typeOf(node)}
+                    x={node.x}
+                    y={node.y}
+                    selected={selectedIds.has(node.id)}
+                    px={position.x + (moving?.id === node.id ? moving.dx : 0)}
+                    py={position.y + (moving?.id === node.id ? moving.dy : 0)}
+                  />
                 );
               })}
             </svg>
@@ -300,3 +264,95 @@ export function EditorGraph({
     </div>
   );
 }
+
+// 属性本文やイベント関数は渡さず、図に出す値が変わったノードだけ描画します。
+const GraphNode = memo(function GraphNode({
+  id,
+  name,
+  type,
+  displayType,
+  x,
+  y,
+  px,
+  py,
+  selected,
+}: {
+  id: string;
+  name: string;
+  type: string;
+  displayType: string;
+  x: number | null;
+  y: number | null;
+  px: number;
+  py: number;
+  selected: boolean;
+}) {
+  return (
+    <g
+      data-editor-node={id}
+      role="button"
+      tabIndex={0}
+      aria-label={`編集 ${name}`}
+      aria-pressed={selected}
+      className={`editor-node ${selected ? "selected" : ""}`}
+      transform={`translate(${px},${py})`}
+    >
+      <rect width={NODE_WIDTH} height={NODE_HEIGHT} rx="10" />
+      <rect
+        className="editor-node-icon"
+        x="13"
+        y="17"
+        width="30"
+        height="30"
+        rx="7"
+      />
+      <text x="28" y="37" textAnchor="middle" className="editor-node-type">
+        {displayType.toUpperCase()}
+      </text>
+      <text x="54" y="31" className="editor-node-name">
+        {name.length > 9 ? name.slice(0, 9) + "…" : name}
+      </text>
+      <text x="54" y="51" className="editor-node-caption">
+        {type === "n" || type === "rn"
+          ? "ジョブネット"
+          : type === "jdj"
+            ? "判定ジョブ"
+            : type === "rjdj"
+              ? "リカバリー判定"
+              : type === "rj" || type === "rp"
+                ? "リカバリージョブ"
+                : "ジョブ"}
+      </text>
+      <text x="14" y="73" className="editor-node-caption">
+        {x}, {y}
+      </text>
+      <title>{name}</title>
+    </g>
+  );
+});
+const GraphEdge = memo(function GraphEdge({
+  kind,
+  path,
+}: {
+  kind: string;
+  path: string;
+}) {
+  return (
+    <g className="editor-edge" data-kind={kind}>
+      <path
+        d={path}
+        fill="none"
+        stroke={
+          kind === "condition"
+            ? "#b47a10"
+            : kind === "recovery"
+              ? "#d45c6a"
+              : "#6f829a"
+        }
+        strokeWidth="2"
+        strokeDasharray={kind === "condition" ? "6 4" : undefined}
+        markerEnd="url(#editor-arrow)"
+      />
+    </g>
+  );
+});
