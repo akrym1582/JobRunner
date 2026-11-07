@@ -181,6 +181,67 @@
         }
       }
     },
+    "/api/jobrunner/ui/definition-editor/paste": {
+      "post": {
+        "tags": [
+          "JobRunner"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorPasteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorPasteResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobrunner/ui/definition-editor/calendar": {
+      "post": {
+        "tags": [
+          "JobRunner"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorCalendarRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EditorCalendarDay"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobrunner/ui/definition-editor/export": {
       "post": {
         "tags": [
@@ -207,6 +268,148 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/jobrunner/ui/runtime": {
+      "get": {
+        "tags": [
+          "JobRunner"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobrunner/ui/definition-editor/shared": {
+      "get": {
+        "tags": [
+          "JobRunner"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedEditorDraft"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No Content"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "JobRunner"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SharedEditorDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedEditorDraft"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        }
+      }
+    },
+    "/api/jobrunner/ui/definition-editor/publication-preview": {
+      "post": {
+        "tags": [
+          "JobRunner"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationPreview"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobrunner/ui/definition-editor/publish": {
+      "post": {
+        "tags": [
+          "JobRunner"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Operation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict"
           }
         }
       }
@@ -511,6 +714,36 @@
   },
   "components": {
     "schemas": {
+      "Activation": {
+        "type": "object",
+        "properties": {
+          "formatVersion": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "definitionHash": {
+            "type": "string"
+          },
+          "settingsHash": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "baseline": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
       "AttemptPage": {
         "required": [
           "archived",
@@ -535,6 +768,22 @@
             "items": {
               "$ref": "#/components/schemas/JobAttempt"
             }
+          }
+        },
+        "additionalProperties": false
+      },
+      "CalendarEvaluation": {
+        "type": "object",
+        "properties": {
+          "working": {
+            "type": "boolean"
+          },
+          "sourcePath": {
+            "type": "string",
+            "nullable": true
+          },
+          "rule": {
+            "type": "string"
           }
         },
         "additionalProperties": false
@@ -667,6 +916,44 @@
           "type": {
             "type": "string",
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorCalendarDay": {
+        "required": [
+          "date",
+          "evaluation"
+        ],
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "evaluation": {
+            "$ref": "#/components/schemas/CalendarEvaluation"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorCalendarRequest": {
+        "required": [
+          "draft",
+          "month",
+          "unitId"
+        ],
+        "type": "object",
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/EditorDraft"
+          },
+          "unitId": {
+            "type": "string"
+          },
+          "month": {
+            "type": "string",
+            "format": "date"
           }
         },
         "additionalProperties": false
@@ -804,6 +1091,20 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/EditorNetworkChange"
+            },
+            "nullable": true
+          },
+          "workingSources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceEvidence"
+            },
+            "nullable": true
+          },
+          "workingContainers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorContainer"
             },
             "nullable": true
           }
@@ -1003,6 +1304,80 @@
         },
         "additionalProperties": false
       },
+      "EditorPasteRequest": {
+        "required": [
+          "copiedDraft",
+          "draft",
+          "ids",
+          "parentPath",
+          "sourceIndex",
+          "targetFile",
+          "targetNetworkId"
+        ],
+        "type": "object",
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/EditorDraft"
+          },
+          "copiedDraft": {
+            "$ref": "#/components/schemas/EditorDraft"
+          },
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "targetNetworkId": {
+            "type": "string",
+            "nullable": true
+          },
+          "sourceIndex": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "parentPath": {
+            "type": "string",
+            "nullable": true
+          },
+          "targetFile": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorPasteResult": {
+        "required": [
+          "clonedIds",
+          "document",
+          "targetPath",
+          "warnings"
+        ],
+        "type": "object",
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/EditorDocument"
+          },
+          "clonedIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "targetPath": {
+            "type": "string"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
       "EditorPreview": {
         "required": [
           "errors",
@@ -1131,6 +1506,9 @@
           },
           "changed": {
             "type": "boolean"
+          },
+          "kind": {
+            "type": "string"
           }
         },
         "additionalProperties": false
@@ -1636,6 +2014,13 @@
           },
           "delayMonitor": {
             "$ref": "#/components/schemas/DelayMonitorSettings"
+          },
+          "generationRevision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "individuallyModified": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -1725,6 +2110,10 @@
             "type": "string",
             "nullable": true
           },
+          "mutationApplied": {
+            "type": "boolean",
+            "nullable": true
+          },
           "definitionHash": {
             "type": "string",
             "nullable": true
@@ -1796,6 +2185,25 @@
           },
           "delayMonitor": {
             "$ref": "#/components/schemas/DelayMonitorSettings"
+          },
+          "expectedControlRevision": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "expectedDefinitionRevision": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "expectedImpactHash": {
+            "type": "string",
+            "nullable": true
+          },
+          "acceptedDefinitionRevision": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -1827,6 +2235,143 @@
         },
         "additionalProperties": { }
       },
+      "PublicationGeneration": {
+        "required": [
+          "due",
+          "id",
+          "path",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "due": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PublicationPreview": {
+        "required": [
+          "addedRoots",
+          "definitionHash",
+          "expectedRevision",
+          "generations",
+          "impactHash",
+          "previousSources",
+          "removedRoots",
+          "sources"
+        ],
+        "type": "object",
+        "properties": {
+          "definitionHash": {
+            "type": "string"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "impactHash": {
+            "type": "string"
+          },
+          "addedRoots": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "removedRoots": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "generations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicationGeneration"
+            }
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorSource"
+            }
+          },
+          "previousSources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorSource"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeControl": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "pausedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "skipBefore": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeStatus": {
+        "required": [
+          "active",
+          "control",
+          "pending",
+          "phase"
+        ],
+        "type": "object",
+        "properties": {
+          "control": {
+            "$ref": "#/components/schemas/RuntimeControl"
+          },
+          "active": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Activation"
+              }
+            ],
+            "nullable": true
+          },
+          "phase": {
+            "type": "string"
+          },
+          "pending": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Operation"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
       "SchedulePoint": {
         "type": "object",
         "properties": {
@@ -1841,6 +2386,32 @@
           "due": {
             "type": "string",
             "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SharedEditorDraft": {
+        "required": [
+          "base",
+          "baseRevision",
+          "draft",
+          "revision"
+        ],
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "baseRevision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "base": {
+            "$ref": "#/components/schemas/EditorDocument"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/EditorDraft"
           }
         },
         "additionalProperties": false

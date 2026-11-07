@@ -8,12 +8,15 @@ public sealed class Activation
     /// <summary>
     /// Gets or sets. 復旧処理が理解できる保存形式か確認する番号です。
     /// </summary>
-    public int FormatVersion { get; set; } = 5;
+    public int FormatVersion { get; set; } = 6;
 
     /// <summary>
-    /// Gets or sets. 採用ごとに新規発行する状態領域。切り戻しでも過去領域を復活させません。
+    /// Gets or sets. 初回に発行する状態領域。定義反映でも登録・履歴の領域を維持します。
     /// </summary>
     public string Id { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets. 同じ状態領域で運用定義を更新する単調な版です。</summary>
+    public long Revision { get; set; }
 
     /// <summary>
     /// Gets or sets. 採用した定義スナップショットのハッシュです。

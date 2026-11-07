@@ -340,6 +340,7 @@ public static partial class Jp1Endpoints
                 Id = id,
                 RequestHash = hash,
                 StateNamespace = active.Id,
+                AcceptedDefinitionRevision = active.Revision,
                 Kind = register || fixedRegistration ? "Register" : unregister ? "UnregisterRoot" : hold ? holdAttr == "SET" ? "Hold" : "Release" : action switch { "cancelExecSchedule" => "Cancel", "restoreChangedSchedule" => "Restore", "kill" => "Stop", "interrupt" => "Interrupt", "changeStatus" => "ChangeStatus", "changeDelayMonitor" => "ChangeDelayMonitor", "rerun" => "Rerun", "changeStartTime" => "Move", _ => "RunNow" },
                 Target = target,
                 RegistrationKind = fixedRegistration ? "Confirmed" : "Immediate",

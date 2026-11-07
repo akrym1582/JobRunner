@@ -106,6 +106,7 @@ public sealed partial class SchedulerEngine
             }
 
             value.State = (units[path].Get("ha", "n") == "y" || (path == target.UnitPath && rerunOptions.Contains("HOLD"))) ? "Held" : "Waiting";
+            value.IndividuallyModified = true;
             value.HoldOverride = path == target.UnitPath && rerunOptions.Contains("HOLD") ? true : null;
             value.ManualExitCode = null;
             value.InterruptRequested = null;

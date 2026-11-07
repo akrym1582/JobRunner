@@ -17,7 +17,7 @@ public sealed class SchedulerWorker(StorageRepository storage, SchedulerEngine e
     public bool StorageReady { get; private set; }
 
     /// <summary>Gets a value indicating whether. 初期化が済んだ現在の稼働系である場合だけtrueです。</summary>
-    public bool IsLeader => Phase == "Ready" && leader?.IsLeader == true;
+    public bool IsLeader => Phase is "Ready" or "AwaitingDefinition" && leader?.IsLeader == true;
 
     /// <summary>Gets. 選出・復旧・障害を利用者が区別するための状態です。</summary>
     public string Phase { get; private set; } = "Starting";
@@ -46,10 +46,11 @@ public sealed class SchedulerWorker(StorageRepository storage, SchedulerEngine e
                     {
                         Phase = "Recovering";
                         await engine.InitializeAsync(candidate, linked.Token);
-                        Phase = "Ready";
+                        Phase = engine.Namespace is null ? "AwaitingDefinition" : "Ready";
                         while (!linked.IsCancellationRequested)
                         {
                             await engine.TickAsync(linked.Token);
+                            Phase = engine.Namespace is null ? "AwaitingDefinition" : "Ready";
                             await Task.Delay(TimeSpan.FromMilliseconds(250), clock, linked.Token);
                         }
                     }

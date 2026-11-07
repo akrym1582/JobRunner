@@ -6,4 +6,5 @@ namespace JobRunner.Controllers.Ui;
 /// <param name="TargetPath">配置先です。</param>
 /// <param name="Text">復号した原文です。</param>
 /// <param name="Changed">元のバイト列から変更されたかです。</param>
-public sealed record EditorSource(string FileName, string Encoding, string TargetPath, string Text, bool Changed);
+/// <param name="Kind">入力形式です。旧下書きの省略値は、従来対応していたUnitとして読みます。</param>
+public sealed record EditorSource(string FileName, string Encoding, string TargetPath, string Text, bool Changed, string Kind = "Unit");

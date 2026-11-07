@@ -1,6 +1,7 @@
 import { groupPath, originalGroupPath } from "./group-paths";
 import { useState } from "react";
 import type { EditorDocument, EditorDraft } from "../api/@types";
+import { CalendarMonth } from "./CalendarMonth";
 import { DraftSchedulePreview } from "./DraftSchedulePreview";
 
 type Field = {
@@ -167,7 +168,7 @@ export function TimingProperties({
   onChange: (draft: EditorDraft) => void;
 }) {
   const [calendarId, setCalendarId] = useState("");
-  if (![4, 5, 6, 7, 8].includes(draft.editorVersion ?? 1)) return null;
+  if (![4, 5, 6, 7, 8, 9].includes(draft.editorVersion ?? 1)) return null;
   const schedule = draft.schedules?.find((s) => s.id === current);
   const visibleCalendars =
     draft.calendars?.filter((c) => groupPath(draft, c.id) !== null) ?? [];
@@ -226,6 +227,11 @@ export function TimingProperties({
               })
             }
           />
+          {schedule.attributes.jc?.[0] && (
+            <button onClick={() => setCalendarId(schedule.attributes.jc![0])}>
+              参照カレンダーを開く: {schedule.attributes.jc[0]}
+            </button>
+          )}
           <DraftSchedulePreview draft={draft} current={current} />
         </section>
       )}
@@ -250,6 +256,23 @@ export function TimingProperties({
             <p className="editor-muted">
               このグループを参照・継承するネットの下書き試算にも反映します。未指定の日は上位へ探索します。
             </p>
+            <CalendarMonth
+              key={calendar.id}
+              draft={draft}
+              calendarId={calendar.id}
+              onNavigate={(path) =>
+                setCalendarId(originalGroupPath(draft, path))
+              }
+              attributes={calendar.attributes}
+              onChange={(attributes) =>
+                onChange({
+                  ...draft,
+                  calendars: draft.calendars!.map((c) =>
+                    c.id === calendar.id ? { ...c, attributes } : c,
+                  ),
+                })
+              }
+            />
             <TimingFields
               fields={calendars}
               attributes={calendar.attributes}

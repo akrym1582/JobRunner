@@ -60,7 +60,8 @@ public sealed partial class SchedulerEngine
         var existing = (await storage.ListAsync("occurrence:", token)).Select(StorageRepository.Read<Occurrence>)
             .Where(o => o.Namespace == registration.Namespace && o.RegistrationId == registration.Id && o.Id == o.RootId).OrderBy(o => o.OriginalDue).ThenBy(o => o.Rule).ToList();
         var generation = JsonSerializer.Deserialize<Registration>(JsonSerializer.Serialize(registration))!;
-        var first = existing.FirstOrDefault();
+        var first = existing.FirstOrDefault(o => o.State != "Superseded");
+
         while (registration.Through < registration.End!.Value)
         {
             DateOnly until = registration.Through.AddDays(Math.Min(366, registration.End.Value.DayNumber - registration.Through.DayNumber));
@@ -69,7 +70,10 @@ public sealed partial class SchedulerEngine
                 // 中断後の再送でも最初の世代の保留を保持し、後続へ拡散させません。
                 generation.Holding = first is null || (first.OriginalDue == point.Due && first.Rule == point.Rule) ? registration.Holding : null;
                 await CreateOccurrenceAsync(generation, point, root, token);
-                first ??= new Occurrence { OriginalDue = point.Due, Rule = point.Rule };
+                if (await storage.GetAsync("occurrence:" + GenerationId(generation, point), token) is not null)
+                {
+                    first ??= new Occurrence { OriginalDue = point.Due, Rule = point.Rule };
+                }
             }
 
             registration.Through = until;
@@ -96,7 +100,10 @@ public sealed partial class SchedulerEngine
             .Where(o => o.Namespace == registration.Namespace && o.RegistrationId == registration.Id && o.Id == o.RootId).ToList();
         foreach (var incomplete in roots.Where(o => o.Materialized == false))
         {
-            await CreateOccurrenceAsync(registration, new SchedulePoint(incomplete.Rule, incomplete.BusinessDate, incomplete.OriginalDue), (await ReadUnitsAsync(incomplete.DefinitionHash, token))[incomplete.UnitPath], token);
+            var repairRegistration = JsonSerializer.Deserialize<Registration>(JsonSerializer.Serialize(registration))!;
+            repairRegistration.GenerationRevision = incomplete.GenerationRevision;
+            repairRegistration.DefinitionHash = incomplete.DefinitionHash;
+            await CreateOccurrenceAsync(repairRegistration, new SchedulePoint(incomplete.Rule, incomplete.BusinessDate, incomplete.OriginalDue), (await ReadUnitsAsync(incomplete.DefinitionHash, token))[incomplete.UnitPath], token);
         }
 
         int needed = registration.FutureGenerations!.Value - roots.Count(o => !o.Started && o.State is "Waiting" or "Held");
@@ -107,13 +114,13 @@ public sealed partial class SchedulerEngine
         }
 
         var generationRegistration = JsonSerializer.Deserialize<Registration>(JsonSerializer.Serialize(registration))!;
-        generationRegistration.Holding = roots.Count == 0 ? registration.Holding : null;
+        generationRegistration.Holding = roots.All(o => o.State == "Superseded") ? registration.Holding : null;
         if (registration.Start is not null)
         {
             generationRegistration.End = null;
         }
 
-        var last = roots.OrderBy(o => o.OriginalDue).ThenBy(o => o.Rule).LastOrDefault();
+        var last = roots.Where(o => o.State != "Superseded" && o.GenerationRevision == registration.GenerationRevision).OrderBy(o => o.OriginalDue).ThenBy(o => o.Rule).LastOrDefault();
         DateTimeOffset baseline = registration.CreatedAt ?? active!.Baseline;
         if (baseline < recoveryBaseline)
         {
@@ -140,8 +147,13 @@ public sealed partial class SchedulerEngine
                 }
 
                 await CreateOccurrenceAsync(generationRegistration, point, root, token);
-                generationRegistration.Holding = null;
-                needed--;
+                var created = await storage.GetAsync("occurrence:" + GenerationId(generationRegistration, point), token);
+                if (created is not null && StorageRepository.Read<Occurrence>(created).State is "Waiting" or "Held")
+                {
+                    generationRegistration.Holding = null;
+                    needed--;
+                }
+
                 if (needed == 0)
                 {
                     break;
@@ -168,7 +180,8 @@ public sealed partial class SchedulerEngine
             var operation = StorageRepository.Read<Operation>(row);
             if (operation.Status == "Pending" && operation.MutationPath is not null)
             {
-                await new OperationMutationService(storage, clock).ResumeAsync(row, CommitAsync, StopOwnedAsync, token);
+                await new OperationMutationService(storage, clock).ResumeAsync(row, CommitAsync, StopOwnedAsync, token, operation.Kind == "Activate" ? FinalizePublicationAsync : null);
+                await RestoreRuntimeAsync(token);
             }
         }
     }
@@ -252,6 +265,7 @@ public sealed partial class SchedulerEngine
             {
                 item.Value.State = (units[item.Value.UnitPath].Get("ha", "n") == "y" || (item.Value.Id == target.Id && operation.RerunOptions?.Contains("HOLD") == true)) ? "Held" : "Waiting";
                 item.Value.HoldOverride = item.Value.Id == target.Id && operation.RerunOptions?.Contains("HOLD") == true ? true : null;
+                item.Value.IndividuallyModified = true;
                 item.Value.ManualExitCode = null;
                 item.Value.InterruptRequested = null;
                 item.Value.StatusDetail = null;

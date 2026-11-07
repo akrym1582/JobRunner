@@ -39,9 +39,19 @@ export function creationDocument(
   base: EditorDocument,
   draft: EditorDraft,
 ): EditorDocument {
+  const workingSources =
+    draft.workingSources?.map((s) => ({
+      kind: s.mapping!.kind ?? "Unit",
+      fileName: s.mapping!.blobPath!,
+      encoding: s.mapping!.encoding!,
+      targetPath: s.mapping!.targetPath!,
+      text: "",
+      changed: true,
+    })) ?? base.sources;
   const sources = [
-    ...base.sources,
+    ...workingSources,
     ...(draft.newFiles ?? []).map((f) => ({
+      kind: "Unit",
       fileName: f.fileName,
       encoding: f.encoding,
       targetPath: f.targetPath,
@@ -50,11 +60,11 @@ export function creationDocument(
     })),
   ];
   const containers = [
-    ...(base.containers ?? []),
+    ...(draft.workingContainers ?? base.containers ?? []),
     ...(draft.newFiles ?? []).flatMap((f, i) => [
-      { sourceIndex: base.sources.length + i, parentPath: f.targetPath },
+      { sourceIndex: workingSources.length + i, parentPath: f.targetPath },
       {
-        sourceIndex: base.sources.length + i,
+        sourceIndex: workingSources.length + i,
         parentPath: fullPath(f.targetPath, f.groupName),
       },
     ]),

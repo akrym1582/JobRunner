@@ -10,16 +10,19 @@ import {
   Redo2,
   RotateCcw,
   Undo2,
-  X,
 } from "lucide-react";
 import type {
   EditorDocument,
   EditorDraft,
   EditorNetwork,
   EditorPreview,
+  SharedEditorDraft,
 } from "../api/@types";
 import { client, errorMessage } from "../client";
+import { DefinitionLifecycleControls } from "./DefinitionLifecycleControls";
+import { CopyControls } from "./CopyControls";
 import { EditorGraph } from "./EditorGraph";
+import { EditorLists } from "./EditorLists";
 import { EditorProperties } from "./EditorProperties";
 import { ExecutionProperties } from "./ExecutionProperties";
 import { TimingProperties } from "./TimingProperties";
@@ -27,6 +30,7 @@ import { LocalDefinitionInput } from "./LocalDefinitionInput";
 import { GroupProperties } from "./GroupProperties";
 import { CreationProperties } from "./CreationProperties";
 import { creationDocument } from "./creations";
+import { findOriginalSource, sourceKey, sourceLabel } from "./source-identity";
 import { NetworkChangeProperties } from "./NetworkChangeProperties";
 import { networkType } from "./network-changes";
 import { NetworkProperties } from "./NetworkProperties";
@@ -52,7 +56,7 @@ import {
 import "./editor.css";
 
 async function upgradeSaved(saved: SavedDraft): Promise<SavedDraft> {
-  if (saved.draft.editorVersion === 8) return saved;
+  if (saved.draft.editorVersion === 9) return saved;
   const base = saved.draft.localSources
     ? await client.ui.definition_editor.local.$post({
         body: { sources: saved.draft.localSources },
@@ -73,17 +77,22 @@ export function DefinitionEditor({
   onNavigate: (path: string) => void;
 }) {
   const source = useAspidaSWR(client.ui.definition_editor, {
+    enabled: !!activeHash,
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
   });
   const [base, setBase] = useState<EditorDocument>();
   const [history, setHistory] = useState<History>();
   const [loaded, setLoaded] = useState(false);
-  const [saving, setSaving] = useState("");
+  const [savedSnapshot, setSavedSnapshot] = useState<{
+    base: EditorDocument;
+    history: History;
+  }>();
   const [saveError, setSaveError] = useState("");
   const [saveAllowed, setSaveAllowed] = useState(true);
   const [conflicted, setConflicted] = useState(false);
   const [selected, setSelected] = useState("");
+  const [selection, setSelection] = useState<string[]>([]);
   const [kind, setKind] = useState("j");
   const [connecting, setConnecting] = useState(false);
   const [connectFrom, setConnectFrom] = useState("");
@@ -100,6 +109,14 @@ export function DefinitionEditor({
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const conflict = useRef(false);
   const draft = history?.present;
+  // Effectが動く前の描画も、現在の履歴と同じ保存完了だけを「保存済み」とします。
+  // undo→redoで同じdraftへ戻っても、先行する書込み待ちの履歴とは区別します。
+  const saving =
+    base && history && saveAllowed
+      ? savedSnapshot?.base === base && savedSnapshot.history === history
+        ? "ブラウザーに保存済み"
+        : "下書きを保存中…"
+      : "";
   const network =
     draft?.networks.find((n) => n.path === path) ??
     draft?.networks[0] ??
@@ -116,6 +133,9 @@ export function DefinitionEditor({
     () => (base && draft ? creationDocument(base, draft) : undefined),
     [base, draft],
   );
+  const previewSource = preview?.sources[previewFile];
+  // 同じBlobの別配置や別文字コードを含め、バックエンドと同じマッピングで照合します。
+  const originalSource = findOriginalSource(base?.sources ?? [], previewSource);
 
   const persist = useCallback(
     (value: SavedDraft, compareEvenIfUnchanged = false) => {
@@ -136,7 +156,7 @@ export function DefinitionEditor({
           conflict.current = true;
           setConflicted(true);
         }
-        setSaving("");
+        setSavedSnapshot(undefined);
         setSaveError(`自動保存できません: ${String(error)}`);
       });
       return pending;
@@ -200,13 +220,12 @@ export function DefinitionEditor({
     };
   }, [source.error]);
   useEffect(() => {
-    if (!base || !draft || !saveAllowed) return;
+    if (!base || !history || !saveAllowed) return;
     let current = true;
-    setSaving("下書きを保存中…");
-    void persist({ version: 1, base, draft })
+    void persist({ version: 1, base, draft: history.present })
       .then(() => {
         if (current) {
-          setSaving("ブラウザーに保存済み");
+          setSavedSnapshot({ base, history });
           setSaveError("");
         }
       })
@@ -214,9 +233,10 @@ export function DefinitionEditor({
     return () => {
       current = false;
     };
-  }, [base, draft, saveAllowed, persist]);
+  }, [base, history, saveAllowed, persist]);
   useEffect(() => {
     setSelected("");
+    setSelection([]);
     setConnectFrom("");
   }, [network?.path]);
 
@@ -236,9 +256,16 @@ export function DefinitionEditor({
     setConnectFrom("");
     setHistory((h) => (h ? (direction === "undo" ? undo(h) : redo(h)) : h));
   }
-  function select(id: string) {
+  function select(id: string, multiple = false) {
     if (!network) return;
     setSelected(id);
+    setSelection((previous) =>
+      multiple
+        ? previous.includes(id)
+          ? previous.filter((value) => value !== id)
+          : [...previous, id]
+        : [id],
+    );
     if (!connecting) return;
     if (!connectFrom) {
       setConnectFrom(id);
@@ -299,7 +326,9 @@ export function DefinitionEditor({
         link = document.createElement("a");
       link.href = url;
       link.download =
-        base.sources.length + (draft.newFiles?.length ?? 0) === 1
+        (draft.workingSources?.length ?? base.sources.length) +
+          (draft.newFiles?.length ?? 0) ===
+        1
           ? base.sources[0].fileName.split("/").at(-1)!
           : "jobrunner-definitions.zip";
       link.click();
@@ -411,7 +440,6 @@ export function DefinitionEditor({
       setShowPreview(false);
       setSelected("");
       setConnectFrom("");
-      setSaving("ブラウザーに保存済み");
       setSaveError("");
       setMessage(
         "ローカル定義を下書きとして読み込みました。採用・登録はしていません。",
@@ -422,6 +450,30 @@ export function DefinitionEditor({
     } finally {
       setBusy(false);
     }
+  }
+  async function restoreShared(saved: SharedEditorDraft) {
+    const started = revision.current;
+    const restored = await upgradeSaved({
+      version: 1,
+      base: saved.base,
+      draft: saved.draft,
+    });
+    if (started !== revision.current)
+      throw new Error(
+        "読込中の編集を保持しました。もう一度読み込んでください。",
+      );
+    await persist(restored, true);
+    if (started !== revision.current)
+      throw new Error(
+        "保存中の編集を保持しました。もう一度読み込んでください。",
+      );
+    revision.current++;
+    setBase(restored.base);
+    setHistory({ past: [], present: restored.draft, future: [] });
+    setPreview(undefined);
+    setShowPreview(false);
+    setSelected("");
+    setSelection([]);
   }
   async function reloadSaved() {
     if (
@@ -451,11 +503,7 @@ export function DefinitionEditor({
         await persist({ version: 1, base, draft });
         setSaveAllowed(true);
         setSaveError("");
-        setSaving(
-          started === revision.current
-            ? "ブラウザーに保存済み"
-            : "下書きを保存中…",
-        );
+        setSavedSnapshot({ base, history: history! });
         setMessage(
           "保存済み下書きがないため、現在の編集の保存を再開しました。",
         );
@@ -522,7 +570,7 @@ export function DefinitionEditor({
                     .then(() => {
                       setSaveAllowed(true);
                       setSaveError("");
-                      setSaving("ブラウザーに保存済み");
+                      setSavedSnapshot({ base, history: history! });
                     })
                     .catch(() => {});
                 }
@@ -544,14 +592,20 @@ export function DefinitionEditor({
         )}
       <div className="editor-scope-note">
         <FileCode2 size={16} />
-        この下書きは実行中の定義や予定に反映されません。ダウンロード後、既存の取込・採用手順で適用します。
+        下書きの編集・保存だけでは実行中の定義や予定は変わりません。「運用反映の差分を確認」から反映できます。
       </div>
       {draft?.localSources && (
         <p role="status">
-          ローカル入力（未採用）・
-          {draft.localSources.length + (draft.newFiles?.length ?? 0)}ファイル
+          ローカル入力を基にした下書き・
+          {creationBase?.sources.length ?? 0}ファイル
         </p>
       )}
+      <DefinitionLifecycleControls
+        base={base}
+        draft={draft}
+        disabled={busy || !loaded}
+        onRestore={restoreShared}
+      />
       <LocalDefinitionInput disabled={busy || !loaded} onImport={importLocal} />
       <CreationProperties
         base={base}
@@ -737,6 +791,23 @@ export function DefinitionEditor({
               </button>
             </div>
           </div>
+          {base && (
+            <CopyControls
+              draft={draft}
+              current={network.path}
+              selected={selection.filter((id) =>
+                network.nodes.some((n) => n.id === id),
+              )}
+              base={creationBase!}
+              disabled={busy || !saveAllowed}
+              onPaste={(next, path) => {
+                update(next);
+                setSelection([]);
+                setSelected("");
+                onNavigate(path);
+              }}
+            />
+          )}
           <div className="editor-network-bar">
             <GitBranch size={16} />
             <label>
@@ -773,6 +844,7 @@ export function DefinitionEditor({
               network={network}
               typeOf={(n) => networkType(draft, n)}
               selected={selected}
+              selection={selection}
               connecting={connecting}
               onSelect={select}
               onMove={(node, x, y) =>
@@ -805,61 +877,18 @@ export function DefinitionEditor({
               }}
             />
           </div>
-          <div className="editor-lists">
-            <section>
-              <h3>
-                ユニット一覧 <span>{network.nodes.length}</span>
-              </h3>
-              <div className="editor-unit-list">
-                {network.nodes.map((n) => (
-                  <button
-                    key={n.id}
-                    aria-pressed={selected === n.id}
-                    onClick={() => select(n.id)}
-                  >
-                    <span className="outline-pill">
-                      {networkType(draft, n)}
-                    </span>
-                    {n.name}
-                    <small>
-                      {n.x ?? "—"}, {n.y ?? "—"}
-                    </small>
-                  </button>
-                ))}
-              </div>
-            </section>
-            <section>
-              <h3>
-                接続一覧 <span>{network.edges.length}</span>
-              </h3>
-              <div className="editor-connection-list">
-                {network.edges.map((edge, index) => (
-                  <div key={`${edge.from}:${edge.to}:${index}`}>
-                    <span>
-                      {network.nodes.find((n) => n.id === edge.from)?.name}{" "}
-                      <span className="editor-muted">→</span>{" "}
-                      {network.nodes.find((n) => n.id === edge.to)?.name}
-                    </span>
-                    <small>{edge.conditional ? "条件成立" : "通常順序"}</small>
-                    <button
-                      aria-label={`接続 ${index + 1} を削除`}
-                      onClick={() =>
-                        edit({
-                          ...network,
-                          edges: network.edges.filter((_, i) => i !== index),
-                        })
-                      }
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                ))}
-                {!network.edges.length && (
-                  <p className="editor-muted">接続はありません。</p>
-                )}
-              </div>
-            </section>
-          </div>
+          <EditorLists
+            network={network}
+            selected={selected}
+            typeOf={(n) => networkType(draft, n)}
+            onSelect={select}
+            onRemoveEdge={(index) =>
+              edit({
+                ...network,
+                edges: network.edges.filter((_, i) => i !== index),
+              })
+            }
+          />
           {preview && (
             <section className="editor-preview" aria-label="検証結果">
               <div className="editor-preview-title">
@@ -896,8 +925,8 @@ export function DefinitionEditor({
                       onChange={(e) => setPreviewFile(Number(e.target.value))}
                     >
                       {preview.sources.map((file, i) => (
-                        <option key={file.fileName + file.targetPath} value={i}>
-                          {file.fileName} · {file.encoding}{" "}
+                        <option key={sourceKey(file)} value={i}>
+                          {sourceLabel(file)}{" "}
                           {file.changed ? "（変更あり）" : "（変更なし）"}
                         </option>
                       ))}
@@ -907,14 +936,12 @@ export function DefinitionEditor({
                     <div>
                       <h4>変更前</h4>
                       <pre aria-label="変更前の原文">
-                        {base?.sources[previewFile]?.text}
+                        {originalSource?.text}
                       </pre>
                     </div>
                     <div>
                       <h4>変更後</h4>
-                      <pre aria-label="変更後の原文">
-                        {preview.sources[previewFile]?.text}
-                      </pre>
+                      <pre aria-label="変更後の原文">{previewSource?.text}</pre>
                     </div>
                   </div>
                 </>
@@ -924,8 +951,8 @@ export function DefinitionEditor({
           <div className="editor-footer">
             <span>
               基点版 {draft.definitionHash.slice(0, 12)} ·{" "}
-              {(base?.sources.length ?? 0) + (draft.newFiles?.length ?? 0)}{" "}
-              ファイル · このブラウザーに下書きを保存
+              {creationBase?.sources.length ?? 0} ファイル ·
+              このブラウザーに下書きを保存
             </span>
             <button disabled={busy} onClick={() => void discard()}>
               <RotateCcw size={14} />

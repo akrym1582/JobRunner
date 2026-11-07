@@ -26,7 +26,7 @@
 
 ![定義編集：SVGの配置と接続、ジョブのプロパティ](docs/spec/scheduler/web-ui/images/definition-editor.png)
 
-「検証・プレビュー」で変更前後の原文と診断を確認し、JP1形式でダウンロードします。コメント・未編集の属性・文字コード・BOMを保持し、複数入力は配置情報付きZIPになります。画面から採用・実行は行わず、適用には既存の取込・採用手順を使用します。ZIPの`manifest.json`に各ファイルの元のBlobパス・配置先・文字コードを記録します。適用時はその対応で原文を配置してください。開始日・時刻・周期・振替・起算・上位ルール参照と、既存グループのカレンダーも編集できます。属性の省略と明示値、複数ルールを区別して保持します。「ネットの移動・種別切替」では、同じ原文ファイル・同じ継承条件のグループ間で通常ルートネットを移動し、同じ親の子ネットをn/rnへ切り替えられます。検証後にパスや起動条件の変化を確認して適用します。属性・接続・子孫は削除せず、不正な接続や継承条件の変更は拒否します。別ファイル移動、子ネットの別親への移動、ルート/子の相互変換、ネット/ジョブ間の変換は未対応です。
+「検証・プレビュー」で変更前後の原文と診断を確認し、JP1形式でダウンロードします。コメント・未編集の属性・文字コード・BOMを保持し、複数入力は配置情報付きZIPになります。編集と自動保存では運用を変えません。「Storageへ下書きを保存」で共有保存し、「運用反映の差分を確認」から一式を反映できます。ダウンロードしたUnit/ZIPを読み直してから反映することもできます。ZIPの`manifest.json`に各ファイルの元のBlobパス・配置先・文字コードを記録します。適用時はその対応で原文を配置してください。開始日・時刻・周期・振替・起算・上位ルール参照と、既存グループのカレンダーも編集できます。属性の省略と明示値、複数ルールを区別して保持します。「ネットの移動・種別切替」では、同じ原文ファイル・同じ継承条件のグループ間で通常ルートネットを移動し、同じ親の子ネットをn/rnへ切り替えられます。検証後にパスや起動条件の変化を確認して適用します。属性・接続・子孫は削除せず、不正な接続や継承条件の変更は拒否します。別ファイル移動、子ネットの別親への移動、ルート/子の相互変換、ネット/ジョブ間の変換は未対応です。
 
 「グループ・Unitファイルを作成」から、同じ原文のグループまたは配置先へ空グループを追加できます。新規Unitファイルはローカル下書きだけに追加でき、ファイル名・配置先・文字コード・BOM・初期グループを明示します。「新規ローカルファイルで開始」は確認後に現在の下書きを置き換えます。新しいグループもネットの親やカレンダーの編集対象になります。作成はundo/redo・保存復元に対応し、遅い検証応答や別タブの保存で編集を上書きしません。グループの名前変更・子孫削除は別フォームで行えます。jcと表示参照を追従させ、独立ファイルの配置先に関わる変更・外部参照が残る削除・空ファイル化は拒否します。未定義のファイル配置先は属性のない仮想親で補います。グループの移動・種別変換は未対応です。[作成画面](docs/spec/scheduler/web-ui/images/creation-editor.png)を参照してください。
 
@@ -60,27 +60,22 @@ dotnet test JobRunner.slnx -c Release --no-build
 
 ## 起動
 
-Azuriteを起動し、Azure Storage Explorer等で`jp1-definitions`コンテナーに次の2ファイルを配置します。
-
-| ローカルファイル | Blob名 |
-| --- | --- |
-| `examples/daily.txt` | `jobs/daily.txt` |
-| `examples/calendar.txt` | `calendars/business.txt` |
+AzuriteまたはAzure Storageの接続先を設定して起動します。入力Blobの設定・配置は通常起動には不要です。
 
 ```bash
 export JobRunner__ConnectionString='UseDevelopmentStorage=true'
-export JobRunner__DefinitionSources__0__Kind=Unit
-export JobRunner__DefinitionSources__0__TargetPath=/業務/日次
-export JobRunner__DefinitionSources__0__BlobPath=jp1-definitions/jobs/daily.txt
-export JobRunner__DefinitionSources__1__Kind=Unit
-export JobRunner__DefinitionSources__1__TargetPath=/
-export JobRunner__DefinitionSources__1__BlobPath=jp1-definitions/calendars/business.txt
 export JobRunner__ScheduleTimeMode=48
 export ASPNETCORE_URLS=http://127.0.0.1:5080
 dotnet run --project src/JobRunner --no-launch-profile
 ```
 
-稼働系だけが入力一式を検証し、ルートネットを自動確定登録します。入力がない・不正・未対応の場合、APIは起動しますがスケジューラーは`Faulted`となり実行しません。サンプルはLinux用です。PCジョブ（`ty=pj`）もLinux上のコマンドとして実行できます。Windowsの実機検証は未実施です。
+初回は「定義未登録・停止中」です。画面の「定義編集」で新規作成するか、`examples/daily.txt`（配置先`/業務/日次`）と`examples/calendar.txt`（配置先`/`）を一式で読み込み、差分を確認して運用へ反映してください。その後「全体を再開」で自動確定登録のジョブ実行を許可します。通常の再起動はStorageの定義と状態を復元し、入力Blobは読みません。欠損・破損・実行設定の不一致はFaultedとして停止します。
+
+「全体を一時停止」は同じSchedulerIdの全ジョブの新規開始を止めます。起動済みプロセスは終了まで動作し、結果を回収します。再開すると、再開時刻より前の未開始ルート（保留も含む）は見送り、開始済みネットの後続を続行します。定義反映や再起動では停止を解除しません。
+
+編集画面は複数ジョブ・子孫ネットのコピペ、ファイルをまたぐ複製、月表示カレンダーと継承元の確認に対応します。内部接続だけを複製し、除外接続・継承先を確認して貼り付けます。複製ルートは予定なし・保留ありです。[定義運用の仕様](docs/spec/scheduler/definition-lifecycle/spec.md)を参照してください。
+
+サンプルはLinux用です。PCジョブ（`ty=pj`）もLinux上のコマンドとして実行できます。Windowsの実機検証は未実施です。
 
 計画実行登録はユーザー指定により対象外です。確定登録に未来世代数（1〜99）の指定と自動補充、ネット一式の日時変更・即時化・取消・強制終了・TOP再実行を追加しました。
 
@@ -100,7 +95,7 @@ dotnet run --project src/JobRunner --no-launch-profile
 
 `src/JobRunner/clientapp` に監視・定義編集画面を同梱しています。JP1定義のel座標を使ってReactのSVGでジョブネットを表示し、状態取得にaspidaの生成クライアントと`@aspida/swr`を使用します。認証はありません。実行ログの参照・状態絞り込み、ルート実行回の日時変更・予定取消・変更解除と、前述の定義の下書き編集を提供します。
 
-.NET 10 SDKとNode.js 22.12以降を用意し、初回は依存関係をインストールします。Storageと入力定義の設定は上記の起動手順と共通です。
+.NET 10 SDKとNode.js 22.12以降を用意し、初回は依存関係をインストールします。Storageの設定は上記の起動手順と共通です。初回定義は画面から反映します。
 
 ```bash
 cd src/JobRunner/clientapp

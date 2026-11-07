@@ -1,3 +1,4 @@
+using Azure.Core.Pipeline;
 using JobRunner.Models;
 using JobRunner.Storage;
 
@@ -7,7 +8,8 @@ namespace JobRunner.Tests;
 internal sealed class StorageScope : IAsyncDisposable
 {
     /// <summary>Initializes a new instance of the <see cref="StorageScope"/> class. 名前空間をテストごとに分離します。</summary>
-    public StorageScope()
+    /// <param name="policy">実Storage通信へ中断を注入する場合だけ指定します。</param>
+    public StorageScope(HttpPipelinePolicy? policy = null)
     {
         string suffix = Guid.NewGuid().ToString("N");
         Options = new RunnerOptions { ManagementContainer = "test-" + suffix, TableName = "Test" + suffix, SchedulerId = suffix };
@@ -18,7 +20,7 @@ internal sealed class StorageScope : IAsyncDisposable
             Options.ConnectionString = connectionString;
         }
 
-        Repository = new StorageRepository(Options);
+        Repository = new StorageRepository(Options, policy);
     }
 
     /// <summary>Gets. この試験だけが使用するStorage設定です。</summary>

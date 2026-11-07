@@ -24,6 +24,7 @@ public sealed class Jp1ReadAndScheduleTests
         var input = storage.Blobs.GetBlobContainerClient(inputName);
         await input.CreateAsync();
         await input.GetBlobClient("jobs").UploadAsync(BinaryData.FromString("unit=net;{ty=n;sd=0,ud;unit=j;{ty=j;te=\"true\";}}"));
+        await TestDefinitions.SeedHttpAsync(storage, scope.Options);
         using var app = new AppProcess(scope.Options);
         try
         {
@@ -104,6 +105,7 @@ public sealed class Jp1ReadAndScheduleTests
         await input.CreateAsync();
         string jobs = string.Concat(Enumerable.Range(0, 1001).Select(i => $"unit=j{i};{{ty=j;te=\"true\";}}"));
         await input.GetBlobClient("jobs").UploadAsync(BinaryData.FromString("unit=net;{ty=n;sd=0,ud;" + jobs + "}"));
+        await TestDefinitions.SeedHttpAsync(storage, scope.Options);
         using var app = new AppProcess(scope.Options);
         try
         {

@@ -512,3 +512,68 @@
 .editor-local-input input[type="file"] {
   max-width: 100%;
 }
+
+.runtime-control,
+.editor-lifecycle,
+.editor-copy {
+  margin: 12px 24px;
+  padding: 14px;
+  border: 1px solid #c9d7e5;
+  border-radius: 10px;
+  background: #f8fafc;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.editor-lifecycle,
+.editor-copy {
+  margin: 12px 0;
+}
+.editor-lifecycle > p,
+.editor-copy > small,
+.editor-copy > p,
+.editor-lifecycle > div[role="dialog"] {
+  flex-basis: 100%;
+}
+.editor-publication-preview {
+  max-width: 100%;
+  overflow: auto;
+}
+.editor-publication-preview pre {
+  max-height: 350px;
+  overflow: auto;
+}
+.editor-calendar-month {
+  margin: 20px 0;
+}
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(70px, 1fr));
+  gap: 4px;
+  margin: 12px 0;
+}
+.calendar-grid button {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  padding: 8px;
+}
+.calendar-grid small {
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.calendar-open {
+  background: #edf8f1;
+}
+.calendar-closed {
+  background: #fff0f0;
+}
+.calendar-grid button[aria-pressed="true"] {
+  outline: 2px solid #345eb8;
+}
+.editor-calendar-month fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}

@@ -1,0 +1,191 @@
+[
+  {
+    "jobs": 200,
+    "sourceBytes": 12589,
+    "sharedRequestBytes": 112109,
+    "production": true,
+    "browser": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
+    "browserMetrics": {
+      "Nodes": 20580,
+      "TaskDuration": 0.948168,
+      "JSHeapUsedSize": 17465048,
+      "JSHeapTotalSize": 30396416
+    },
+    "backendMemory": {
+      "VmHWMKiB": 171632,
+      "VmRSSKiB": 171632
+    },
+    "rows": [
+      {
+        "operation": "http-local",
+        "milliseconds": 76.96362799999997
+      },
+      {
+        "operation": "http-preview",
+        "milliseconds": 130.98225000000002
+      },
+      {
+        "operation": "http-export",
+        "milliseconds": 46.950147000000015
+      },
+      {
+        "operation": "http-schedules",
+        "milliseconds": 103.39223600000014
+      },
+      {
+        "operation": "http-calendar",
+        "milliseconds": 71.4585360000001
+      },
+      {
+        "operation": "http-shared-save",
+        "milliseconds": 114.22533800000019
+      },
+      {
+        "operation": "http-shared-load",
+        "milliseconds": 29.99327200000016
+      },
+      {
+        "operation": "shared-load-and-render",
+        "milliseconds": 722.5817840000004
+      },
+      {
+        "operation": "edit-and-browser-save",
+        "milliseconds": 201.97523199999978
+      },
+      {
+        "operation": "http-publication-preview",
+        "milliseconds": 123.90528499999982
+      },
+      {
+        "operation": "publication-applied",
+        "milliseconds": 1393.9723119999999
+      }
+    ]
+  },
+  {
+    "jobs": 1000,
+    "sourceBytes": 64037,
+    "sharedRequestBytes": 560445,
+    "production": true,
+    "browser": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
+    "browserMetrics": {
+      "Nodes": 91049,
+      "TaskDuration": 3.803944,
+      "JSHeapUsedSize": 54995364,
+      "JSHeapTotalSize": 105385984
+    },
+    "backendMemory": {
+      "VmHWMKiB": 208980,
+      "VmRSSKiB": 208980
+    },
+    "rows": [
+      {
+        "operation": "http-local",
+        "milliseconds": 126.43839899999966
+      },
+      {
+        "operation": "http-preview",
+        "milliseconds": 317.3415420000001
+      },
+      {
+        "operation": "http-export",
+        "milliseconds": 181.02513799999997
+      },
+      {
+        "operation": "http-schedules",
+        "milliseconds": 167.69059299999935
+      },
+      {
+        "operation": "http-calendar",
+        "milliseconds": 221.60048600000027
+      },
+      {
+        "operation": "http-shared-save",
+        "milliseconds": 95.82853400000022
+      },
+      {
+        "operation": "http-shared-load",
+        "milliseconds": 51.12464200000068
+      },
+      {
+        "operation": "shared-load-and-render",
+        "milliseconds": 1999.1684370000003
+      },
+      {
+        "operation": "edit-and-browser-save",
+        "milliseconds": 754.2707279999995
+      },
+      {
+        "operation": "http-publication-preview",
+        "milliseconds": 164.8587699999989
+      },
+      {
+        "operation": "publication-applied",
+        "milliseconds": 2415.0809210000007
+      }
+    ]
+  },
+  {
+    "jobs": 9000,
+    "sourceBytes": 610517,
+    "sharedRequestBytes": 5241165,
+    "production": true,
+    "browser": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
+    "browserMetrics": {
+      "Nodes": 613234,
+      "TaskDuration": 50.289465,
+      "JSHeapUsedSize": 188746412,
+      "JSHeapTotalSize": 283799552
+    },
+    "backendMemory": {
+      "VmHWMKiB": 429852,
+      "VmRSSKiB": 346332
+    },
+    "rows": [
+      {
+        "operation": "http-local",
+        "milliseconds": 573.1547459999983
+      },
+      {
+        "operation": "http-preview",
+        "milliseconds": 1295.4888279999977
+      },
+      {
+        "operation": "http-export",
+        "milliseconds": 1151.583616
+      },
+      {
+        "operation": "http-schedules",
+        "milliseconds": 1023.113609
+      },
+      {
+        "operation": "http-calendar",
+        "milliseconds": 1691.8690559999995
+      },
+      {
+        "operation": "http-shared-save",
+        "milliseconds": 711.7883509999992
+      },
+      {
+        "operation": "http-shared-load",
+        "milliseconds": 275.87552700000015
+      },
+      {
+        "operation": "shared-load-and-render",
+        "milliseconds": 11734.984047999998
+      },
+      {
+        "operation": "edit-and-browser-save",
+        "milliseconds": 33845.579863
+      },
+      {
+        "operation": "http-publication-preview",
+        "milliseconds": 1876.3870140000072
+      },
+      {
+        "operation": "publication-applied",
+        "milliseconds": 30050.881960999992
+      }
+    ]
+  }
+]

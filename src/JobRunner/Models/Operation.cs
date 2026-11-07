@@ -103,7 +103,11 @@ public sealed class Operation
 
     /// <summary>Gets or sets. 分割操作の不変変更計画。サーバーだけが設定します。</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? MutationPath { get; set; } = null;
+    public string? MutationPath { get; set; }
+
+    /// <summary>Gets or sets. 変更行の保存完了後は同じ計画の補充だけを再開します。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public bool? MutationApplied { get; set; } = null;
 
     /// <summary>Gets or sets. 補充用定義を更新する際の新しい保存済み版です。</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -168,4 +172,20 @@ public sealed class Operation
     /// <summary>Gets or sets. 変更する項目だけを持つ遅延監視要求です。</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public DelayMonitorSettings? DelayMonitor { get; set; }
+
+    /// <summary>Gets or sets. 停止・再開を確認した制御版。古い画面からの反転を拒否します。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public long? ExpectedControlRevision { get; set; }
+
+    /// <summary>Gets or sets. 運用反映を確認した採用版です。初回は0です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public long? ExpectedDefinitionRevision { get; set; }
+
+    /// <summary>Gets or sets. 反映影響を確認した保存状態のハッシュです。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? ExpectedImpactHash { get; set; }
+
+    /// <summary>Gets or sets. 受付時の運用版。登録要求が反映をまたいで別定義を起動することを防ぎます。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public long? AcceptedDefinitionRevision { get; set; }
 }

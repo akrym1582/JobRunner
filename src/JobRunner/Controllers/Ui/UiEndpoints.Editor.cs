@@ -15,18 +15,18 @@ public static partial class UiEndpoints
         group.MapPost("/definition-editor/local", (EditorLocalRequest request, DefinitionService definitions, RunnerOptions options) =>
         {
             var bundle = EditorLocalFiles.Read(request, definitions);
-            return new EditorDocument(DefinitionEditor.Project(bundle, 8) with { LocalSources = bundle.Sources }, DefinitionEditor.Describe(bundle.Sources, bundle.Sources), DefinitionEditor.Containers(bundle), options.TimeZone, options.ScheduleTimeMode);
+            return new EditorDocument(DefinitionEditor.Project(bundle, 9) with { LocalSources = bundle.Sources }, DefinitionEditor.Describe(bundle.Sources, bundle.Sources), DefinitionEditor.Containers(bundle), options.TimeZone, options.ScheduleTimeMode);
         });
         group.MapPost("/definition-editor/local/new", (EditorFileCreation request, DefinitionService definitions, RunnerOptions options) =>
         {
             var bundle = EditorLocalFiles.Read(new([DefinitionEditor.CreateFile(request)]), definitions);
-            return new EditorDocument(DefinitionEditor.Project(bundle, 8) with { LocalSources = bundle.Sources }, DefinitionEditor.Describe(bundle.Sources, bundle.Sources), DefinitionEditor.Containers(bundle), options.TimeZone, options.ScheduleTimeMode);
+            return new EditorDocument(DefinitionEditor.Project(bundle, 9) with { LocalSources = bundle.Sources }, DefinitionEditor.Describe(bundle.Sources, bundle.Sources), DefinitionEditor.Containers(bundle), options.TimeZone, options.ScheduleTimeMode);
         });
         group.MapGet("/definition-editor", async (string? definitionHash, StorageRepository storage, DefinitionService definitions, RunnerOptions options, CancellationToken token) =>
         {
             string hash = definitionHash ?? (await ActiveAsync(storage, token)).DefinitionHash;
             var bundle = await definitions.ReadSourcesAsync(hash, token);
-            return new EditorDocument(DefinitionEditor.Project(bundle, 8), DefinitionEditor.Describe(bundle.Sources, bundle.Sources), DefinitionEditor.Containers(bundle), options.TimeZone, options.ScheduleTimeMode);
+            return new EditorDocument(DefinitionEditor.Project(bundle, 9), DefinitionEditor.Describe(bundle.Sources, bundle.Sources), DefinitionEditor.Containers(bundle), options.TimeZone, options.ScheduleTimeMode);
         });
         group.MapPost("/definition-editor/preview", async (EditorDraft draft, DefinitionService definitions, CancellationToken token) =>
         {
@@ -38,6 +38,17 @@ public static partial class UiEndpoints
             var bundle = await EditorSourcesAsync(request.Draft, definitions, token);
             var compiled = definitions.Validate(DefinitionEditor.Render(bundle, request.Draft));
             return DefinitionEditor.PreviewSchedule(compiled, request, options, token);
+        });
+        group.MapPost("/definition-editor/paste", async (EditorPasteRequest request, DefinitionService definitions, RunnerOptions options, CancellationToken token) =>
+        {
+            var bundle = await EditorSourcesAsync(request.Draft, definitions, token);
+            return DefinitionEditor.Paste(bundle, request, definitions, options);
+        });
+        group.MapPost("/definition-editor/calendar", async (EditorCalendarRequest request, DefinitionService definitions, CancellationToken token) =>
+        {
+            var bundle = await EditorSourcesAsync(request.Draft, definitions, token);
+            var compiled = definitions.Validate(DefinitionEditor.Render(bundle, request.Draft));
+            return DefinitionEditor.CalendarMonth(compiled, request);
         });
         group.MapPost("/definition-editor/export", async (EditorDraft draft, DefinitionService definitions, CancellationToken token) =>
         {

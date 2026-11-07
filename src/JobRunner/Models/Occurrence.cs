@@ -154,4 +154,10 @@ public sealed class Occurrence
     /// <summary>Gets or sets. この世代に一時設定した遅延監視です。</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public DelayMonitorSettings? DelayMonitor { get; set; }
+
+    /// <summary>Gets or sets. 通常予定を再計算する版。0は旧世代IDを維持します。</summary>
+    public long GenerationRevision { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether. 個別運用操作を含む世代は定義反映で置換しません。</summary>
+    public bool IndividuallyModified { get; set; }
 }

@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import type { Occurrence, Operation } from "./api/@types";
 import { client, errorMessage } from "./client";
+import { RuntimeControls } from "./RuntimeControls";
 import { DefinitionEditor } from "./editor/DefinitionEditor";
 import { Graph } from "./Graph";
 import { Monthly } from "./Monthly";
@@ -268,7 +269,13 @@ export function App() {
             </button>
           </div>
         </header>
+        <RuntimeControls />
         <div className="content">
+          {catalog.data && !catalog.data.definitionHash && (
+            <div className="notice" role="status">
+              運用定義は未登録です。定義編集からファイルを読み込むか新規作成し、差分を確認して運用へ反映してください。
+            </div>
+          )}
           {view === "editor" ? (
             <DefinitionEditor
               activeHash={catalog.data?.definitionHash}
@@ -506,6 +513,13 @@ export function App() {
                           </div>
                         )}
                         <div className="definition-hash">
+                          {graph.data &&
+                            graph.data.definitionHash !==
+                              catalog.data?.definitionHash && (
+                              <p>
+                                過去の定義版を表示しています。実行回を選ぶと、その回の状態を確認できます。
+                              </p>
+                            )}
                           定義版{" "}
                           <code>
                             {graph.data?.definitionHash.slice(0, 12) || "—"}

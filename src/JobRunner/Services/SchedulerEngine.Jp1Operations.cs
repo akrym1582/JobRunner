@@ -91,6 +91,7 @@ public sealed partial class SchedulerEngine
             }
 
             target.DelayMonitor = settings;
+            target.IndividuallyModified = true;
             _ = DelayMonitoring.Evaluate(target, (await storage.ListAsync("occurrence:", token)).Select(StorageRepository.Read<Occurrence>), options, clock.GetUtcNow());
         }
         else

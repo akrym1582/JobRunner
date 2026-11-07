@@ -15,7 +15,8 @@ namespace JobRunner.Services;
 public sealed class DefinitionService(StorageRepository storage, RunnerOptions options)
 {
     /// <summary>実効設定を検証し、誤った保存先への上書きを防止します。</summary>
-    public void ValidateOptions()
+    /// <param name="requireSources">明示取込時だけ入力Blob設定も検証します。</param>
+    public void ValidateOptions(bool requireSources = true)
     {
         if (options.ScheduleTimeMode is not (24 or 48) || options.ConfirmedHorizonDays is < 1 or > 366 || options.MaxConcurrency is < 1 or > 128 || string.IsNullOrWhiteSpace(options.SchedulerId))
         {
@@ -33,6 +34,11 @@ public sealed class DefinitionService(StorageRepository storage, RunnerOptions o
         }
 
         TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
+        if (!requireSources)
+        {
+            return;
+        }
+
         if (options.DefinitionSources.Count == 0)
         {
             throw new FormatException("DefinitionSourcesは1件以上必要です。");

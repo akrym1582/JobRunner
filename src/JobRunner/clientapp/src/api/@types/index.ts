@@ -1,9 +1,25 @@
 /* eslint-disable */
+export type Activation = {
+  formatVersion?: number | undefined;
+  id?: string | undefined;
+  revision?: number | undefined;
+  definitionHash?: string | undefined;
+  settingsHash?: string | undefined;
+  phase?: string | undefined;
+  baseline?: string | undefined;
+}
+
 export type AttemptPage = {
   unitPath: string;
   currentAttemptId: string | null;
   archived: boolean;
   items: JobAttempt[];
+}
+
+export type CalendarEvaluation = {
+  working?: boolean | undefined;
+  sourcePath?: string | null | undefined;
+  rule?: string | undefined;
 }
 
 export type Catalog = {
@@ -47,6 +63,17 @@ export type EditorAttributes = {
   type?: string | null | undefined;
 }
 
+export type EditorCalendarDay = {
+  date: string;
+  evaluation: CalendarEvaluation;
+}
+
+export type EditorCalendarRequest = {
+  draft: EditorDraft;
+  unitId: string;
+  month: string;
+}
+
 export type EditorContainer = {
   sourceIndex: number;
   parentPath: string;
@@ -73,6 +100,8 @@ export type EditorDraft = {
   newFiles?: EditorFileCreation[] | null | undefined;
   groupChanges?: EditorGroupChange[] | null | undefined;
   networkChanges?: EditorNetworkChange[] | null | undefined;
+  workingSources?: SourceEvidence[] | null | undefined;
+  workingContainers?: EditorContainer[] | null | undefined;
 }
 
 export type EditorEdge = {
@@ -131,6 +160,23 @@ export type EditorNode = {
   y: number | null;
 }
 
+export type EditorPasteRequest = {
+  draft: EditorDraft;
+  copiedDraft: EditorDraft;
+  ids: string[];
+  targetNetworkId: string | null;
+  sourceIndex: number | null;
+  parentPath: string | null;
+  targetFile: string | null;
+}
+
+export type EditorPasteResult = {
+  document: EditorDocument;
+  clonedIds: string[];
+  targetPath: string;
+  warnings: string[];
+}
+
 export type EditorPreview = {
   valid: boolean;
   errors: string[];
@@ -163,6 +209,7 @@ export type EditorSource = {
   targetPath: string;
   text: string;
   changed: boolean;
+  kind?: string | undefined;
 }
 
 export type ExecutionPage = {
@@ -300,6 +347,8 @@ export type Occurrence = {
   interruptRequested?: boolean | null | undefined;
   manualExitCode?: number | null | undefined;
   delayMonitor?: DelayMonitorSettings | undefined;
+  generationRevision?: number | undefined;
+  individuallyModified?: boolean | undefined;
 }
 
 export type Operation = {
@@ -324,6 +373,7 @@ export type Operation = {
   futureGenerations?: number | null | undefined;
   rerunMethod?: string | null | undefined;
   mutationPath?: string | null | undefined;
+  mutationApplied?: boolean | null | undefined;
   definitionHash?: string | null | undefined;
   expectedDefinitionHash?: string | null | undefined;
   start?: string | null | undefined;
@@ -340,6 +390,10 @@ export type Operation = {
   newStatus?: string | null | undefined;
   newReturnCode?: number | null | undefined;
   delayMonitor?: DelayMonitorSettings | undefined;
+  expectedControlRevision?: number | null | undefined;
+  expectedDefinitionRevision?: number | null | undefined;
+  expectedImpactHash?: string | null | undefined;
+  acceptedDefinitionRevision?: number | null | undefined;
 }
 
 export type ProblemDetails = {
@@ -350,10 +404,51 @@ export type ProblemDetails = {
   instance?: string | null | undefined;
 }
 
+export type PublicationGeneration = {
+  id: string;
+  path: string;
+  due: string;
+  reason: string | null;
+}
+
+export type PublicationPreview = {
+  definitionHash: string;
+  expectedRevision: number;
+  impactHash: string;
+  addedRoots: string[];
+  removedRoots: string[];
+  generations: PublicationGeneration[];
+  sources: EditorSource[];
+  previousSources: EditorSource[];
+}
+
+export type RuntimeControl = {
+  revision?: number | undefined;
+  paused?: boolean | undefined;
+  pausedAt?: string | null | undefined;
+  skipBefore?: string | null | undefined;
+}
+
+export type RuntimeStatus = {
+  control: RuntimeControl;
+
+  active: Activation | null;
+
+  phase: string;
+  pending: Operation[];
+}
+
 export type SchedulePoint = {
   rule?: number | undefined;
   businessDate?: string | undefined;
   due?: string | undefined;
+}
+
+export type SharedEditorDraft = {
+  revision: number;
+  baseRevision: number;
+  base: EditorDocument;
+  draft: EditorDraft;
 }
 
 export type SourceEvidence = {

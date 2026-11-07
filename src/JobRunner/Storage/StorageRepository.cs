@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Azure;
 using Azure.Core;
+using Azure.Core.Pipeline;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
@@ -21,15 +22,33 @@ public sealed class StorageRepository
     /// <summary>Initializes a new instance of the <see cref="StorageRepository"/> class. 接続先と名前空間を固定したStorageアダプターを作ります。</summary>
     /// <param name="options">接続設定とスケジューラーの識別子です。</param>
     public StorageRepository(RunnerOptions options)
+        : this(options, null)
+    {
+    }
+
+    /// <summary>Initializes a new instance of the <see cref="StorageRepository"/> class. 内部検証用に実Storageの応答境界を観測します。</summary>
+    /// <param name="options">通常と同じ接続設定です。</param>
+    /// <param name="policy">実際の送受信を観測する試験用ポリシーです。</param>
+    internal StorageRepository(RunnerOptions options, HttpPipelinePolicy? policy)
     {
         var blobOptions = new BlobClientOptions(BlobClientOptions.ServiceVersion.V2023_11_03);
         blobOptions.AddPolicy(requestCounter, HttpPipelinePosition.PerRetry);
+        if (policy is not null)
+        {
+            blobOptions.AddPolicy(policy, HttpPipelinePosition.PerCall);
+        }
+
         blobOptions.Retry.MaxRetries = 0;
         blobOptions.Retry.NetworkTimeout = TimeSpan.FromSeconds(5);
         Blobs = new BlobServiceClient(options.ConnectionString, blobOptions);
         Container = Blobs.GetBlobContainerClient(options.ManagementContainer);
         var tableOptions = new TableClientOptions();
         tableOptions.AddPolicy(requestCounter, HttpPipelinePosition.PerRetry);
+        if (policy is not null)
+        {
+            tableOptions.AddPolicy(policy, HttpPipelinePosition.PerCall);
+        }
+
         tableOptions.Retry.MaxRetries = 0;
         tableOptions.Retry.NetworkTimeout = TimeSpan.FromSeconds(5);
         Table = new TableClient(options.ConnectionString, options.TableName, tableOptions);

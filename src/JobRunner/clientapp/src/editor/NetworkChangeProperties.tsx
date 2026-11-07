@@ -18,7 +18,7 @@ export function NetworkChangeProperties({
   onApply: (next: EditorDraft, confirmation: string) => Promise<void>;
 }) {
   const [target, setTarget] = useState("");
-  if (draft.editorVersion !== 8) return null;
+  if ((draft.editorVersion ?? 0) < 8) return null;
   const node = networkNode(draft, current);
   if (!node) return null;
   const root = draft.roots?.find((r) => r.node.id === current);

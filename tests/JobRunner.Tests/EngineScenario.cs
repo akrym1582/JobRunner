@@ -1,3 +1,4 @@
+using Azure.Core.Pipeline;
 using JobRunner.Execution;
 using JobRunner.Models;
 using JobRunner.Services;
@@ -15,8 +16,10 @@ internal sealed class EngineScenario : IAsyncDisposable
     private readonly string inputName = "input-" + Guid.NewGuid().ToString("N");
 
     /// <summary>Initializes a new instance of the <see cref="EngineScenario"/> class. OS実行を含む各依存を結線します。</summary>
-    public EngineScenario()
+    /// <param name="policy">実Storage通信へ中断を注入する場合だけ指定します。</param>
+    public EngineScenario(HttpPipelinePolicy? policy = null)
     {
+        Scope = new StorageScope(policy);
         Scope.Options.ConfirmedHorizonDays = 1;
         Scope.Options.DefinitionSources = [new DefinitionSource { BlobPath = inputName + "/jobs" }];
         Leader = new LeaderCoordinator(Scope.Repository, Clock);
@@ -24,7 +27,7 @@ internal sealed class EngineScenario : IAsyncDisposable
     }
 
     /// <summary>Gets. このシナリオだけのStorageです。</summary>
-    public StorageScope Scope { get; } = new();
+    public StorageScope Scope { get; }
 
     /// <summary>Gets. 復旧と予定判定を制御するUTC時計です。</summary>
     public TestClock Clock { get; } = new();
@@ -44,6 +47,7 @@ internal sealed class EngineScenario : IAsyncDisposable
         var input = Scope.Repository.Blobs.GetBlobContainerClient(inputName);
         await input.CreateAsync();
         await input.GetBlobClient("jobs").UploadAsync(BinaryData.FromString(source));
+        await TestDefinitions.SeedAsync(Scope.Repository, Scope.Options, Clock);
         Assert.True(await Leader.AcquireAsync(CancellationToken.None));
         await Engine.InitializeAsync(Leader, CancellationToken.None);
     }

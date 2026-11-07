@@ -18,13 +18,24 @@ public static partial class UiEndpoints
     {
         var group = app.MapGroup("/api/jobrunner/ui");
         MapEditor(group);
+        MapLifecycle(group);
         group.MapGet("/monthly", ReadMonthlyAsync);
         group.MapGet("/attempts", ReadAttemptsAsync);
         group.MapGet("/logs", ReadLogsAsync);
         group.MapGet("/jobnets", async (StorageRepository storage, DefinitionService definitions, RunnerOptions options, SchedulerWorker worker, CancellationToken token) =>
         {
+            if (await storage.GetAsync("definition-active", token) is null)
+            {
+                return new Catalog(string.Empty, string.Empty, options.TimeZone, worker.Phase, []);
+            }
+
             var active = await ActiveAsync(storage, token);
             var units = (await definitions.ReadAsync(active.DefinitionHash, token)).Units.Flatten().Where(u => u.IsNetwork()).Select(u => new Network(u.Path, u.Name, ScheduleCalculator.Parent(u.Path))).ToList();
+            foreach (var hash in (await storage.ListAsync("occurrence:", token)).Select(StorageRepository.Read<Occurrence>).Where(o => o.Namespace == active.Id && o.Id == o.RootId && o.DefinitionHash is not null && o.DefinitionHash != active.DefinitionHash).Select(o => o.DefinitionHash!).Distinct(StringComparer.Ordinal))
+            {
+                units.AddRange((await definitions.ReadAsync(hash, token)).Units.Flatten().Where(u => u.IsNetwork() && units.All(n => n.Path != u.Path)).Select(u => new Network(u.Path, u.Name, ScheduleCalculator.Parent(u.Path))));
+            }
+
             return new Catalog(active.Id, active.DefinitionHash, options.TimeZone, worker.Phase, units);
         });
         group.MapGet("/executions", async (string rootPath, DateTimeOffset? from, DateTimeOffset? until, int? page, StorageRepository storage, CancellationToken token) =>
@@ -84,6 +95,22 @@ public static partial class UiEndpoints
             }
 
             var units = (await definitions.ReadAsync(hash, token)).Units.Flatten().ToDictionary(u => u.Path, StringComparer.Ordinal);
+            if (rootId is null && !units.ContainsKey(unitPath))
+            {
+                // 削除されたネットも履歴を選ぶ前に旧定義の図を開けます。現在版とはハッシュで区別します。
+                var historical = (await storage.ListAsync("occurrence:", token)).Select(StorageRepository.Read<Occurrence>).Where(o => o.Namespace == active.Id && o.Id == o.RootId && o.DefinitionHash is not null && o.DefinitionHash != active.DefinitionHash).OrderByDescending(o => o.Due).Select(o => o.DefinitionHash!).Distinct(StringComparer.Ordinal);
+                foreach (string previousHash in historical)
+                {
+                    var previous = (await definitions.ReadAsync(previousHash, token)).Units.Flatten().ToDictionary(u => u.Path, StringComparer.Ordinal);
+                    if (previous.TryGetValue(unitPath, out var previousUnit) && previousUnit.IsNetwork())
+                    {
+                        units = previous;
+                        hash = previousHash;
+                        break;
+                    }
+                }
+            }
+
             if (!units.TryGetValue(unitPath, out var network) || !network.IsNetwork())
             {
                 throw new KeyNotFoundException("ジョブネットがありません。");

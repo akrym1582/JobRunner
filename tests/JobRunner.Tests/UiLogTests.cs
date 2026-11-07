@@ -23,6 +23,7 @@ public sealed class UiLogTests
         var input = scope.Repository.Blobs.GetBlobContainerClient(inputName);
         await input.CreateAsync();
         await input.GetBlobClient("jobs").UploadAsync(BinaryData.FromString("unit=net;{ty=n;sd=0,ud;el=job,j,+80 +48;unit=job;{ty=j;te=\"true\";}}"));
+        await TestDefinitions.SeedHttpAsync(scope.Repository, scope.Options);
         using var app = new AppProcess(scope.Options);
         try
         {

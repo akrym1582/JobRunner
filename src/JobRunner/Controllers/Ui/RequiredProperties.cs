@@ -28,6 +28,8 @@ public sealed class RequiredProperties : ISchemaFilter
                 schema.Required.Remove("newFiles");
                 schema.Required.Remove("groupChanges");
                 schema.Required.Remove("networkChanges");
+                schema.Required.Remove("workingSources");
+                schema.Required.Remove("workingContainers");
             }
 
             if (context.Type == typeof(EditorGroupChange))
@@ -57,6 +59,12 @@ public sealed class RequiredProperties : ISchemaFilter
                 schema.Required.Remove("containers");
                 schema.Required.Remove("timeZone");
                 schema.Required.Remove("scheduleTimeMode");
+            }
+
+            if (context.Type == typeof(EditorSource))
+            {
+                // 既存のブラウザー/共有下書きの基点には種別がなく、Unitだけが対応済みでした。
+                schema.Required.Remove("kind");
             }
 
             foreach (var property in context.Type.GetProperties())
