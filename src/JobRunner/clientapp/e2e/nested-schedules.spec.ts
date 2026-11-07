@@ -341,3 +341,133 @@ test("ネストの独自設定でも別タブの新しい保存を上書きし�
     other.getByRole("textbox", { name: "開始時刻 (st)", exact: true }),
   ).toHaveValue("1,10:00");
 });
+
+for (const exhausted of [false, true]) {
+  test(`予定なしの子を上位依存へ切り替え、確認・undo・保存復元できる（${exhausted ? "空番なし" : "空番あり"}）`, async ({
+    page,
+    request,
+  }, info) => {
+    const monitors = Array.from(
+      { length: exhausted ? 144 : 1 },
+      (_, i) => `sy=${i + 1},12:00;`,
+    ).join("");
+    await local(
+      page,
+      `unit=n;{ty=n;sd=en;cy=(1,d);st=09:00;sh=no;unit=c;{ty=n;de=n;sd=0,ud;${monitors}unit=j;{ty=j;te="true";}}}`,
+    );
+    await page.getByLabel("編集ネット").selectOption("/n/c");
+    const sd = page.getByRole("textbox", { name: "開始日 (sd)", exact: true });
+    const de = page.getByRole("textbox", {
+      name: "上位予定への依存 (de)",
+      exact: true,
+    });
+    await expect(sd).toHaveValue("0,ud");
+    await page
+      .getByRole("button", { name: "上位依存への切替を設定", exact: true })
+      .click();
+    const mode = page.getByLabel("スケジュールの依存方法", { exact: true });
+    await expect(mode).toBeVisible();
+    // 親依存用の仮の番号で独自ルールや監視対応を上書きしません。
+    await mode.selectOption("own");
+    await expect(
+      page.getByRole("button", { name: "簡単設定を下書きへ適用", exact: true }),
+    ).toBeDisabled();
+    await mode.selectOption("parent");
+    await expect(page.getByLabel("生成するJP1属性")).toContainText("de=y;");
+    await expect(page.getByLabel("生成するJP1属性")).not.toContainText("sd=");
+    page.once("dialog", async (dialog) => {
+      expect(dialog.message()).toContain("開始日(sd)を削除");
+      await dialog.dismiss();
+    });
+    await page
+      .getByRole("button", { name: "簡単設定を下書きへ適用", exact: true })
+      .click();
+    await expect(sd).toHaveValue("0,ud");
+    await expect(de).toHaveValue("n");
+    await apply(page);
+    await expect(
+      page.getByRole("checkbox", { name: "開始日 (sd)を指定", exact: true }),
+    ).not.toBeChecked();
+    await expect(de).toHaveValue("y");
+    const preview = await trial(page, "/n/c");
+    await expect(preview).toContainText("スケジュール上の対象 3件 / 判定 3行");
+    await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+    await expect(sd).toHaveValue("0,ud");
+    await expect(de).toHaveValue("n");
+    await saved(page);
+    await page.reload();
+    await page.getByRole("button", { name: "定義編集", exact: true }).click();
+    await page.getByLabel("編集ネット").selectOption("/n/c");
+    await page.getByText("スケジュール・カレンダー", { exact: true }).click();
+    await expect(sd).toHaveValue("0,ud");
+    await expect(de).toHaveValue("n");
+    await page
+      .getByRole("button", { name: "上位依存への切替を設定", exact: true })
+      .click();
+    await apply(page);
+    await page.reload();
+    await page.getByRole("button", { name: "定義編集", exact: true }).click();
+    await page.getByLabel("編集ネット").selectOption("/n/c");
+    await page.getByText("スケジュール・カレンダー", { exact: true }).click();
+    await expect(de).toHaveValue("y");
+    await expect(
+      page.getByRole("checkbox", { name: "開始日 (sd)を指定", exact: true }),
+    ).not.toBeChecked();
+    if (exhausted) {
+      await page
+        .getByRole("button", { name: "依存方法を設定", exact: true })
+        .click();
+      await expect(mode).toBeVisible();
+      await mode.selectOption("own");
+      await expect(
+        page.getByText(/新しい独自ルールの空き番号がありません/),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", {
+          name: "簡単設定を下書きへ適用",
+          exact: true,
+        }),
+      ).toBeDisabled();
+      page.once("dialog", (dialog) => dialog.accept());
+      await page
+        .getByRole("button", { name: "簡単設定の入力を破棄", exact: true })
+        .click();
+    }
+    await page
+      .getByRole("button", { name: "検証・プレビュー", exact: true })
+      .click();
+    await expect(page.getByRole("heading", { name: /検証OK/ })).toBeVisible();
+    const downloading = page.waitForEvent("download");
+    await page
+      .getByRole("button", { name: "ダウンロード", exact: true })
+      .click();
+    const path = info.outputPath("inherit-no-schedule.ajs");
+    await (await downloading).saveAs(path);
+    const bytes = await readFile(path);
+    const imported = await request.post(api + "/ui/definition-editor/local", {
+      data: {
+        sources: [
+          {
+            mapping: {
+              kind: "Unit",
+              blobPath: "inherit.ajs",
+              targetPath: "/",
+              encoding: "utf-8",
+            },
+            base64: bytes.toString("base64"),
+          },
+        ],
+      },
+    });
+    expect(imported.ok()).toBeTruthy();
+    const result = await imported.json();
+    expect(
+      result.draft.schedules.find((s: { id: string }) => s.id === "/n/c")
+        .attributes,
+    ).toEqual({ de: ["y"] });
+    expect(
+      result.draft.execution.find((e: { id: string }) => e.id === "/n/c")
+        .attributes.sy,
+    ).toHaveLength(exhausted ? 144 : 1);
+  });
+}

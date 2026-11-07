@@ -105,6 +105,10 @@ export function SimpleScheduleEditor({
     errors.push(
       "既存の独自ルールは詳細編集の対象です。元の設定へ戻すには未適用入力を破棄してください。",
     );
+  if (session && session.mode === "own" && session.adding && !availableRule)
+    errors.push(
+      "新しい独自ルールの空き番号がありません。詳細編集で既存ルールを確認してください。",
+    );
   const candidate = useMemo(() => {
     if (!session || stale || errors.length) return undefined;
     return withSchedule(
@@ -138,7 +142,11 @@ export function SimpleScheduleEditor({
   }
   function begin(adding: boolean, desiredMode: "parent" | "own" = "own") {
     if (!discard()) return;
-    const id = adding || mode === "parent" ? availableRule : selected;
+    // 上位依存への切替はルールを生成しないため、予定なし・空番なしでも開けます。
+    // 仮の番号を独自設定へ流用しないよう、新規ルールの空きは別途検証します。
+    const id =
+      (adding || mode === "parent" ? availableRule : selected) ??
+      (desiredMode === "parent" ? 1 : undefined);
     if (!id) return;
     const value = adding
       ? { ...defaults(), calendar: attributes.jc?.[0] ?? "" }
