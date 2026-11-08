@@ -5,10 +5,13 @@ namespace JobRunner.Models;
 /// </summary>
 public sealed class Activation
 {
+    /// <summary>運用Storageの現行保存形式です。</summary>
+    public const int CurrentFormatVersion = 8;
+
     /// <summary>
     /// Gets or sets. 復旧処理が理解できる保存形式か確認する番号です。
     /// </summary>
-    public int FormatVersion { get; set; } = 8;
+    public int FormatVersion { get; set; } = CurrentFormatVersion;
 
     /// <summary>
     /// Gets or sets. 初回に発行する状態領域。定義反映でも登録・履歴の領域を維持します。

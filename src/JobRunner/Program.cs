@@ -104,7 +104,7 @@ public static class Program
             supportedJp1Reads = new[] { "statuses (search)", "statuses/unitName:execID", "execResultDetails", "version (JobRunner)" },
             supportedJp1Search = new[] { "unitName RE (*, ?, escape)", "GRP_WAIT/RUN/ABNORMAL/NORMAL", "maximum 1000; partial all=false" },
             supportedDefinitionMonitoring = new[] { "network sy/ey by rule", "network fd", "generation-specific API override" },
-            storageFormat = 6,
+            storageFormat = Activation.CurrentFormatVersion,
             supportedJp1ErrorIds = new[] { "KNAK3201-E", "KNAK3202-E", "KNAK3203-E", "KNAK3204-E", "KNAK3206-E", "KNAK3207-E", "KNAK3209-E" },
             compatibilityDetails = "docs/compatibility-v12.md。各APIの対応引数・状態・エラー条件に限定します。変数受渡しは専用JSON方式です。",
             unsupported = new[] { "列挙外のJP1 HTTP操作・全エラーID/全状態表現の互換", "別形式Schedule/Calendar", "イベント", "待ち合わせ", "AJSVAR", "JP1 ManagerのprotocolVersion", "認証・Agent通信", "24時間制の24時以降", "欠落月の基準日境界", "一般ジョブのfd・監視の外部通知", "OSユーザー切り替え" },

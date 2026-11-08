@@ -192,7 +192,7 @@ Windows専用のコマンド構文・パス・exe/batをLinux用に変換する�
 
 ## 補充定義と一定間隔の登録
 
-生成済み世代を変更せず補充用定義だけ更新するには、定義をimportしてから次の操作を送る。`Target`は登録ID、期待版は登録のDefinitionHash（旧形式では採用版）。競合時は新しい要求IDと確認済みの期待版でやり直す。
+生成済み世代を変更せず補充用定義だけ更新するには、定義をimportしてから次の操作を送る。`Target`は登録ID、期待版は登録の`DefinitionHash`です。登録行に定義ハッシュがない場合は現在の採用版を使います。競合時は新しい要求IDと確認済みの期待版でやり直す。
 
 ```json
 {"Id":"change-definition-1","Kind":"UpdateRegistrationDefinition","Target":"登録ID","ExpectedDefinitionHash":"更新前の版","DefinitionHash":"import済みの版"}

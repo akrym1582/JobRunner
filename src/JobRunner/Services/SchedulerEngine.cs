@@ -61,7 +61,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
         active = null;
         bundle = null;
         var beforeRecovery = await storage.GetAsync("definition-active", cancellationToken);
-        if (beforeRecovery is not null && (StorageRepository.Read<Activation>(beforeRecovery).FormatVersion != 8 || StorageRepository.Read<Activation>(beforeRecovery).SettingsHash != definitions.SettingsHash()))
+        if (beforeRecovery is not null && (StorageRepository.Read<Activation>(beforeRecovery).FormatVersion != Activation.CurrentFormatVersion || StorageRepository.Read<Activation>(beforeRecovery).SettingsHash != definitions.SettingsHash()))
         {
             throw new InvalidDataException("保存形式または実行設定が現在の実行器と一致しません。保存済み操作は再開しません。旧データの自動移行は対象外です。");
         }
@@ -384,7 +384,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
     {
         var row = await storage.GetAsync("definition-active", cancellationToken) ?? throw new InvalidDataException("有効版Table行が欠損しています。復元が必要です。");
         active = StorageRepository.Read<Activation>(row);
-        if (active.FormatVersion != 8)
+        if (active.FormatVersion != Activation.CurrentFormatVersion)
         {
             throw new InvalidDataException("有効版の保存形式を認識できません。");
         }
@@ -450,7 +450,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
             try
             {
                 var manifest = current.Value.Content.ToObjectFromJson<Activation>();
-                if (manifest is null || manifest.FormatVersion != 8 || manifest.Phase != "Ready" || string.IsNullOrWhiteSpace(manifest.Id))
+                if (manifest is null || manifest.FormatVersion != Activation.CurrentFormatVersion || manifest.Phase != "Ready" || string.IsNullOrWhiteSpace(manifest.Id))
                 {
                     throw new InvalidDataException("管理Blobが破損しています。");
                 }
@@ -465,7 +465,7 @@ public sealed partial class SchedulerEngine(StorageRepository storage, Definitio
 
         leader!.Ensure();
         await mirror.UploadAsync(BinaryData.FromObjectAsJson(active), new BlobUploadOptions { Conditions = condition }, cancellationToken);
-        await storage.PutImmutableAsync($"management/{storage.Partition}/{hash}/{settingsHash}/{active.Id}/activation-v8-{active.Revision}.json", BinaryData.FromObjectAsJson(active), cancellationToken);
+        await storage.PutImmutableAsync($"management/{storage.Partition}/{hash}/{settingsHash}/{active.Id}/activation-v{Activation.CurrentFormatVersion}-{active.Revision}.json", BinaryData.FromObjectAsJson(active), cancellationToken);
     }
 
     /// <summary>補充範囲に依存せず、途中まで保存された現行領域の世代を先に完成させます。</summary>
