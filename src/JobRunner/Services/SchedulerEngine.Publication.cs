@@ -223,7 +223,7 @@ public sealed partial class SchedulerEngine
     private async Task FinalizePublicationAsync(CancellationToken token)
     {
         active = StorageRepository.Read<Activation>((await storage.GetAsync("definition-active", token)) ?? throw new InvalidDataException("反映先の採用行が欠損しています。"));
-        if (active.SettingsHash != definitions.SettingsHash() || active.FormatVersion != 8 || active.Phase != "Ready")
+        if (active.SettingsHash != definitions.SettingsHash() || active.FormatVersion != Activation.CurrentFormatVersion || active.Phase != "Ready")
         {
             throw new InvalidDataException("反映計画の保存形式・実行設定が現在の実行器と一致しません。補充せず停止します。");
         }
@@ -252,7 +252,7 @@ public sealed partial class SchedulerEngine
         {
             var saved = await mirror.DownloadContentAsync(token);
             var previous = saved.Value.Content.ToObjectFromJson<Activation>();
-            if (previous is null || previous.FormatVersion != 8 || previous.Id != active.Id || previous.SettingsHash != active.SettingsHash || previous.Phase != "Ready")
+            if (previous is null || previous.FormatVersion != Activation.CurrentFormatVersion || previous.Id != active.Id || previous.SettingsHash != active.SettingsHash || previous.Phase != "Ready")
             {
                 throw new InvalidDataException("管理Blobと反映先が一致しません。破損状態を上書きせず復元してください。");
             }
@@ -262,6 +262,6 @@ public sealed partial class SchedulerEngine
 
         leader!.Ensure();
         await mirror.UploadAsync(BinaryData.FromObjectAsJson(active), new BlobUploadOptions { Conditions = condition }, token);
-        await storage.PutImmutableAsync($"management/{storage.Partition}/{active.DefinitionHash}/{active.SettingsHash}/{active.Id}/activation-v8-{active.Revision}.json", BinaryData.FromObjectAsJson(active), token);
+        await storage.PutImmutableAsync($"management/{storage.Partition}/{active.DefinitionHash}/{active.SettingsHash}/{active.Id}/activation-v{Activation.CurrentFormatVersion}-{active.Revision}.json", BinaryData.FromObjectAsJson(active), token);
     }
 }

@@ -40,6 +40,11 @@ public sealed class Jp1ContractTests
                     return false;
                 }
             });
+            var compatibility = await app.Client.GetFromJsonAsync<JsonElement>("/api/jobrunner/compatibility");
+            var activeRow = await storage.GetAsync("definition-active", CancellationToken.None);
+            Assert.NotNull(activeRow);
+            Assert.Equal(StorageRepository.Read<Activation>(activeRow).FormatVersion, compatibility.GetProperty("storageFormat").GetInt32());
+
             string unit = Uri.EscapeDataString("/業務/net");
             string register = $"/ajs/api/v1/objects/definitions/{unit}/actions/registerImmediateExec/invoke";
             using var missing = await app.Client.PostAsJsonAsync(register, new { parameters = new { manager = "localhost" } });
