@@ -13,6 +13,69 @@ namespace JobRunner.Tests;
 /// <summary>グループZIPの原文・依存・追加と置換を検証します。</summary>
 public sealed class GroupPackageTests
 {
+    /// <summary>テキストでも文字コードと内部参照を保って追加・置換できます。</summary>
+    /// <param name="encoding">指定する文字コードです。</param>
+    [Theory]
+    [InlineData("utf-8")]
+    [InlineData("utf-16")]
+    [InlineData("utf-16BE")]
+    [InlineData("shift_jis")]
+    public void ImportsTextGroupAndReplacesWithoutChangingOtherGroups(string encoding)
+    {
+        var service = Service();
+        var bundle = service.Validate([Source("current.ajs", "unit=target;{ty=g;unit=old;{ty=n;}}unit=keep;{ty=g;cm=\"keep\";}")]);
+        var draft = DefinitionEditor.Project(bundle, 9);
+        var source = Source("jp1.txt", "unit=original;{ty=g;cm=\"日本語\";unit=net;{ty=n;jc=\"/original\";sd=0,ud;unit=job;{ty=j;te=\"true\";}}}", encoding);
+        var added = DefinitionEditor.ImportGroup(bundle, new(draft, string.Empty, ParentPath: "/", Name: "copy", Source: source), service, new());
+        var output = service.Validate(DefinitionEditor.Render(bundle, added.Draft));
+        Assert.Contains(output.Units.Flatten(), u => u.Path == "/copy/net" && u.Get("jc") == "/copy");
+        Assert.Contains(output.Units.Flatten(), u => u.Path == "/copy" && u.Get("cm") == "日本語");
+        Assert.Contains(output.Sources, s => s.Mapping.Encoding == encoding && s.Mapping.BlobPath.EndsWith("jp1.txt", StringComparison.Ordinal));
+        Assert.Contains(output.Units.Flatten(), u => u.Path == "/target/old");
+        var replaced = DefinitionEditor.ImportGroup(bundle, new(draft, "/target", Source: source), service, new());
+        output = service.Validate(DefinitionEditor.Render(bundle, replaced.Draft));
+        Assert.DoesNotContain(output.Units.Flatten(), u => u.Path == "/target/old");
+        Assert.Contains(output.Units.Flatten(), u => u.Path == "/target/net" && u.Get("jc") == "/target");
+        Assert.Contains(output.Units.Flatten(), u => u.Path == "/keep" && u.Get("cm") == "keep");
+        Assert.Contains("同名", Assert.Throws<ArgumentException>(() => DefinitionEditor.ImportGroup(bundle, new(draft, string.Empty, ParentPath: "/", Name: "keep", Source: source), service, new())).Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>グループのない複数ネットを包み、BOMを含む元バイトを保持します。</summary>
+    [Fact]
+    public void WrapsTextNetworksAndPreservesOriginalBytes()
+    {
+        var service = Service();
+        var bundle = service.Validate([Source("current.ajs", "unit=keep;{ty=g;}")]);
+        var source = Source("jobs.txt", "\uFEFF/* 日本語 */\r\nunit=one;{ty=n;jc=\"/external\";sd=0,ud;}\r\nunit=two;{ty=n;}\r\n", "utf-16");
+        var document = DefinitionEditor.ImportGroup(bundle, new(DefinitionEditor.Project(bundle, 9), string.Empty, ParentPath: "/keep", Name: "copy", Source: source), service, new());
+        var result = service.Validate(DefinitionEditor.Render(bundle, document.Draft), true);
+        Assert.Contains(result.Units.Flatten(), u => u.Path == "/keep/copy/one" && u.Get("jc") == "/external");
+        Assert.Contains(result.Units.Flatten(), u => u.Path == "/keep/copy/two");
+        Assert.Contains(result.Sources, s => s.Base64 == source.Base64 && s.Mapping.Encoding == "utf-16");
+        Assert.Contains(document.Diagnostics!, d => d.Contains("/external", StringComparison.Ordinal));
+    }
+
+    /// <summary>テキスト入力も既存のサイズ・文字コード・構文と排他制約を適用します。</summary>
+    [Fact]
+    public void RejectsInvalidTextAndMixedInputs()
+    {
+        var service = Service();
+        var bundle = service.Validate([Source("current.ajs", "unit=keep;{ty=g;}")]);
+        var request = new EditorGroupPackageRequest(DefinitionEditor.Project(bundle, 9), string.Empty, ParentPath: "/", Name: "copy");
+        Assert.Throws<ArgumentException>(() => DefinitionEditor.ImportGroup(bundle, request, service, new()));
+        var source = Source("jobs.txt", "unit=g;{ty=g;}");
+        Assert.Throws<ArgumentException>(() => DefinitionEditor.ImportGroup(bundle, request with { Source = source, ZipBase64 = "AA==" }, service, new()));
+        Assert.Throws<ArgumentException>(() => DefinitionEditor.ImportGroup(bundle, request with { Source = Source("empty.txt", string.Empty) }, service, new()));
+        Assert.Throws<ArgumentException>(() => DefinitionEditor.ImportGroup(bundle, request with { Source = Source("large.txt", new string(' ', EditorLocalFiles.FileLimit + 1)) }, service, new()));
+        var mismatched = Source("bom.txt", "\uFEFFunit=g;{ty=g;}");
+        mismatched.Mapping.Encoding = "shift_jis";
+        Assert.Throws<ArgumentException>(() => DefinitionEditor.ImportGroup(bundle, request with { Source = mismatched }, service, new()));
+        var unsupported = Source("encoding.txt", "unit=g;{ty=g;}", "utf-8");
+        unsupported.Mapping.Encoding = "utf-32";
+        Assert.Throws<ArgumentException>(() => DefinitionEditor.ImportGroup(bundle, request with { Source = unsupported }, service, new()));
+        Assert.Throws<FormatException>(() => DefinitionEditor.ImportGroup(bundle, request with { Source = Source("bad.txt", "unit=broken;{ty=g;") }, service, new()));
+    }
+
     /// <summary>別ファイルの配置を保ち、対象外の原文は変更しません。</summary>
     /// <param name="encoding">原文の文字コードです。</param>
     [Theory]
