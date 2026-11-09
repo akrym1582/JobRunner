@@ -1,3 +1,5 @@
+using JobRunner.Models;
+
 namespace JobRunner.Controllers.Ui;
 
 /// <summary>グループ単位の下書き入出力です。</summary>
@@ -6,4 +8,5 @@ namespace JobRunner.Controllers.Ui;
 /// <param name="ZipBase64">取り込むZIPです。出力時は省略します。</param>
 /// <param name="ParentPath">新規追加先のグループです。</param>
 /// <param name="Name">追加時のグループ名です。</param>
-public sealed record EditorGroupPackageRequest(EditorDraft Draft, string Path, string? ZipBase64 = null, string? ParentPath = null, string? Name = null);
+/// <param name="Source">取り込むUnitテキストです。ZIPとは排他です。</param>
+public sealed record EditorGroupPackageRequest(EditorDraft Draft, string Path, string? ZipBase64 = null, string? ParentPath = null, string? Name = null, SourceEvidence? Source = null);

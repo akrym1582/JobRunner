@@ -449,7 +449,14 @@ export function DefinitionEditor({
     setMessage("");
     try {
       const blob = await client.ui.definition_editor.groups.export.$post({
-        body: { draft, path, zipBase64: null, parentPath: null, name: null },
+        body: {
+          draft,
+          path,
+          zipBase64: null,
+          parentPath: null,
+          name: null,
+          source: null,
+        },
       });
       if (started !== revision.current)
         throw new Error("編集中に内容が変わりました。再度出力してください。");

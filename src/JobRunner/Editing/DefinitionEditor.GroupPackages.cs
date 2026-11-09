@@ -83,22 +83,13 @@ public static partial class DefinitionEditor
 
     /// <summary>検証したグループを一つのundo可能な下書き変更へまとめます。</summary>
     /// <param name="bundle">原文基点です。</param>
-    /// <param name="request">ZIPと追加先または置換先です。</param>
+    /// <param name="request">ZIPまたはテキストと追加先または置換先です。</param>
     /// <param name="definitions">定義の意味検証器です。</param>
     /// <param name="options">表示用の実行設定です。</param>
     /// <returns>保存も運用反映もしていない候補です。</returns>
     public static EditorDocument ImportGroup(DefinitionBundle bundle, EditorGroupPackageRequest request, DefinitionService definitions, RunnerOptions options)
     {
-        var imported = EditorLocalFiles.Read(new(ZipBase64: request.ZipBase64), definitions, true);
-        using var input = new MemoryStream(Convert.FromBase64String(request.ZipBase64!));
-        using var archive = new ZipArchive(input, ZipArchiveMode.Read);
-        using var json = JsonDocument.Parse(archive.GetEntry("manifest.json")!.Open());
-        if (!json.RootElement.TryGetProperty("GroupRoot", out var rootValue) || rootValue.ValueKind != JsonValueKind.String)
-        {
-            throw new ArgumentException("グループ出力ZIPを選択してください。全定義ZIPはローカル入力から読み込めます。");
-        }
-
-        string sourceRoot = rootValue.GetString()!;
+        var (imported, sourceRoot, sourceDiagnostics) = ReadGroupInput(request, definitions);
         var importedUnits = imported.Units.Flatten().ToDictionary(u => u.Path, StringComparer.Ordinal);
         if (sourceRoot == "/" || !importedUnits.TryGetValue(sourceRoot, out var selected) || selected.Type != "g")
         {
@@ -193,7 +184,54 @@ public static partial class DefinitionEditor
         var paths = result.Units.Flatten().Where(u => u.Type == "g").Select(u => u.Path).ToHashSet(StringComparer.Ordinal);
         origins = origins.Where(p => paths.Contains(p.Key)).ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
         var projected = Project(result, 9) with { DefinitionHash = request.Draft.DefinitionHash, LocalSources = request.Draft.LocalSources, WorkingSources = result.Sources, WorkingContainers = Containers(result), GroupOrigins = origins, RootOrigins = RootOrigins(bundle, request.Draft), OriginCatalogHash = request.Draft.OriginCatalogHash };
-        return new(projected, Describe(result.Sources, bundle.Sources), Containers(result), options.TimeZone, options.ScheduleTimeMode, GroupDependencies(result.Units.Flatten().ToDictionary(u => u.Path), target).Concat(json.RootElement.TryGetProperty("Dependencies", out var dependencies) && dependencies.ValueKind == JsonValueKind.Array ? dependencies.EnumerateArray().Select(d => d.ValueKind == JsonValueKind.String ? "出力元情報: " + d.GetString() : throw new ArgumentException("ZIPの依存診断は文字列で指定してください。")) : []).ToList());
+        return new(projected, Describe(result.Sources, bundle.Sources), Containers(result), options.TimeZone, options.ScheduleTimeMode, GroupDependencies(result.Units.Flatten().ToDictionary(u => u.Path), target).Concat(sourceDiagnostics).ToList());
+    }
+
+    private static (DefinitionBundle Bundle, string Root, List<string> Diagnostics) ReadGroupInput(EditorGroupPackageRequest request, DefinitionService definitions)
+    {
+        if ((request.Source is null) == (request.ZipBase64 is null))
+        {
+            throw new ArgumentException("JP1定義テキストまたはグループZIPのどちらかを指定してください。");
+        }
+
+        if (request.Source is { } source)
+        {
+            if (source.Mapping?.TargetPath != "/")
+            {
+                throw new ArgumentException("グループ取込のテキストは配置基点 / で指定してください。");
+            }
+
+            var bundle = EditorLocalFiles.Read(new([source]), definitions, true);
+            var roots = bundle.Units.Where(u => u.Path != "/").ToList();
+            if (roots.Count == 1 && roots[0].Type == "g")
+            {
+                return (bundle, roots[0].Path, []);
+            }
+
+            // ネットだけのJP1原文も、バイトを書き換えず配置情報でグループ配下へまとめます。
+            const string root = "/__jobrunner_text__";
+            var nested = bundle.Sources[0];
+            nested.Mapping = new() { Kind = "Unit", BlobPath = "text/unit.ajs", TargetPath = root, Encoding = source.Mapping.Encoding };
+            var wrapper = new SourceEvidence
+            {
+                Mapping = new() { Kind = "Unit", BlobPath = "text/group.ajs", TargetPath = "/", Encoding = "utf-8" },
+                Base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("unit=__jobrunner_text__;{ty=g;}")),
+            };
+            return (definitions.Validate([wrapper, nested], true), root, []);
+        }
+
+        var imported = EditorLocalFiles.Read(new(ZipBase64: request.ZipBase64), definitions, true);
+        using var input = new MemoryStream(Convert.FromBase64String(request.ZipBase64!));
+        using var archive = new ZipArchive(input, ZipArchiveMode.Read);
+        using var json = JsonDocument.Parse(archive.GetEntry("manifest.json")!.Open());
+        if (!json.RootElement.TryGetProperty("GroupRoot", out var rootValue) || rootValue.ValueKind != JsonValueKind.String)
+        {
+            throw new ArgumentException("グループ出力ZIPを選択してください。全定義ZIPはローカル入力から読み込めます。");
+        }
+
+        var diagnostics = json.RootElement.TryGetProperty("Dependencies", out var dependencies) && dependencies.ValueKind == JsonValueKind.Array
+            ? dependencies.EnumerateArray().Select(d => d.ValueKind == JsonValueKind.String ? "出力元情報: " + d.GetString() : throw new ArgumentException("ZIPの依存診断は文字列で指定してください。")).ToList() : [];
+        return (imported, rootValue.GetString()!, diagnostics);
     }
 
     private static List<string> GroupDependencies(Dictionary<string, UnitDefinition> all, string path)

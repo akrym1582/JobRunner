@@ -34,7 +34,7 @@ test("グループZIPの追加とundoを保存して再読込できる", async (
   const downloaded = page.waitForEvent("download");
   await page.getByRole("button", { name: "グループZIPをダウンロード" }).click();
   const zip = await readFile((await (await downloaded).path())!);
-  await page.getByLabel("グループZIP", { exact: true }).setInputFiles({
+  await page.getByLabel("グループ取込ファイル", { exact: true }).setInputFiles({
     name: "group.zip",
     mimeType: "application/zip",
     buffer: zip,
@@ -59,7 +59,7 @@ test("グループZIPの追加とundoを保存して再読込できる", async (
   await page
     .getByText("グループのエクスポート・インポート", { exact: true })
     .click();
-  await page.getByLabel("グループZIP", { exact: true }).setInputFiles({
+  await page.getByLabel("グループ取込ファイル", { exact: true }).setInputFiles({
     name: "group.zip",
     mimeType: "application/zip",
     buffer: zip,
@@ -310,7 +310,7 @@ test("外部カレンダーを同梱しないZIPを不足状態で保存でき�
     .click();
   await expect(page.getByLabel("入出力グループ")).toHaveValue("/keep");
   await page
-    .getByLabel("グループZIP", { exact: true })
+    .getByLabel("グループ取込ファイル", { exact: true })
     .setInputFiles({ name: "g.zip", mimeType: "application/zip", buffer: zip });
   await page.getByLabel("追加グループ名", { exact: true }).fill("copied");
   page.once("dialog", async (d) => {
@@ -416,4 +416,75 @@ test("旧ルート移動の下書きから続けて移動し保存・再読込�
   await page.reload();
   await page.getByRole("button", { name: "定義編集", exact: true }).click();
   await expect(page.getByLabel("編集ネット")).toHaveValue("/c/n");
+});
+
+test("JP1テキストのグループ追加・置換と保存・undo", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "定義編集", exact: true }).click();
+  await page.getByText("ローカル定義を開く", { exact: true }).click();
+  await page.getByLabel("定義ファイル", { exact: true }).setInputFiles({
+    name: "original.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from(text),
+  });
+  page.once("dialog", (d) => d.accept());
+  await page
+    .getByRole("button", { name: "ローカル定義を読み込む", exact: true })
+    .click();
+  await expect(page.getByLabel("編集ネット")).toHaveValue("/business/net");
+  await page
+    .getByText("グループのエクスポート・インポート", { exact: true })
+    .click();
+  await page.getByLabel("グループ取込ファイル", { exact: true }).setInputFiles({
+    name: "jp1.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from(
+      '\uFEFFunit=新ネット;{ty=n;sd=0,ud;unit=ジョブ;{ty=j;te="echo text";}}',
+      "utf16le",
+    ),
+  });
+  await page.getByLabel("グループ取込文字コード").selectOption("utf-16");
+  await page.getByLabel("追加グループ名", { exact: true }).fill("from_text");
+  page.once("dialog", (d) => d.accept());
+  await page
+    .getByRole("button", { name: "グループを下書きへ取り込む" })
+    .click();
+  const imported = () =>
+    page
+      .getByLabel("編集ネット")
+      .locator('option[value="/from_text/新ネット"]');
+  await expect(imported()).toHaveCount(1);
+  await expect(
+    page.getByText("ブラウザーに保存済み", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(imported()).toHaveCount(0);
+  await page.getByRole("button", { name: "やり直す", exact: true }).click();
+  await expect(imported()).toHaveCount(1);
+  await page.reload();
+  await page.getByRole("button", { name: "定義編集", exact: true }).click();
+  await expect(imported()).toHaveCount(1);
+  await page
+    .getByText("グループのエクスポート・インポート", { exact: true })
+    .click();
+  await page.getByLabel("入出力グループ").selectOption("/from_text");
+  await page.getByLabel("グループ取込方法").selectOption("replace");
+  await page.getByLabel("グループ取込ファイル", { exact: true }).setInputFiles({
+    name: "replace.ajs",
+    mimeType: "text/plain",
+    buffer: Buffer.from("unit=g;{ty=g;unit=replaced;{ty=n;sd=0,ud;}}"),
+  });
+  page.once("dialog", (d) => d.accept());
+  await page
+    .getByRole("button", { name: "グループを下書きへ取り込む" })
+    .click();
+  await expect(imported()).toHaveCount(0);
+  await expect(
+    page
+      .getByLabel("編集ネット")
+      .locator('option[value="/from_text/replaced"]'),
+  ).toHaveCount(1);
+  await expect(
+    page.getByLabel("編集ネット").locator('option[value="/business/net"]'),
+  ).toHaveCount(1);
 });

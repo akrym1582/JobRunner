@@ -148,6 +148,8 @@ export type EditorGroupPackageRequest = {
   zipBase64: string | null;
   parentPath: string | null;
   name: string | null;
+
+  source: SourceEvidence | null;
 }
 
 export type EditorLocalRequest = {

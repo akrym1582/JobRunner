@@ -1402,6 +1402,7 @@
           "name",
           "parentPath",
           "path",
+          "source",
           "zipBase64"
         ],
         "type": "object",
@@ -1422,6 +1423,14 @@
           },
           "name": {
             "type": "string",
+            "nullable": true
+          },
+          "source": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SourceEvidence"
+              }
+            ],
             "nullable": true
           }
         },

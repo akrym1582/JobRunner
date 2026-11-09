@@ -1,5 +1,19 @@
 # 検証結果
 
+## JP1定義テキストのグループ取り込み（2026-11-09）
+
+基点 `b1b1d2f1c441388c8c4d15002e07c3b81d50018d` に対する作業ツリーで検証。Debian 13、.NET SDK 10.0.403、Node.js 24.22.1、Azurite 3.35.0、システムChromiumを使用しました。CI・実JP1・Windows・実Azureでは未検証です。
+
+| 検証 | 結果 |
+| --- | --- |
+| 対象テスト `dotnet test JobRunner.slnx -c Release --no-build --filter 'FullyQualifiedName~GroupPackageTests\|FullyQualifiedName~DefinitionEditorLocalTests'` | 48件成功、失敗・スキップ0。UTF-8・UTF-16LE/BE・Shift_JIS、追加・置換、内部jc追従、対象外保持、グループなし定義の原文/BOM保持、不正入力と既存ZIPを確認 |
+| `JOBRUNNER_TEST_TOOLS=/workspace/JobRunner/src/JobRunner/clientapp ./scripts/verify.sh` | Releaseビルド・解析成功、694件成功、失敗・スキップ0。TRXの実行件数も確認 |
+| `npm run export-api && npm run generate-api` | テキスト入力のSourceフィールドをOpenAPIと生成クライアントへ反映 |
+| `npm run lint`、`npm run format:check`、`npm test`、`npm run build` | 成功。Vitest 80件成功 |
+| `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:e2e -- group-operations.spec.ts` | 実API・Azuriteを使用し9件成功。UTF-16LEテキストの追加・undo/redo・保存・再読込、UTF-8のグループ置換、既存ZIPと外部依存を確認 |
+
+仕様は[グループへのテキスト取り込み](spec/scheduler/editor-moves/spec.md#グループへのテキスト取り込み)を参照してください。全ブラウザーテストは今回は実行していません。
+
 ## 確認済みの基準
 
 2026-11-07の `main` [a10bb26](https://github.com/akrym1582/JobRunner/commit/a10bb266389a8c3704a59fd6e33bb354cf548a6e)（PR #13マージ後）の[GitHub Actions](https://github.com/akrym1582/JobRunner/actions/runs/42378039235)は成功しました。Ubuntu、.NET 10、Node.js 22、Azurite 3.35.0、Chromiumで検証しました。
